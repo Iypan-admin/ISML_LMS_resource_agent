@@ -27,6 +27,7 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3 \
 
 
 # Start FastAPI app with uvicorn (supports both root repository context and subfolder context)
-CMD ["sh", "-c", "if [ -d 'ai-service/app' ]; then PYTHONPATH=. exec uvicorn ai-service.app.main:app --host 0.0.0.0 --port ${PORT:-8000}; else PYTHONPATH=. exec uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000}; fi"]
+CMD ["sh", "-c", "if [ -d 'ai-service/app' ]; then PYTHONPATH=ai-service:. exec uvicorn ai-service.app.main:app --host 0.0.0.0 --port ${PORT:-8000}; else PYTHONPATH=. exec uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000}; fi"]
+
 
 
