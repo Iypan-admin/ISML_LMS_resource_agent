@@ -12,10 +12,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     && rm -rf /var/lib/apt-get/lists/*
 
-# Copy source code and install dependencies
+# Copy source code
 COPY . .
-RUN pip install --no-cache-dir -r requirements.txt
 
+# Install dependencies (supports both root repository context and subfolder context)
+RUN if [ -f "requirements.txt" ]; then pip install --no-cache-dir -r requirements.txt; elif [ -f "ai-service/requirements.txt" ]; then pip install --no-cache-dir -r ai-service/requirements.txt; fi
 
 # Expose HTTP port
 EXPOSE 8000
@@ -24,6 +25,7 @@ EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3 \
     CMD curl -f http://localhost:8000/health || exit 1
 
-# Start FastAPI app with uvicorn
-CMD ["sh", "-c", "exec uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000}"]
+# Start FastAPI app with uvicorn (supports both root repository context and subfolder context)
+CMD ["sh", "-c", "if [ -d 'ai-service/app' ]; then PYTHONPATH=. exec uvicorn ai-service.app.main:app --host 0.0.0.0 --port ${PORT:-8000}; else PYTHONPATH=. exec uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000}; fi"]
+
 
