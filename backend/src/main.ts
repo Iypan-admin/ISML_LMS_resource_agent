@@ -27,7 +27,7 @@ async function bootstrap() {
 
   const port = process.env.PORT || 4000;
   await app.listen(port);
-  logger.log(`🚀 ISML Resource Platform Backend is running on http://localhost:${port}/api/v1`);
+  logger.log(`🚀 ISML Resource Platform Backend is running on port ${port} (/api/v1)`);
 }
 
 bootstrap();
