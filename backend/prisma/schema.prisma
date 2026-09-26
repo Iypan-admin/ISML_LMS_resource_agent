@@ -1,0 +1,563 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+// =============================================================================
+// ENUMS
+// =============================================================================
+
+enum ResourceStatus {
+  DRAFT
+  PENDING_REVIEW
+  CHANGES_REQUIRED
+  APPROVED
+  PUBLISHED
+  REJECTED
+  ARCHIVED
+}
+
+enum SourceOriginType {
+  EXTERNAL
+  AI_GENERATED
+  UPLOADED
+  INTERNAL
+}
+
+enum SourceType {
+  ORGANIZATION
+  WEB_PORTAL
+  YOUTUBE_CHANNEL
+  PUBLISHER
+  COMMUNITY
+  INTERNAL_STUDIO
+}
+
+enum ResourceType {
+  WEBSITE
+  COURSE
+  ARTICLE
+  VIDEO
+  YOUTUBE_VIDEO
+  PODCAST
+  AUDIO
+  PDF
+  WORKSHEET
+  EXERCISE
+  QUIZ
+  GRAMMAR_REFERENCE
+  VOCABULARY_LIST
+  DIALOGUE
+  INTERACTIVE_EXERCISE
+}
+
+enum CEFRLevel {
+  A1
+  A2
+  B1
+  B2
+  C1
+  C2
+}
+
+enum AIAnalysisType {
+  CLASSIFICATION
+  QUALITY_SUITABILITY
+  DUPLICATE_CHECK
+  FULL_ENRICHMENT
+}
+
+enum AIAnalysisStatus {
+  QUEUED
+  IN_PROGRESS
+  COMPLETED
+  FAILED
+}
+
+enum AIRecommendation {
+  APPROVED_RECOMMENDED
+  NEEDS_HUMAN_REVIEW
+  CHANGES_REQUIRED
+  REJECT_NOT_SUITABLE
+}
+
+enum CopyrightRiskLevel {
+  LOW_CONCERN
+  REVIEW_REQUIRED
+  RESTRICTED
+  UNKNOWN
+}
+
+enum ReviewDecision {
+  APPROVED
+  REQUESTED_CHANGES
+  REJECTED
+}
+
+enum ContributorRole {
+  TUTOR
+  FACULTY
+  CONTENT_CREATOR
+  REVIEWER
+  ORGANIZATION
+  DISCOVERER
+}
+
+enum ActorType {
+  USER
+  SYSTEM_AGENT
+  EXTERNAL_CONTRIBUTOR
+}
+
+enum DiscoveryResultStatus {
+  NEW
+  DUPLICATE
+  INVALID
+  ACCEPTED
+  REJECTED
+}
+
+// =============================================================================
+// DOMAIN MASTER MODELS
+// =============================================================================
+
+model Language {
+  id          String   @id @default(uuid())
+  code        String   @unique // e.g. 'de', 'fr', 'es'
+  name        String   // e.g. 'German'
+  nativeName  String   // e.g. 'Deutsch'
+  flagEmoji   String?  // e.g. '🇩🇪'
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  courses     Course[]
+  topics      Topic[]
+  resources   Resource[]
+
+  @@map("languages")
+}
+
+model Course {
+  id          String   @id @default(uuid())
+  languageId  String
+  code        String   // e.g. 'de-gen'
+  title       String   // e.g. 'General German Communication'
+  description String?
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  language    Language         @relation(fields: [languageId], references: [id], onDelete: Restrict)
+  resources   ResourceCourse[]
+
+  @@unique([languageId, code])
+  @@map("courses")
+}
+
+model Level {
+  id          String    @id @default(uuid())
+  code        CEFRLevel @unique // A1, A2, B1, B2, C1, C2
+  name        String    // e.g. 'Level A1 - Beginner'
+  rank        Int       // 1 to 6
+
+  resourceLevels ResourceLevel[]
+
+  @@map("levels")
+}
+
+model Category {
+  id           String   @id @default(uuid())
+  code         String   @unique // e.g. 'grammar'
+  name         String   // e.g. 'Grammar'
+  slug         String   @unique
+  description  String?
+  displayOrder Int      @default(0)
+
+  resourceCategories ResourceCategory[]
+
+  @@map("categories")
+}
+
+model Skill {
+  id          String   @id @default(uuid())
+  code        String   @unique // e.g. 'speaking'
+  name        String   // e.g. 'Speaking'
+  slug        String   @unique
+  description String?
+
+  resourceSkills ResourceSkill[]
+
+  @@map("skills")
+}
+
+model Topic {
+  id            String   @id @default(uuid())
+  languageId    String
+  code          String   // e.g. 'greetings'
+  title         String   // e.g. 'Greetings & Farewells'
+  slug          String
+  description   String?
+  parentTopicId String?
+
+  language      Language        @relation(fields: [languageId], references: [id], onDelete: Restrict)
+  parentTopic   Topic?          @relation("TopicHierarchy", fields: [parentTopicId], references: [id])
+  subTopics     Topic[]         @relation("TopicHierarchy")
+  resourceTopics ResourceTopic[]
+
+  @@unique([languageId, slug])
+  @@map("topics")
+}
+
+model Source {
+  id          String     @id @default(uuid())
+  name        String     // e.g. 'Deutsche Welle'
+  domain      String?    // e.g. 'dw.com'
+  baseUrl     String?
+  sourceType  SourceType @default(WEB_PORTAL)
+  description String?
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+
+  resources   Resource[]
+  collections ResourceCollection[]
+
+  @@map("sources")
+}
+
+model ResourceCollection {
+  id          String   @id @default(uuid())
+  sourceId    String?
+  title       String   // e.g. 'DW Nicos Weg Series'
+  slug        String   @unique
+  description String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  source      Source?                  @relation(fields: [sourceId], references: [id], onDelete: SetNull)
+  items       ResourceCollectionItem[]
+
+  @@map("resource_collections")
+}
+
+model Contributor {
+  id          String          @id @default(uuid())
+  name        String          // e.g. 'Dr. Sarah Weber'
+  email       String?         @unique
+  role        ContributorRole @default(TUTOR)
+  bio         String?
+  avatarUrl   String?
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+
+  contributions ResourceContribution[]
+
+  @@map("contributors")
+}
+
+// =============================================================================
+// CORE RESOURCE ENTITY
+// =============================================================================
+
+model Resource {
+  id                String           @id @default(uuid())
+  slug              String           @unique
+  title             String
+  description       String
+  languageId        String
+  sourceId          String?
+  sourceType        SourceOriginType @default(AI_GENERATED)
+  resourceType      ResourceType
+  status            ResourceStatus   @default(DRAFT)
+  originalUrl       String?
+  canonicalUrl      String?
+  normalizedUrl     String?          // Cleaned URL for display/reference
+  urlHash           String?          // SHA-256 fingerprint for O(1) duplicate checking
+  thumbnailUrl      String?
+  authorName        String?
+  durationSeconds   Int?
+  currentVersion    Int              @default(1)
+  publishedAt       DateTime?
+  publishedLocation String?
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
+
+  language          Language                 @relation(fields: [languageId], references: [id], onDelete: Restrict)
+  source            Source?                  @relation(fields: [sourceId], references: [id], onDelete: SetNull)
+
+  courses           ResourceCourse[]
+  levels            ResourceLevel[]
+  categories        ResourceCategory[]
+  skills            ResourceSkill[]
+  topics            ResourceTopic[]
+  collections       ResourceCollectionItem[]
+  contributions     ResourceContribution[]
+  aiAnalyses        AIAnalysis[]
+  copyrightAnalyses CopyrightAnalysis[]
+  versions          ResourceVersion[]
+  reviews           ResourceReview[]
+  auditLogs         AuditLog[]
+  fileStorage       FileStorage?
+  discoveryResults  DiscoveryResult[]
+
+  @@index([languageId, status, updatedAt])
+  @@index([urlHash])
+  @@index([status])
+  @@map("resources")
+}
+
+// =============================================================================
+// MANY-TO-MANY JUNCTIONS
+// =============================================================================
+
+model ResourceCourse {
+  resourceId String
+  courseId   String
+
+  resource   Resource @relation(fields: [resourceId], references: [id], onDelete: Cascade)
+  course     Course   @relation(fields: [courseId], references: [id], onDelete: Restrict)
+
+  @@id([resourceId, courseId])
+  @@map("resource_courses")
+}
+
+model ResourceLevel {
+  resourceId String
+  levelId    String
+
+  resource   Resource @relation(fields: [resourceId], references: [id], onDelete: Cascade)
+  level      Level    @relation(fields: [levelId], references: [id], onDelete: Restrict)
+
+  @@id([resourceId, levelId])
+  @@map("resource_levels")
+}
+
+model ResourceCategory {
+  resourceId String
+  categoryId String
+
+  resource   Resource @relation(fields: [resourceId], references: [id], onDelete: Cascade)
+  category   Category @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+
+  @@id([resourceId, categoryId])
+  @@map("resource_categories")
+}
+
+model ResourceSkill {
+  resourceId String
+  skillId    String
+
+  resource   Resource @relation(fields: [resourceId], references: [id], onDelete: Cascade)
+  skill      Skill    @relation(fields: [skillId], references: [id], onDelete: Restrict)
+
+  @@id([resourceId, skillId])
+  @@map("resource_skills")
+}
+
+model ResourceTopic {
+  resourceId String
+  topicId    String
+
+  resource   Resource @relation(fields: [resourceId], references: [id], onDelete: Cascade)
+  topic      Topic    @relation(fields: [topicId], references: [id], onDelete: Restrict)
+
+  @@id([resourceId, topicId])
+  @@map("resource_topics")
+}
+
+model ResourceCollectionItem {
+  collectionId String
+  resourceId   String
+  displayOrder Int      @default(0)
+  addedAt      DateTime @default(now())
+
+  collection   ResourceCollection @relation(fields: [collectionId], references: [id], onDelete: Cascade)
+  resource     Resource           @relation(fields: [resourceId], references: [id], onDelete: Cascade)
+
+  @@id([collectionId, resourceId])
+  @@map("resource_collection_items")
+}
+
+model ResourceContribution {
+  resourceId    String
+  contributorId String
+  role          ContributorRole @default(TUTOR)
+
+  resource      Resource    @relation(fields: [resourceId], references: [id], onDelete: Cascade)
+  contributor   Contributor @relation(fields: [contributorId], references: [id], onDelete: Restrict)
+
+  @@id([resourceId, contributorId, role])
+  @@map("resource_contributions")
+}
+
+// =============================================================================
+// AI ANALYSIS, COPYRIGHT & HISTORY
+// =============================================================================
+
+model AIAnalysis {
+  id                     String           @id @default(uuid())
+  resourceId             String
+  analysisType           AIAnalysisType   @default(FULL_ENRICHMENT)
+  status                 AIAnalysisStatus @default(COMPLETED)
+  relevanceScore         Int              @default(0) // 0-100
+  levelMatchScore        Int              @default(0)
+  languageCorrectness    Int              @default(0)
+  skillMatchScore        Int              @default(0)
+  completenessScore      Int              @default(0)
+  overallQualityScore    Int              @default(0)
+  aiSummary              String
+  keyVocabulary          Json?            // Array of vocabulary strings
+  detectedCEFR           CEFRLevel        @default(A1)
+  aiRecommendation       AIRecommendation @default(NEEDS_HUMAN_REVIEW)
+  recommendationReason   String
+  modelProvider          String           @default("OpenAI")
+  modelName              String           @default("gpt-4o")
+  promptVersion          String           @default("v1.0")
+  confidenceScore        Float            @default(0.95)
+  rawInputPayload        Json?            // Raw input prompt parameters
+  rawOutputPayload       Json?            // Raw LLM output response
+  createdAt              DateTime         @default(now())
+
+  resource               Resource         @relation(fields: [resourceId], references: [id], onDelete: Cascade)
+
+  @@map("ai_analyses")
+}
+
+model CopyrightAnalysis {
+  id                    String             @id @default(uuid())
+  resourceId            String
+  sourceName            String
+  sourceUrl             String?
+  license               String
+  attributionRequired   Boolean            @default(false)
+  commercialUsageAllowed Boolean           @default(true)
+  modificationAllowed   Boolean            @default(true)
+  redistributionAllowed Boolean            @default(true)
+  hostingPermission     Boolean            @default(true)
+  riskLevel             CopyrightRiskLevel @default(LOW_CONCERN)
+  riskExplanation       String
+  recommendedAction     String
+  evidence              Json?              // Extracted license evidence text/snippets
+  isCurrent             Boolean            @default(true) // History-aware evaluation marker
+  evaluatedByActorId    String?
+  evaluatedByActorType  ActorType          @default(SYSTEM_AGENT)
+  evaluatedAt           DateTime           @default(now())
+
+  resource              Resource           @relation(fields: [resourceId], references: [id], onDelete: Cascade)
+
+  @@index([resourceId, isCurrent])
+  @@map("copyright_analyses")
+}
+
+model ResourceVersion {
+  id             String    @id @default(uuid())
+  resourceId     String
+  versionNumber  Int
+  title          String
+  description    String
+  contentPayload Json      // Structured JSON payload for dialogues, worksheets, quizzes
+  changeReason   String?
+  actorId        String?
+  actorType      ActorType @default(USER)
+  actorName      String    @default("System Curator")
+  createdAt      DateTime  @default(now())
+
+  resource       Resource  @relation(fields: [resourceId], references: [id], onDelete: Cascade)
+
+  @@unique([resourceId, versionNumber])
+  @@map("resource_versions")
+}
+
+model ResourceReview {
+  id           String         @id @default(uuid())
+  resourceId   String
+  actorId      String?
+  actorType    ActorType      @default(USER)
+  reviewerName String
+  decision     ReviewDecision
+  comments     String?
+  createdAt    DateTime       @default(now())
+
+  resource     Resource       @relation(fields: [resourceId], references: [id], onDelete: Cascade)
+
+  @@map("resource_reviews")
+}
+
+model AuditLog {
+  id         String    @id @default(uuid())
+  resourceId String?
+  actorId    String?
+  actorType  ActorType @default(USER)
+  actorName  String
+  action     String    // e.g. 'CREATED', 'STATUS_CHANGED', 'PUBLISHED'
+  details    String
+  metadata   Json?
+  createdAt  DateTime  @default(now())
+
+  resource   Resource? @relation(fields: [resourceId], references: [id], onDelete: SetNull)
+
+  @@map("audit_logs")
+}
+
+// =============================================================================
+// DISCOVERY PIPELINE & FILE STORAGE
+// =============================================================================
+
+model DiscoveryJob {
+  id                 String            @id @default(uuid())
+  title              String
+  targetLanguageIds  Json              // Array of language IDs
+  targetLevels       Json              // Array of CEFRLevel codes
+  targetSkills       Json?             // Array of target skill codes
+  searchKeywords     String
+  status             String            @default("QUEUED")
+  createdAt          DateTime          @default(now())
+  completedAt        DateTime?
+
+  results            DiscoveryResult[]
+
+  @@map("discovery_jobs")
+}
+
+model DiscoveryResult {
+  id            String                @id @default(uuid())
+  jobId         String
+  resourceId    String?               // References deduplicated resource if accepted
+  title         String
+  description   String
+  sourceUrl     String
+  canonicalUrl  String?
+  urlHash       String?
+  sourceName    String
+  qualityScore  Int                   @default(0)
+  copyrightRisk CopyrightRiskLevel    @default(LOW_CONCERN)
+  status        DiscoveryResultStatus @default(NEW)
+  discoveredAt  DateTime              @default(now())
+
+  job           DiscoveryJob          @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  resource      Resource?             @relation(fields: [resourceId], references: [id], onDelete: SetNull)
+
+  @@index([jobId])
+  @@index([urlHash])
+  @@map("discovery_results")
+}
+
+model FileStorage {
+  id              String   @id @default(uuid())
+  resourceId      String   @unique
+  storageKey      String   // Supabase / S3 / R2 storage key
+  fileName        String
+  mimeType        String
+  fileSize        BigInt   // BigInt to support large media files
+  checksum        String?
+  storageProvider String   @default("SUPABASE")
+  uploadedAt      DateTime @default(now())
+
+  resource        Resource @relation(fields: [resourceId], references: [id], onDelete: Cascade)
+
+  @@map("file_storage")
+}

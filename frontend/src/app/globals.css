@@ -1,0 +1,93 @@
+@import "tailwindcss";
+
+:root {
+  --isml-navy: #0B2447;
+  --isml-navy-dark: #071730;
+  --isml-blue: #1E3A8A;
+  --isml-royal: #0052CC;
+  --isml-sky: #2563EB;
+  --isml-teal: #0D9488;
+  --isml-cyan: #06B6D4;
+  --isml-slate: #F8FAFC;
+  --isml-border: #E2E8F0;
+  --isml-text: #0F172A;
+  --isml-text-muted: #64748B;
+  
+  --background: #F8FAFC;
+  --foreground: #0F172A;
+}
+
+@theme inline {
+  --color-isml-navy: #0B2447;
+  --color-isml-navy-dark: #071730;
+  --color-isml-blue: #1E3A8A;
+  --color-isml-royal: #0052CC;
+  --color-isml-sky: #2563EB;
+  --color-isml-teal: #0D9488;
+  --color-isml-cyan: #06B6D4;
+  --color-isml-slate: #F8FAFC;
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+}
+
+body {
+  background-color: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-geist-sans), system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  overflow-x: hidden;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Custom Scrollbars */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: #F1F5F9;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #CBD5E1;
+  border-radius: 9999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #94A3B8;
+}
+
+/* Animations */
+@keyframes live-pulse {
+  0%, 100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.6;
+    transform: scale(1.08);
+  }
+}
+
+.animate-live-pulse {
+  animation: live-pulse 1.8s infinite ease-in-out;
+}
+
+/* Glassmorphism utilities */
+.isml-glass {
+  background: rgba(255, 255, 255, 0.85);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+
+.isml-card {
+  background: #FFFFFF;
+  border: 1px solid #E2E8F0;
+  border-radius: 0.75rem;
+  box-shadow: 0 1px 3px 0 rgba(15, 23, 42, 0.03), 0 1px 2px -1px rgba(15, 23, 42, 0.03);
+  transition: all 0.2s ease-in-out;
+}
+
+.isml-card:hover {
+  box-shadow: 0 4px 6px -1px rgba(15, 23, 42, 0.06), 0 2px 4px -2px rgba(15, 23, 42, 0.06);
+}

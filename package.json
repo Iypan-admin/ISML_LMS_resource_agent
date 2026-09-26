@@ -1,0 +1,16 @@
+{
+  "name": "isml-resource-platform-monorepo",
+  "version": "0.1.0",
+  "private": true,
+  "workspaces": [
+    "frontend",
+    "backend"
+  ],
+  "scripts": {
+    "frontend:dev": "npm --prefix frontend run dev",
+    "frontend:build": "npm --prefix frontend run build",
+    "backend:dev": "npm --prefix backend run start:dev",
+    "backend:build": "npm --prefix backend run build",
+    "backend:test": "npx --prefix backend ts-node test/languages-api.test.ts"
+  }
+}

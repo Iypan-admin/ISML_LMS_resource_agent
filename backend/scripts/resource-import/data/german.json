@@ -1,0 +1,317 @@
+[
+  {
+    "tutorName": "Adithya",
+    "category": "Comprehensive Course",
+    "title": "Deutsche Welle (DW) Learn German",
+    "level": "A1–B2",
+    "purpose": "Complete video-based course with vocabulary, grammar, and interactive exercises. Includes Nicos Weg and Ticket nach Berlin.",
+    "link": "https://learngerman.dw.com",
+    "language": "German"
+  },
+  {
+    "tutorName": "Adithya",
+    "category": "Comprehensive Course",
+    "title": "VHS-Lernportal",
+    "level": "A1–B2",
+    "purpose": "Government-funded structured course with exam preparation and tutor feedback.",
+    "link": "https://www.vhs-lernportal.de",
+    "language": "German"
+  },
+  {
+    "tutorName": "Adithya",
+    "category": "Comprehensive Course",
+    "title": "Deutsch.info",
+    "level": "A1–B2",
+    "purpose": "Structured multilingual platform covering grammar, vocabulary, and practical language skills.",
+    "link": "https://deutsch.info/en",
+    "language": "German"
+  },
+  {
+    "tutorName": "Adithya",
+    "category": "Listening & Speaking",
+    "title": "Easy German",
+    "level": "A1–B2",
+    "purpose": "YouTube channel and podcast featuring native speaker conversations with subtitles.",
+    "link": "https://www.easygerman.org",
+    "language": "German"
+  },
+  {
+    "tutorName": "Adithya",
+    "category": "Listening & Speaking",
+    "title": "Language Transfer",
+    "level": "Beginner",
+    "purpose": "Free audio course focusing on speaking and sentence construction.",
+    "link": "https://www.languagetransfer.org/german",
+    "language": "German"
+  },
+  {
+    "tutorName": "Adithya",
+    "category": "Listening & Speaking",
+    "title": "Coffee Break German",
+    "level": "A1+",
+    "purpose": "Podcast series designed for gradual speaking improvement.",
+    "link": "https://radiolingua.com/coffeebreakgerman",
+    "language": "German"
+  },
+  {
+    "tutorName": "Adithya",
+    "category": "Grammar",
+    "title": "Schubert-Verlag",
+    "level": "A1–B2",
+    "purpose": "Interactive grammar and vocabulary exercises organized by level.",
+    "link": "https://www.schubert-verlag.de/aufgaben/",
+    "language": "German"
+  },
+  {
+    "tutorName": "Adithya",
+    "category": "Grammar",
+    "title": "Mein-Deutschbuch",
+    "level": "A1–B2",
+    "purpose": "Grammar explanations, vocabulary lists, and reading practice.",
+    "link": "https://mein-deutschbuch.de",
+    "language": "German"
+  },
+  {
+    "tutorName": "Adithya",
+    "category": "Grammar",
+    "title": "Lingolia",
+    "level": "A1–B2",
+    "purpose": "Easy-to-understand grammar rules, conjugation tables, and exercises.",
+    "link": "https://deutsch.lingolia.com/en/grammar",
+    "language": "German"
+  },
+  {
+    "tutorName": "Adithya",
+    "category": "Grammar",
+    "title": "German.net",
+    "level": "A1–B2",
+    "purpose": "Interactive grammar and reading exercises.",
+    "link": "https://german.net/exercises/",
+    "language": "German"
+  },
+  {
+    "tutorName": "Adithya",
+    "category": "Worksheets",
+    "title": "Nancy Thuleen Worksheets",
+    "level": "A1–B2",
+    "purpose": "Printable grammar and vocabulary worksheets with answer keys.",
+    "link": "https://www.nthuleen.com/teach/grammar.html",
+    "language": "German"
+  },
+  {
+    "tutorName": "Adithya",
+    "category": "Worksheets",
+    "title": "German with Max",
+    "level": "A1",
+    "purpose": "Free printable worksheets and grammar practice.",
+    "link": "https://germanwithmax.com/en/worksheets/a1",
+    "language": "German"
+  },
+  {
+    "tutorName": "Adithya",
+    "category": "Vocabulary & Community",
+    "title": "Goethe-Institut – Deutsch für dich",
+    "level": "A1–C2",
+    "purpose": "Interactive exercises, games, and learner community.",
+    "link": "https://www.goethe.de/prj/dfd/en/home.cfm",
+    "language": "German"
+  },
+  {
+    "tutorName": "Adithya",
+    "category": "Listening & Reading",
+    "title": "Slow German",
+    "level": "A2–B2",
+    "purpose": "Podcast with transcripts for listening, vocabulary, and cultural learning.",
+    "link": "https://slowgerman.com",
+    "language": "German"
+  },
+  {
+    "tutorName": "Sujal",
+    "category": "Grammar",
+    "title": "Deutsche Welle (DW Learn German)",
+    "level": "A1–C1",
+    "purpose": "Free German grammar lessons with exercises.",
+    "link": "https://learngerman.dw.com",
+    "language": "German"
+  },
+  {
+    "tutorName": "Sujal",
+    "category": "Grammar",
+    "title": "Schubert Verlag",
+    "level": "A1–C2",
+    "purpose": "German grammar explanations and practice exercises for all CEFR levels.",
+    "link": "https://www.schubert-verlag.de",
+    "language": "German"
+  },
+  {
+    "tutorName": "Sujal",
+    "category": "Grammar",
+    "title": "Mein Deutschbuch",
+    "level": "A1–B2",
+    "purpose": "Detailed grammar explanations, rules, and examples.",
+    "link": "https://mein-deutschbuch.de",
+    "language": "German"
+  },
+  {
+    "tutorName": "Sujal",
+    "category": "Grammar",
+    "title": "Lingolia",
+    "level": "A1–B2",
+    "purpose": "Grammar notes with interactive exercises.",
+    "link": "https://deutsch.lingolia.com/en/grammar",
+    "language": "German"
+  },
+  {
+    "tutorName": "Nithish",
+    "category": "Exam Preparation",
+    "title": "Deutsch Prüfung",
+    "level": "A1–B2",
+    "purpose": "Online exam preparation materials and practice for German proficiency exams.",
+    "link": "https://share.google/lWBvD5KIEYOIWvuOm",
+    "language": "German"
+  },
+  {
+    "tutorName": "Nithish",
+    "category": "Study Materials (PDFs)",
+    "title": "Redewendungen A bis Z",
+    "level": "A1–B1",
+    "purpose": "Downloadable PDF resources covering useful German expressions and learning materials.",
+    "link": "https://kupdf.net/search/Redewendungen+A+bis+Z",
+    "language": "German"
+  },
+  {
+    "tutorName": "Nithish",
+    "category": "Chapter Tests",
+    "title": "Klett Sprachen – Einstufungstest",
+    "level": "A1–B1",
+    "purpose": "Individual chapter-wise tests and self-assessment for learners.",
+    "link": "https://einstufungstests.klett-sprachen.de/eks/aussichten/fragebogen.php?jsstatus=js&questname=aussichten&questclass=B1.1&status=aussichten&questblock=24",
+    "language": "German"
+  },
+  {
+    "tutorName": "Nithish",
+    "category": "Grammar Practice",
+    "title": "Schubert Verlag",
+    "level": "B1 (Chapter 4)",
+    "purpose": "Interactive grammar practice exercises for German learners.",
+    "link": "https://www.schubert-verlag.de/aufgaben/uebungen_b1/b1_kap4_adjektive.htm",
+    "language": "German"
+  },
+  {
+    "tutorName": "Nithish",
+    "category": "Grammar Reference",
+    "title": "Nancy Thuleen Grammar Worksheets",
+    "level": "A1–B2",
+    "purpose": "Grammar explanations and printable worksheets for classroom and self-study.",
+    "link": "https://www.nthuleen.com/teach/grammar.html",
+    "language": "German"
+  },
+  {
+    "tutorName": "Neenu",
+    "category": "Study Materials",
+    "title": "Scribd",
+    "level": "A1–C2",
+    "purpose": "Digital library offering German books, PDFs, audiobooks, grammar guides, and study materials.",
+    "link": "https://share.google/HgdEeo3Lb8jX85xNp",
+    "language": "German"
+  },
+  {
+    "tutorName": "Neenu",
+    "category": "Reading & Stories",
+    "title": "LearnOutLive",
+    "level": "A1–C2",
+    "purpose": "German short stories, ebooks, audiobooks, and dialogues to improve reading, vocabulary, and comprehension.",
+    "link": "https://share.google/0RpgnxCJKVrmL6PDS",
+    "language": "German"
+  },
+  {
+    "tutorName": "Neenu",
+    "category": "Worksheets & Grammar",
+    "title": "Learn German with Max",
+    "level": "A1–B1",
+    "purpose": "Free grammar worksheets, explanations, and practice exercises for beginner and intermediate learners.",
+    "link": "https://share.google/jwrRq9ahJ100zYtkt",
+    "language": "German"
+  },
+  {
+    "tutorName": "Reena(trichy)",
+    "category": "Comprehensive Course",
+    "title": "German mit Arjun",
+    "level": "A1–B2",
+    "purpose": "Online German learning platform offering structured lessons and study resources.",
+    "link": "https://germanmitarjun.in",
+    "language": "German"
+  },
+  {
+    "tutorName": "Reena(trichy)",
+    "category": "Comprehensive Course",
+    "title": "Deutsche Welle (DW Learn German)",
+    "level": "A1–C1",
+    "purpose": "Free German course with grammar, vocabulary, videos, and interactive exercises.",
+    "link": "https://learngerman.dw.com/",
+    "language": "German"
+  },
+  {
+    "tutorName": "Reena(trichy)",
+    "category": "Official Learning & Exam Preparation",
+    "title": "Goethe-Institut",
+    "level": "A1–C2",
+    "purpose": "Official German language learning resources, courses, and internationally recognized exam preparation.",
+    "link": "https://www.goethe.de/",
+    "language": "German"
+  },
+  {
+    "tutorName": "Reena(trichy)",
+    "category": "Listening & Speaking",
+    "title": "Slow German",
+    "level": "A2–B2",
+    "purpose": "Podcast with transcripts to improve listening comprehension, vocabulary, and pronunciation.",
+    "link": "https://slowgerman.com/",
+    "language": "German"
+  },
+  {
+    "tutorName": "Reena(trichy)",
+    "category": "Listening & Speaking",
+    "title": "Easy German",
+    "level": "A1–B2",
+    "purpose": "YouTube videos and podcasts featuring authentic conversations with native speakers.",
+    "link": "https://www.easygerman.org/",
+    "language": "German"
+  },
+  {
+    "tutorName": "Reena(trichy)",
+    "category": "Grammar & Comprehensive Course",
+    "title": "Your German Teacher",
+    "level": "A1–C2",
+    "purpose": "Video lessons covering grammar, vocabulary, pronunciation, and exam preparation.",
+    "link": "https://yourgermanteacher.com/",
+    "language": "German"
+  },
+  {
+    "tutorName": "Shruti(trichy)",
+    "category": "Comprehensive Course",
+    "title": "German mit Arjun",
+    "level": "A1–B2",
+    "purpose": "Structured German learning platform with lessons, grammar, and study materials.",
+    "link": "https://germanmitarjun.in",
+    "language": "German"
+  },
+  {
+    "tutorName": "Shruti(trichy)",
+    "category": "Grammar & Exercises",
+    "title": "German.net",
+    "level": "A1–C2",
+    "purpose": "Interactive grammar, vocabulary, and reading exercises for German learners.",
+    "link": "https://german.net",
+    "language": "German"
+  },
+  {
+    "tutorName": "Shruti(trichy)",
+    "category": "Comprehensive Course",
+    "title": "Deutsche Welle (DW Learn German)",
+    "level": "A1–C1",
+    "purpose": "Free German learning platform with grammar, vocabulary, videos, and interactive exercises.",
+    "link": "https://learngerman.dw.com/en/learn-german/s-9528",
+    "language": "German"
+  }
+]
