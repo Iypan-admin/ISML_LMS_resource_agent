@@ -12,12 +12,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     && rm -rf /var/lib/apt-get/lists/*
 
-# Copy requirements and install dependencies
-COPY requirements.txt .
+# Copy source code and install dependencies
+COPY . .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy application source code
-COPY . .
 
 # Expose HTTP port
 EXPOSE 8000
