@@ -64,7 +64,7 @@ async function main() {
         description: row.purpose,
         languageId: jaLang.id,
         sourceId: source.id,
-        sourceType: SourceType.EXTERNAL,
+        sourceType: SourceType.WEB_PORTAL,
         resourceType: 'WEBSITE',
         status: ResourceStatus.PENDING_REVIEW,
         originalUrl,
