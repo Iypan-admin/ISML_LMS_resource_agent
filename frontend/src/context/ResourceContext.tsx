@@ -57,13 +57,22 @@ export function ResourceProvider({ children }: { children: React.ReactNode }) {
   const [resources, setResources] = useState<Resource[]>(() => {
     if (typeof window !== 'undefined') {
       try {
-        const raw = localStorage.getItem('isml_saved_external_resources');
-        return raw ? JSON.parse(raw) : [];
+        const cachedBackend = sessionStorage.getItem('isml_cached_backend_resources');
+        const rawStorage = localStorage.getItem('isml_saved_external_resources');
+        const savedExternal = rawStorage ? JSON.parse(rawStorage) : [];
+        const cached = cachedBackend ? JSON.parse(cachedBackend) : [];
+        
+        if (cached && cached.length > 0) {
+          const externalTitles = new Set(savedExternal.map((s: any) => s.title.toLowerCase()));
+          const cleanCached = cached.filter((d: any) => !externalTitles.has(d.title.toLowerCase()));
+          return [...savedExternal, ...cleanCached];
+        }
+        return savedExternal;
       } catch (e) {}
     }
     return [];
   });
-  const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [isLoading, setIsLoading] = useState<boolean>(() => resources.length === 0);
   const [error, setError] = useState<string | null>(null);
   const [filters, setFilters] = useState<FilterState>(initialFilters);
 
@@ -208,7 +217,11 @@ export function ResourceProvider({ children }: { children: React.ReactNode }) {
   };
 
   const fetchResources = useCallback(async () => {
-    setIsLoading(true);
+    // Only show full loading spinner if we have no resources in memory/cache
+    setResources(prev => {
+      if (prev.length === 0) setIsLoading(true);
+      return prev;
+    });
     setError(null);
     const savedExternalItems = getSavedExternalResourcesFromStorage();
     try {
@@ -223,10 +236,18 @@ export function ResourceProvider({ children }: { children: React.ReactNode }) {
       const externalTitles = new Set(savedExternalItems.map((s: Resource) => s.title.toLowerCase()));
       const cleanDbItems = mappedDbItems.filter((d: Resource) => !externalTitles.has(d.title.toLowerCase()));
 
-      setResources([...savedExternalItems, ...cleanDbItems]);
+      const combined = [...savedExternalItems, ...cleanDbItems];
+      setResources(combined);
+
+      // Save to Session Storage for 0ms instant reload on navigation
+      if (typeof window !== 'undefined') {
+        try {
+          sessionStorage.setItem('isml_cached_backend_resources', JSON.stringify(mappedDbItems));
+        } catch (e) {}
+      }
     } catch (err: any) {
       console.error('Failed to load resources from NestJS backend:', err);
-      setResources(savedExternalItems);
+      setResources(prev => (prev.length > 0 ? prev : savedExternalItems));
     } finally {
       setIsLoading(false);
     }

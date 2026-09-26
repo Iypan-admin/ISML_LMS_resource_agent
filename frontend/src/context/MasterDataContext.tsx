@@ -77,19 +77,29 @@ interface MasterDataContextType {
 const MasterDataContext = createContext<MasterDataContextType | undefined>(undefined);
 
 export function MasterDataProvider({ children }: { children: React.ReactNode }) {
-  const [languages, setLanguages] = useState<LanguageItem[]>([]);
-  const [courses, setCourses] = useState<CourseItem[]>([]);
-  const [levels, setLevels] = useState<LevelItem[]>([]);
-  const [categories, setCategories] = useState<CategoryItem[]>([]);
-  const [skills, setSkills] = useState<SkillItem[]>([]);
-  const [topics, setTopics] = useState<TopicItem[]>([]);
-  const [resourceTypes, setResourceTypes] = useState<ResourceTypeItem[]>([]);
-  const [sources, setSources] = useState<SourceItem[]>([]);
-  const [isLoading, setIsLoading] = useState<boolean>(true);
+  const readCache = <T,>(key: string): T[] => {
+    if (typeof window !== 'undefined') {
+      try {
+        const raw = sessionStorage.getItem(key);
+        return raw ? JSON.parse(raw) : [];
+      } catch (e) {}
+    }
+    return [];
+  };
+
+  const [languages, setLanguages] = useState<LanguageItem[]>(() => readCache('isml_cache_languages'));
+  const [courses, setCourses] = useState<CourseItem[]>(() => readCache('isml_cache_courses'));
+  const [levels, setLevels] = useState<LevelItem[]>(() => readCache('isml_cache_levels'));
+  const [categories, setCategories] = useState<CategoryItem[]>(() => readCache('isml_cache_categories'));
+  const [skills, setSkills] = useState<SkillItem[]>(() => readCache('isml_cache_skills'));
+  const [topics, setTopics] = useState<TopicItem[]>(() => readCache('isml_cache_topics'));
+  const [resourceTypes, setResourceTypes] = useState<ResourceTypeItem[]>(() => readCache('isml_cache_resource_types'));
+  const [sources, setSources] = useState<SourceItem[]>(() => readCache('isml_cache_sources'));
+  const [isLoading, setIsLoading] = useState<boolean>(() => languages.length === 0);
   const [error, setError] = useState<string | null>(null);
 
   const fetchMasterData = useCallback(async () => {
-    setIsLoading(true);
+    if (languages.length === 0) setIsLoading(true);
     setError(null);
     const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api/v1';
 
@@ -134,14 +144,36 @@ export function MasterDataProvider({ children }: { children: React.ReactNode }) 
         sourceRes.ok ? sourceRes.json() : { data: [] },
       ]);
 
-      setLanguages(Array.isArray(langJson.data) ? langJson.data : []);
-      setCourses(Array.isArray(courseJson.data) ? courseJson.data : []);
-      setLevels(Array.isArray(levelJson.data) ? levelJson.data : []);
-      setCategories(Array.isArray(catJson.data) ? catJson.data : []);
-      setSkills(Array.isArray(skillJson.data) ? skillJson.data : []);
-      setTopics(Array.isArray(topicJson.data) ? topicJson.data : []);
-      setResourceTypes(Array.isArray(typeJson.data) ? typeJson.data : []);
-      setSources(Array.isArray(sourceJson.data) ? sourceJson.data : []);
+      const lData = Array.isArray(langJson.data) ? langJson.data : [];
+      const cData = Array.isArray(courseJson.data) ? courseJson.data : [];
+      const lvlData = Array.isArray(levelJson.data) ? levelJson.data : [];
+      const catData = Array.isArray(catJson.data) ? catJson.data : [];
+      const sData = Array.isArray(skillJson.data) ? skillJson.data : [];
+      const tData = Array.isArray(topicJson.data) ? topicJson.data : [];
+      const rTypeData = Array.isArray(typeJson.data) ? typeJson.data : [];
+      const srcData = Array.isArray(sourceJson.data) ? sourceJson.data : [];
+
+      setLanguages(lData);
+      setCourses(cData);
+      setLevels(lvlData);
+      setCategories(catData);
+      setSkills(sData);
+      setTopics(tData);
+      setResourceTypes(rTypeData);
+      setSources(srcData);
+
+      if (typeof window !== 'undefined') {
+        try {
+          sessionStorage.setItem('isml_cache_languages', JSON.stringify(lData));
+          sessionStorage.setItem('isml_cache_courses', JSON.stringify(cData));
+          sessionStorage.setItem('isml_cache_levels', JSON.stringify(lvlData));
+          sessionStorage.setItem('isml_cache_categories', JSON.stringify(catData));
+          sessionStorage.setItem('isml_cache_skills', JSON.stringify(sData));
+          sessionStorage.setItem('isml_cache_topics', JSON.stringify(tData));
+          sessionStorage.setItem('isml_cache_resource_types', JSON.stringify(rTypeData));
+          sessionStorage.setItem('isml_cache_sources', JSON.stringify(srcData));
+        } catch (e) {}
+      }
     } catch (err: any) {
       console.error('Failed to load NestJS master data:', err);
       setError('Could not connect to NestJS Backend API to load master domain lists.');

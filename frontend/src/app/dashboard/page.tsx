@@ -22,6 +22,44 @@ import {
   Zap
 } from 'lucide-react';
 
+// Helper Component for Animated Smooth Number Count-Up
+function AnimatedStatNumber({ value, isLoading }: { value: number; isLoading: boolean }) {
+  const [displayValue, setDisplayValue] = React.useState(0);
+
+  React.useEffect(() => {
+    if (isLoading) return;
+    const duration = 650;
+    const startTime = performance.now();
+
+    const animate = (now: number) => {
+      const elapsed = now - startTime;
+      const progress = Math.min(elapsed / duration, 1);
+      const easeOut = 1 - Math.pow(1 - progress, 3);
+      const current = Math.floor(easeOut * value);
+      setDisplayValue(current);
+      if (progress < 1) {
+        requestAnimationFrame(animate);
+      } else {
+        setDisplayValue(value);
+      }
+    };
+
+    requestAnimationFrame(animate);
+  }, [value, isLoading]);
+
+  if (isLoading) {
+    return (
+      <div className="h-8 w-20 bg-slate-200/80 animate-pulse rounded-lg my-1" />
+    );
+  }
+
+  return (
+    <span className="text-2xl sm:text-3xl font-black text-[#0B2447] tracking-tight transition-all">
+      {displayValue}
+    </span>
+  );
+}
+
 export default function DashboardPage() {
   const { resources, stats, isLoading, error } = useResources();
   const { languages, categories } = useMasterData();
@@ -85,7 +123,9 @@ export default function DashboardPage() {
             <span className="text-[10px] font-extrabold uppercase text-slate-400 tracking-wider">TOTAL RESOURCES</span>
             <BookOpen className="w-4 h-4 text-[#0052CC]" />
           </div>
-          <p className="text-2xl font-black text-[#0B2447]">{stats.totalResources}</p>
+          <p className="text-2xl font-black text-[#0B2447]">
+            <AnimatedStatNumber value={stats.totalResources} isLoading={isLoading} />
+          </p>
           <div className="flex items-center justify-between text-[10px] font-bold text-emerald-600">
             <span className="flex items-center gap-1">
               <TrendingUp className="w-3 h-3" /> Live Database
@@ -103,7 +143,9 @@ export default function DashboardPage() {
             <span className="text-[10px] font-extrabold uppercase text-slate-400 tracking-wider">ACTIVE PUBLISHED</span>
             <CheckCircle2 className="w-4 h-4 text-emerald-600" />
           </div>
-          <p className="text-2xl font-black text-[#0B2447]">{stats.publishedCount}</p>
+          <p className="text-2xl font-black text-[#0B2447]">
+            <AnimatedStatNumber value={stats.publishedCount} isLoading={isLoading} />
+          </p>
           <p className="text-[10px] font-bold text-emerald-600 flex items-center gap-1">
             <CheckCircle2 className="w-3 h-3" /> Verified Catalog
           </p>
@@ -115,7 +157,9 @@ export default function DashboardPage() {
             <span className="text-[10px] font-extrabold uppercase text-slate-400 tracking-wider">DOMAIN LANGUAGES</span>
             <Globe className="w-4 h-4 text-[#0052CC]" />
           </div>
-          <p className="text-2xl font-black text-[#0B2447]">{languages.length || 5}</p>
+          <p className="text-2xl font-black text-[#0B2447]">
+            <AnimatedStatNumber value={languages.length || 5} isLoading={isLoading} />
+          </p>
           <p className="text-[10px] font-medium text-slate-500">CEFR A1-C1 Support</p>
         </div>
 
@@ -125,7 +169,9 @@ export default function DashboardPage() {
             <span className="text-[10px] font-extrabold uppercase text-amber-700 tracking-wider">NEEDS REVIEW</span>
             <CheckSquare className="w-4 h-4 text-amber-500" />
           </div>
-          <p className="text-2xl font-black text-amber-600">{stats.needsReviewCount}</p>
+          <p className="text-2xl font-black text-amber-600">
+            <AnimatedStatNumber value={stats.needsReviewCount} isLoading={isLoading} />
+          </p>
           <p className="text-[10px] font-medium text-amber-700">Awaiting Curator Action</p>
         </div>
 
