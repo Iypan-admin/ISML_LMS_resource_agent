@@ -8,6 +8,7 @@ import {
   Library, 
   Search, 
   Sparkles, 
+  Globe,
   PlusCircle 
 } from 'lucide-react';
 
@@ -18,7 +19,7 @@ const isRouteActive = (pathname: string, href: string): boolean => {
   if (href === '/resources') {
     if (pathname === '/resources') return true;
     if (pathname.startsWith('/resources/')) {
-      const subToolRoutes = ['/resources/find', '/resources/generate', '/resources/add'];
+      const subToolRoutes = ['/resources/find', '/resources/generate', '/resources/internal-ai', '/resources/add'];
       return !subToolRoutes.some(sub => pathname.startsWith(sub));
     }
     return false;
@@ -30,6 +31,7 @@ const mobileNavItems = [
   { name: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
   { name: 'Library', href: '/resources', icon: Library },
   { name: 'Find', href: '/resources/find', icon: Search },
+  { name: 'Internal AI', href: '/resources/internal-ai', icon: Globe },
   { name: 'Generate', href: '/resources/generate', icon: Sparkles },
   { name: 'Add', href: '/resources/add', icon: PlusCircle },
 ];
