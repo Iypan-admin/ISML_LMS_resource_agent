@@ -127,68 +127,6 @@ export default function DashboardPage() {
         </div>
       )}
 
-      {/* 2. Platform Statistics Cards (4 Cards - Styled like the reference design) */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
-        
-        {/* Stat 1: Total Resources */}
-        <div className="bg-white border border-slate-200/90 rounded-2xl p-4 shadow-xs space-y-2 hover:border-[#0052CC] transition-all">
-          <div className="flex items-center justify-between">
-            <span className="text-[10px] font-extrabold uppercase text-slate-400 tracking-wider">TOTAL RESOURCES</span>
-            <BookOpen className="w-4 h-4 text-[#0052CC]" />
-          </div>
-          <p className="text-2xl font-black text-[#0B2447]">
-            <AnimatedStatNumber value={stats.totalResources} isLoading={isLoading} />
-          </p>
-          <div className="flex items-center justify-between text-[10px] font-bold text-emerald-600">
-            <span className="flex items-center gap-1">
-              <TrendingUp className="w-3 h-3" /> Verified Catalog
-            </span>
-            <span className="text-slate-400 font-mono">100%</span>
-          </div>
-          <div className="h-1.5 w-full bg-slate-100 rounded-full overflow-hidden">
-            <div className="h-full bg-[#0052CC] rounded-full w-full" />
-          </div>
-        </div>
-
-        {/* Stat 2: Active Published */}
-        <div className="bg-white border border-slate-200/90 rounded-2xl p-4 shadow-xs space-y-2 hover:border-emerald-500 transition-all">
-          <div className="flex items-center justify-between">
-            <span className="text-[10px] font-extrabold uppercase text-slate-400 tracking-wider">ACTIVE PUBLISHED</span>
-            <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-          </div>
-          <p className="text-2xl font-black text-[#0B2447]">
-            <AnimatedStatNumber value={stats.publishedCount} isLoading={isLoading} />
-          </p>
-          <p className="text-[10px] font-bold text-emerald-600 flex items-center gap-1">
-            <CheckCircle2 className="w-3 h-3" /> Verified Catalog
-          </p>
-        </div>
-
-        {/* Stat 3: Domain Languages */}
-        <div className="bg-white border border-slate-200/90 rounded-2xl p-4 shadow-xs space-y-2 hover:border-blue-500 transition-all">
-          <div className="flex items-center justify-between">
-            <span className="text-[10px] font-extrabold uppercase text-slate-400 tracking-wider">DOMAIN LANGUAGES</span>
-            <Globe className="w-4 h-4 text-[#0052CC]" />
-          </div>
-          <p className="text-2xl font-black text-[#0B2447]">
-            <AnimatedStatNumber value={languages.length || 5} isLoading={isLoading} />
-          </p>
-          <p className="text-[10px] font-medium text-slate-500">CEFR A1-C1 Support</p>
-        </div>
-
-        {/* Stat 4: Needs Review */}
-        <div className="bg-white border border-slate-200/90 rounded-2xl p-4 shadow-xs space-y-2 hover:border-amber-500 transition-all">
-          <div className="flex items-center justify-between">
-            <span className="text-[10px] font-extrabold uppercase text-amber-700 tracking-wider">NEEDS REVIEW</span>
-            <CheckSquare className="w-4 h-4 text-amber-500" />
-          </div>
-          <p className="text-2xl font-black text-amber-600">
-            <AnimatedStatNumber value={stats.needsReviewCount} isLoading={isLoading} />
-          </p>
-          <p className="text-[10px] font-medium text-amber-700">Awaiting Curator Action</p>
-        </div>
-
-      </div>
 
       {/* 3. Quick AI & Management Hub */}
       <div className="space-y-3">
