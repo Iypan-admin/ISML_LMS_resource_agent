@@ -103,31 +103,37 @@ export function ResourceProvider({ children }: { children: React.ReactNode }) {
       }
     }
 
-    // Check if explicitly saved as external discovery web-scraped resource
-    const isSavedExternal = (item.tags && (item.tags.includes('UserSavedExternal') || item.tags.includes('Discovered'))) ||
+    // Check raw sourceType enum values returned from backend (EXTERNAL, AI_GENERATED, UPLOADED, INTERNAL)
+    const rawSourceType = String(item.sourceType || item.sourceOriginType || '').toUpperCase();
+
+    const isSavedExternal = rawSourceType === 'EXTERNAL' || 
+                            rawSourceType === 'EXTERNAL OER' ||
+                            (item.tags && (item.tags.includes('UserSavedExternal') || item.tags.includes('Discovered'))) ||
                             (typeof item.id === 'string' && (item.id.startsWith('res-ext-') || item.id.startsWith('disc-')));
 
-    const isUploaded = item.sourceType === 'Uploaded' || 
+    const isExplicitAIGenerated = rawSourceType === 'AI_GENERATED' || 
+                                 rawSourceType === 'AI GENERATED' ||
+                                 detectedSourceName === 'ISML AI Studio' ||
+                                 (item.tags && (item.tags.includes('AI Generated') || item.tags.includes('AI_GENERATED'))) ||
+                                 (typeof item.id === 'string' && item.id.startsWith('res-[#ai]'));
+
+    const isUploaded = rawSourceType === 'UPLOADED' || 
                        detectedSourceName.toLowerCase().includes('upload') || 
                        Boolean(item.fileDetails) ||
                        (typeof item.id === 'string' && item.id.startsWith('res-up-'));
 
-    const isExplicitAIGenerated = item.sourceType === 'AI Generated' || 
-                                 detectedSourceName === 'ISML AI Studio' ||
-                                 (typeof item.id === 'string' && item.id.startsWith('res-[#ai]'));
-
     let finalSourceType: SourceType = 'Internal';
     if (isSavedExternal) {
       finalSourceType = 'External';
-    } else if (isUploaded) {
-      finalSourceType = 'Uploaded';
     } else if (isExplicitAIGenerated) {
       finalSourceType = 'AI Generated';
+    } else if (isUploaded) {
+      finalSourceType = 'Uploaded';
     } else {
       finalSourceType = 'Internal';
     }
 
-    const finalSourceName = detectedSourceName || (finalSourceType === 'External' ? 'External OER' : finalSourceType === 'Uploaded' ? 'Uploaded Document' : 'Internal Workspace');
+    const finalSourceName = detectedSourceName || (finalSourceType === 'External' ? 'External OER' : finalSourceType === 'Uploaded' ? 'Uploaded Document' : finalSourceType === 'AI Generated' ? 'ISML AI Studio' : 'Internal Workspace');
     const tutorName = finalSourceType === 'External' 
       ? undefined 
       : (item.tutorName || item.authorName || item.author || 'ISML Academic Tutor');
