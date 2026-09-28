@@ -172,21 +172,27 @@ export default function InternalResourceAiPage() {
     setSavedSuccess(false);
 
     try {
-      const primaryUrl = 'http://localhost:8000/api/v1/ai/scrape-analyze';
-      const secondaryUrl = 'http://localhost:4000/api/v1/ai/scrape-analyze';
+      const endpoints = [
+        '/api/v1/ai/scrape-analyze',
+        'http://localhost:8000/api/v1/ai/scrape-analyze',
+        'http://localhost:4000/api/v1/ai/scrape-analyze',
+      ];
 
-      let resp = await fetch(primaryUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ url: targetUrl.trim(), title: targetTitle }),
-      }).catch(() => null);
-
-      if (!resp || !resp.ok) {
-        resp = await fetch(secondaryUrl, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ url: targetUrl.trim(), title: targetTitle }),
-        }).catch(() => null);
+      let resp: Response | null = null;
+      for (const endpointUrl of endpoints) {
+        try {
+          const r = await fetch(endpointUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ url: targetUrl.trim(), title: targetTitle }),
+          });
+          if (r.ok) {
+            resp = r;
+            break;
+          }
+        } catch {
+          // Try next endpoint
+        }
       }
 
       if (resp) {

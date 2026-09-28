@@ -128,9 +128,6 @@ export default function FindResourcesPage() {
     setSearchError(null);
 
     try {
-      const primaryUrl = 'http://localhost:8000/api/v1/ai/discover';
-      const secondaryUrl = 'http://localhost:4000/api/v1/ai/discover';
-      
       const payload = {
         search_keywords: finalKeywords,
         target_languages: [academicContext.language.toLowerCase()],
@@ -142,18 +139,27 @@ export default function FindResourcesPage() {
         limit: 10,
       };
 
-      let resp = await fetch(primaryUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      }).catch(() => null);
+      const endpoints = [
+        '/api/v1/ai/discover',
+        'http://localhost:8000/api/v1/ai/discover',
+        'http://localhost:4000/api/v1/ai/discover',
+      ];
 
-      if (!resp || !resp.ok) {
-        resp = await fetch(secondaryUrl, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload),
-        }).catch(() => null);
+      let resp: Response | null = null;
+      for (const endpointUrl of endpoints) {
+        try {
+          const r = await fetch(endpointUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+          });
+          if (r.ok) {
+            resp = r;
+            break;
+          }
+        } catch {
+          // Try next endpoint
+        }
       }
 
       if (resp && resp.ok) {

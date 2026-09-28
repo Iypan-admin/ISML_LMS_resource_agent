@@ -777,54 +777,39 @@ export default function GenerateResourcePage() {
 
     let rawGeneratedText = '';
 
-    try {
-      const backendUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api/v1';
-      const resp = await fetch(`${backendUrl}/ai/generate`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          resource_type: activeSkl || 'Study Guide',
-          target_language: activeLang,
-          target_level: activeLvl,
-          topic: textToSend,
-          instructions: textToSend,
-          additional_requirements: `Generate comprehensive ${activeLang} ${activeLvl} learning material for ${activeSkl}`,
-        }),
-      });
+    const generatePayload = {
+      resource_type: activeSkl || 'Study Guide',
+      target_language: activeLang,
+      target_level: activeLvl,
+      topic: textToSend,
+      instructions: textToSend,
+      additional_requirements: `Generate comprehensive ${activeLang} ${activeLvl} learning material for ${activeSkl}`,
+    };
 
-      if (resp.ok) {
-        const json = await resp.json();
-        if (json.data && json.data.generated_resource && json.data.generated_resource.content) {
-          rawGeneratedText = json.data.generated_resource.content;
-        }
-      }
-    } catch (err: any) {
-      console.warn('Backend proxy offline, trying direct AI Service endpoint:', err);
-    }
+    const generateEndpoints = [
+      '/api/v1/ai/generate',
+      process.env.NEXT_PUBLIC_API_URL ? `${process.env.NEXT_PUBLIC_API_URL}/ai/generate` : null,
+      'http://localhost:8000/api/v1/ai/generate',
+      'http://localhost:4000/api/v1/ai/generate',
+    ].filter(Boolean) as string[];
 
-    if (!rawGeneratedText) {
+    for (const ep of generateEndpoints) {
       try {
-        const directResp = await fetch(`http://localhost:8000/api/v1/ai/generate`, {
+        const resp = await fetch(ep, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            resource_type: activeSkl || 'Study Guide',
-            target_language: activeLang,
-            target_level: activeLvl,
-            topic: textToSend,
-            instructions: textToSend,
-            additional_requirements: `Generate comprehensive ${activeLang} ${activeLvl} learning material for ${activeSkl}`,
-          }),
+          body: JSON.stringify(generatePayload),
         });
 
-        if (directResp.ok) {
-          const json = await directResp.json();
+        if (resp.ok) {
+          const json = await resp.json();
           if (json.data && json.data.generated_resource && json.data.generated_resource.content) {
             rawGeneratedText = json.data.generated_resource.content;
+            break;
           }
         }
       } catch (err: any) {
-        console.warn('Direct AI service call failed:', err);
+        // Try next endpoint
       }
     }
 
