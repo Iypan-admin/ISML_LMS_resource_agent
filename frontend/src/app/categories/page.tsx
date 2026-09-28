@@ -37,7 +37,7 @@ export default function CategoriesPage() {
       {/* Grid of Categories */}
       {isLoading ? (
         <div className="p-8 text-center text-xs font-bold text-slate-500">
-          Loading categories from NestJS Backend...
+          Loading categories...
         </div>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">

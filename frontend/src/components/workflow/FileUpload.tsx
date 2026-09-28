@@ -95,7 +95,7 @@ export default function FileUpload({ onFileProcessed }: FileUploadProps) {
       }, 400);
     } catch (err: any) {
       console.error('File upload error:', err);
-      setErrorMessage(err.message || 'Failed to upload binary file to backend storage');
+      setErrorMessage(err.message || 'Failed to upload file to storage');
       setUploadStep('error');
     }
   };

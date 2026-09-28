@@ -176,7 +176,7 @@ export function MasterDataProvider({ children }: { children: React.ReactNode }) 
       }
     } catch (err: any) {
       console.error('Failed to load NestJS master data:', err);
-      setError('Could not connect to NestJS Backend API to load master domain lists.');
+      setError('Could not connect to service to load master domain lists.');
     } finally {
       setIsLoading(false);
     }

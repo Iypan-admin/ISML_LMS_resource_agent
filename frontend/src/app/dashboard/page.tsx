@@ -141,7 +141,7 @@ export default function DashboardPage() {
           </p>
           <div className="flex items-center justify-between text-[10px] font-bold text-emerald-600">
             <span className="flex items-center gap-1">
-              <TrendingUp className="w-3 h-3" /> Live Database
+              <TrendingUp className="w-3 h-3" /> Verified Catalog
             </span>
             <span className="text-slate-400 font-mono">100%</span>
           </div>

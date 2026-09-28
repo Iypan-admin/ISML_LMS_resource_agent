@@ -22,7 +22,7 @@ export default function LanguagesPage() {
       <div className="pb-2 border-b border-slate-200">
         <h1 className="text-xl sm:text-2xl font-black text-[#0B2447]">Language Catalogs</h1>
         <p className="text-xs text-slate-500 font-medium">
-          Supported foreign languages in the ISML curriculum repository with real-time resource statistics from NestJS backend.
+          Supported foreign languages in the ISML curriculum repository with real-time resource statistics.
         </p>
       </div>
 
@@ -35,7 +35,7 @@ export default function LanguagesPage() {
       {/* Languages Cards Grid */}
       {isLoading ? (
         <div className="p-8 text-center text-xs font-bold text-slate-500">
-          Loading language catalogs from NestJS Backend...
+          Loading language catalogs...
         </div>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">

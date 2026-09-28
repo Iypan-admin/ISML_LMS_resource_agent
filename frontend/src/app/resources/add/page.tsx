@@ -220,7 +220,7 @@ Hhmika Jain,Study Notes,JP Notes,Beginner-Interm,"Japanese grammar notes, vocabu
         setBulkRows([]);
       } else {
         setBulkRows(parsed);
-        setSuccessMsg(`Successfully parsed ${parsed.length} catalog items from ${file.name}. Review below and click Upload to Database.`);
+        setSuccessMsg(`Successfully parsed ${parsed.length} catalog items from ${file.name}. Review below and click Save to Catalog.`);
       }
     };
     reader.readAsText(file);
@@ -319,7 +319,7 @@ Hhmika Jain,Study Notes,JP Notes,Beginner-Interm,"Japanese grammar notes, vocabu
         savedCount++;
       }
 
-      setSuccessMsg(`🎉 Successfully uploaded all ${savedCount} rows directly to Database! Redirecting to catalog...`);
+      setSuccessMsg(`🎉 Successfully saved all ${savedCount} items directly to the resource library! Redirecting to catalog...`);
       setBulkRows([]);
       setUploadedFileName(null);
 
@@ -343,12 +343,12 @@ Hhmika Jain,Study Notes,JP Notes,Beginner-Interm,"Japanese grammar notes, vocabu
               CATALOG MANAGER
             </span>
             <span className="text-xs font-bold text-cyan-300">
-              Database Direct Upload
+              Direct Catalog Entry
             </span>
           </div>
           <h1 className="text-xl sm:text-2xl font-black text-white">Add New Language Resource</h1>
           <p className="text-xs text-slate-300 font-medium">
-            Enter catalog details manually or bulk upload CSV/Excel files directly into the database.
+            Enter resource details manually or bulk import CSV/Excel files directly into the catalog.
           </p>
         </div>
 
@@ -400,7 +400,7 @@ Hhmika Jain,Study Notes,JP Notes,Beginner-Interm,"Japanese grammar notes, vocabu
           <div className="flex items-center justify-between pb-3 border-b border-slate-100">
             <h3 className="text-sm font-black text-[#0B2447] flex items-center gap-2">
               <Database className="w-4 h-4 text-[#0052CC]" />
-              Catalog Record Fields (Database Aligned)
+              Resource Information Details
             </h3>
             <span className="text-[11px] font-bold text-slate-400">* Required Fields</span>
           </div>
@@ -546,11 +546,11 @@ Hhmika Jain,Study Notes,JP Notes,Beginner-Interm,"Japanese grammar notes, vocabu
             >
               {isSubmitting ? (
                 <>
-                  <Loader2 className="w-4 h-4 animate-spin" /> Saving to Database...
+                  <Loader2 className="w-4 h-4 animate-spin" /> Saving Resource...
                 </>
               ) : (
                 <>
-                  <PlusCircle className="w-4 h-4" /> Save Resource to Database
+                  <PlusCircle className="w-4 h-4" /> Save Resource to Library
                 </>
               )}
             </button>
@@ -615,7 +615,7 @@ Hhmika Jain,Study Notes,JP Notes,Beginner-Interm,"Japanese grammar notes, vocabu
                     {bulkRows.length} Items Ready
                   </span>
                   <h3 className="text-sm font-black text-[#0B2447]">
-                    Live Preview Table (Database Import Queue)
+                    Import Preview List
                   </h3>
                 </div>
 
@@ -634,11 +634,11 @@ Hhmika Jain,Study Notes,JP Notes,Beginner-Interm,"Japanese grammar notes, vocabu
                   >
                     {isSubmitting ? (
                       <>
-                        <Loader2 className="w-4 h-4 animate-spin" /> Uploading to DB...
+                        <Loader2 className="w-4 h-4 animate-spin" /> Saving to Catalog...
                       </>
                     ) : (
                       <>
-                        <Database className="w-4 h-4" /> Save All {bulkRows.length} Records to Database
+                        <PlusCircle className="w-4 h-4" /> Save All {bulkRows.length} Resources to Library
                       </>
                     )}
                   </button>

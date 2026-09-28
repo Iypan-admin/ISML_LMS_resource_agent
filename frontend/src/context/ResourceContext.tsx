@@ -172,7 +172,7 @@ export function ResourceProvider({ children }: { children: React.ReactNode }) {
         skillMatchScore: 90,
         completenessScore: item.aiAnalyses?.[0]?.completenessScore || 90,
         overallQualityScore: item.aiAnalyses?.[0]?.overallScore || 90,
-        aiSummary: item.aiAnalyses?.[0]?.summary || item.description || 'Database record verified.',
+        aiSummary: item.aiAnalyses?.[0]?.summary || item.description || 'Verified resource entry.',
         keyVocabulary: item.aiAnalyses?.[0]?.keyVocabulary || [],
         detectedCEFR: levelCode,
         aiRecommendation: 'APPROVED_RECOMMENDED',
