@@ -84,13 +84,9 @@ export default function ResourceLibraryPage() {
           const count = tab.value === 'All' 
             ? resources.length 
             : resources.filter(r => {
-                const isExt = r.sourceType === 'External' || (r.tags && (r.tags.includes('Discovered') || r.tags.includes('UserSavedExternal')));
-                const isAI = r.sourceType === 'AI Generated' || (r.tags && r.tags.includes('AI Generated'));
-                const isInt = r.sourceType === 'Internal' || r.sourceType === 'Uploaded' || (!isExt && !isAI);
-
-                if (tab.value === 'External') return isExt;
-                if (tab.value === 'AI Generated') return isAI;
-                if (tab.value === 'Internal') return isInt;
+                if (tab.value === 'External') return r.sourceType === 'External';
+                if (tab.value === 'AI Generated') return r.sourceType === 'AI Generated';
+                if (tab.value === 'Internal') return r.sourceType === 'Internal' || r.sourceType === 'Uploaded';
                 return r.sourceType === tab.value;
               }).length;
 

@@ -22,12 +22,17 @@ import {
   Zap
 } from 'lucide-react';
 
-// Helper Component for Animated Smooth Number Count-Up
+// Helper Component for Animated Smooth Number Count-Up (Hydration-Safe)
 function AnimatedStatNumber({ value, isLoading }: { value: number; isLoading: boolean }) {
   const [displayValue, setDisplayValue] = React.useState(0);
+  const [isMounted, setIsMounted] = React.useState(false);
 
   React.useEffect(() => {
-    if (isLoading) return;
+    setIsMounted(true);
+  }, []);
+
+  React.useEffect(() => {
+    if (!isMounted || isLoading) return;
     const duration = 650;
     const startTime = performance.now();
 
@@ -45,11 +50,19 @@ function AnimatedStatNumber({ value, isLoading }: { value: number; isLoading: bo
     };
 
     requestAnimationFrame(animate);
-  }, [value, isLoading]);
+  }, [value, isLoading, isMounted]);
+
+  if (!isMounted) {
+    return (
+      <span className="text-2xl sm:text-3xl font-black text-[#0B2447] tracking-tight transition-all">
+        {value}
+      </span>
+    );
+  }
 
   if (isLoading) {
     return (
-      <div className="h-8 w-20 bg-slate-200/80 animate-pulse rounded-lg my-1" />
+      <span className="inline-block h-8 w-16 bg-slate-200/80 animate-pulse rounded-lg my-1" />
     );
   }
 
