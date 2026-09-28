@@ -106,8 +106,9 @@ export function ResourceProvider({ children }: { children: React.ReactNode }) {
     // Check raw sourceType enum values returned from backend (EXTERNAL, AI_GENERATED, UPLOADED, INTERNAL)
     const rawSourceType = String(item.sourceType || item.sourceOriginType || '').toUpperCase();
 
-    const isExplicitSavedExternal = (item.tags && (item.tags.includes('UserSavedExternal') || item.tags.includes('Discovered'))) ||
-                                    (typeof item.id === 'string' && (item.id.startsWith('res-ext-') || item.id.startsWith('disc-')));
+    const isExplicitSavedExternal = rawSourceType === 'EXTERNAL' ||
+                                    (item.tags && (item.tags.includes('UserSavedExternal') || item.tags.includes('Discovered'))) ||
+                                    (typeof item.id === 'string' && (item.id.startsWith('res-ext-') || item.id.startsWith('disc-') || item.id.startsWith('ext-')));
 
     const isExplicitAIGenerated = rawSourceType === 'AI_GENERATED' || 
                                  rawSourceType === 'AI GENERATED' ||
