@@ -78,4 +78,8 @@ export class AiService {
   async prepareReview(payload: any): Promise<any> {
     return this.forwardRequest('prepare-review', payload);
   }
+
+  async scrapeAnalyze(payload: any): Promise<any> {
+    return this.forwardRequest('scrape-analyze', payload);
+  }
 }

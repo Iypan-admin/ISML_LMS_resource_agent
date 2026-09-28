@@ -29,4 +29,9 @@ export class AiController {
   async prepareReview(@Body() body: any) {
     return this.aiService.prepareReview(body);
   }
+
+  @Post('scrape-analyze')
+  async scrapeAnalyze(@Body() body: any) {
+    return this.aiService.scrapeAnalyze(body);
+  }
 }

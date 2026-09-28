@@ -11,7 +11,8 @@ import {
   PlusCircle, 
   LogOut, 
   AlertTriangle,
-  Database
+  Database,
+  Globe
 } from 'lucide-react';
 
 const navSections = [
@@ -27,6 +28,7 @@ const navSections = [
     items: [
       { name: 'Find Resources', href: '/resources/find', icon: Search, badge: 'AI' },
       { name: 'Generate Resource', href: '/resources/generate', icon: Sparkles, badge: 'AI' },
+      { name: 'Internal Resource AI', href: '/resources/internal-ai', icon: Globe, badge: 'AI' },
       { name: 'Add Resource', href: '/resources/add', icon: PlusCircle }
     ]
   }
@@ -39,7 +41,7 @@ const isRouteActive = (pathname: string, href: string): boolean => {
   if (href === '/resources') {
     if (pathname === '/resources') return true;
     if (pathname.startsWith('/resources/')) {
-      const subToolRoutes = ['/resources/find', '/resources/generate', '/resources/add'];
+      const subToolRoutes = ['/resources/find', '/resources/generate', '/resources/internal-ai', '/resources/add'];
       return !subToolRoutes.some(sub => pathname.startsWith(sub));
     }
     return false;

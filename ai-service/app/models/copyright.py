@@ -9,6 +9,7 @@ class CopyrightAnalysisResult(BaseModel):
     redistribution_allowed: bool = Field(default=True)
     hosting_permission: bool = Field(default=True)
     risk_level: Literal["LOW_CONCERN", "REVIEW_REQUIRED", "RESTRICTED", "UNKNOWN"] = Field(default="UNKNOWN")
+    copyright_safety_percentage: int = Field(default=90, description="Calculated copyright safety percentage (0-100%)")
     risk_explanation: str = Field(..., description="Explanation of potential copyright risk or terms")
     recommended_action: str = Field(..., description="Action recommendation for human curator")
     evidence: List[str] = Field(default_factory=list, description="Extracted copyright notice text or link evidence")

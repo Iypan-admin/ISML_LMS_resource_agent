@@ -101,9 +101,63 @@ export function MasterDataProvider({ children }: { children: React.ReactNode }) 
   const fetchMasterData = useCallback(async () => {
     if (languages.length === 0) setIsLoading(true);
     setError(null);
-    const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api/v1';
+    let apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api/v1';
 
     try {
+      let responses: Response[] | null = null;
+      try {
+        responses = await Promise.all([
+          fetch(`${apiUrl}/languages`),
+          fetch(`${apiUrl}/courses`),
+          fetch(`${apiUrl}/levels`),
+          fetch(`${apiUrl}/categories`),
+          fetch(`${apiUrl}/skills`),
+          fetch(`${apiUrl}/topics`),
+          fetch(`${apiUrl}/resource-types`),
+          fetch(`${apiUrl}/sources`),
+        ]);
+      } catch (primaryErr) {
+        const prodUrl = 'https://isml-resource-backend-production.up.railway.app/api/v1';
+        if (apiUrl !== prodUrl) {
+          apiUrl = prodUrl;
+          responses = await Promise.all([
+            fetch(`${apiUrl}/languages`),
+            fetch(`${apiUrl}/courses`),
+            fetch(`${apiUrl}/levels`),
+            fetch(`${apiUrl}/categories`),
+            fetch(`${apiUrl}/skills`),
+            fetch(`${apiUrl}/topics`),
+            fetch(`${apiUrl}/resource-types`),
+            fetch(`${apiUrl}/sources`),
+          ]).catch(() => null);
+        }
+      }
+
+      if (!responses) {
+        console.warn('Backend master data service unreachable, applying default domain fallback.');
+        setLanguages([
+          { id: 'lang-1', code: 'de', name: 'German', nativeName: 'Deutsch', flagEmoji: '🇩🇪' },
+          { id: 'lang-2', code: 'fr', name: 'French', nativeName: 'Français', flagEmoji: '🇫🇷' },
+          { id: 'lang-3', code: 'ja', name: 'Japanese', nativeName: '日本語', flagEmoji: '🇯🇵' },
+          { id: 'lang-4', code: 'es', name: 'Spanish', nativeName: 'Español', flagEmoji: '🇪🇸' },
+          { id: 'lang-5', code: 'en', name: 'English', nativeName: 'English', flagEmoji: '🇬🇧' },
+        ]);
+        setLevels([
+          { id: 'lvl-1', code: 'A1', name: 'Beginner (A1)', rank: 1 },
+          { id: 'lvl-2', code: 'A2', name: 'Elementary (A2)', rank: 2 },
+          { id: 'lvl-3', code: 'B1', name: 'Intermediate (B1)', rank: 3 },
+          { id: 'lvl-4', code: 'B2', name: 'Upper Intermediate (B2)', rank: 4 },
+        ]);
+        setSkills([
+          { id: 'sk-1', code: 'Speaking', name: 'Speaking', slug: 'speaking' },
+          { id: 'sk-2', code: 'Listening', name: 'Listening', slug: 'listening' },
+          { id: 'sk-3', code: 'Reading', name: 'Reading', slug: 'reading' },
+          { id: 'sk-4', code: 'Grammar', name: 'Grammar', slug: 'grammar' },
+        ]);
+        setIsLoading(false);
+        return;
+      }
+
       const [
         langRes,
         courseRes,
@@ -113,16 +167,7 @@ export function MasterDataProvider({ children }: { children: React.ReactNode }) 
         topicRes,
         typeRes,
         sourceRes,
-      ] = await Promise.all([
-        fetch(`${apiUrl}/languages`),
-        fetch(`${apiUrl}/courses`),
-        fetch(`${apiUrl}/levels`),
-        fetch(`${apiUrl}/categories`),
-        fetch(`${apiUrl}/skills`),
-        fetch(`${apiUrl}/topics`),
-        fetch(`${apiUrl}/resource-types`),
-        fetch(`${apiUrl}/sources`),
-      ]);
+      ] = responses;
 
       const [
         langJson,

@@ -231,10 +231,21 @@ export function ResourceProvider({ children }: { children: React.ReactNode }) {
     setError(null);
     const savedExternalItems = getSavedExternalResourcesFromStorage();
     try {
-      const resp = await fetch(`${getApiUrl()}/resources?limit=500`);
-      if (!resp.ok) {
-        throw new Error(`Backend HTTP ${resp.status}: Failed to fetch resources`);
+      let resp: Response | null = null;
+      const primaryUrl = `${getApiUrl()}/resources?limit=500`;
+      try {
+        resp = await fetch(primaryUrl);
+      } catch (networkErr) {
+        const prodUrl = 'https://isml-resource-backend-production.up.railway.app/api/v1/resources?limit=500';
+        if (primaryUrl !== prodUrl) {
+          resp = await fetch(prodUrl).catch(() => null);
+        }
       }
+
+      if (!resp || !resp.ok) {
+        throw new Error(resp ? `HTTP ${resp.status}: Failed to fetch resources` : 'Failed to connect to backend server');
+      }
+
       const json = await resp.json();
       const rawData = Array.isArray(json.data) ? json.data : [];
       const mappedDbItems = rawData.map(mapBackendResource);
@@ -252,7 +263,7 @@ export function ResourceProvider({ children }: { children: React.ReactNode }) {
         } catch (e) {}
       }
     } catch (err: any) {
-      console.error('Failed to load resources from NestJS backend:', err);
+      console.warn('Backend fetch notice:', err.message || err);
       setResources(prev => (prev.length > 0 ? prev : savedExternalItems));
     } finally {
       setIsLoading(false);
@@ -274,9 +285,19 @@ export function ResourceProvider({ children }: { children: React.ReactNode }) {
         if (!matchTitle && !matchDesc && !matchLang && !matchTopic) return false;
       }
 
-      if (filters.language !== 'All' && res.academicContext.language !== filters.language) return false;
-      if (filters.level !== 'All' && res.academicContext.level !== filters.level) return false;
-      if (filters.skill !== 'All' && res.academicContext.skill !== filters.skill) return false;
+      if (filters.language !== 'All' && res.academicContext.language.toLowerCase() !== filters.language.toLowerCase()) return false;
+
+      if (filters.level !== 'All') {
+        const reqLvl = filters.level.toLowerCase();
+        const itemLvl = (res.academicContext.level || '').toLowerCase();
+        if (itemLvl !== reqLvl && !itemLvl.includes(reqLvl) && !reqLvl.includes(itemLvl)) return false;
+      }
+
+      if (filters.skill !== 'All') {
+        const reqSkl = filters.skill.toLowerCase();
+        const itemSkl = (res.academicContext.skill || '').toLowerCase();
+        if (itemSkl !== reqSkl && !itemSkl.includes(reqSkl) && !reqSkl.includes(itemSkl)) return false;
+      }
       if (filters.resourceType !== 'All' && res.academicContext.resourceType !== filters.resourceType) return false;
       if (filters.status !== 'All') {
         const normFilter = (filters.status === 'PENDING_REVIEW' || filters.status === 'Pending Review' || filters.status === 'DRAFT' || filters.status === 'Draft') ? 'Published' : filters.status;

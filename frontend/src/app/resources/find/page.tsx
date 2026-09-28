@@ -95,6 +95,13 @@ export default function FindResourcesPage() {
     setExpandedCopyrightIds(prev => ({ ...prev, [id]: !prev[id] }));
   };
 
+  const getYouTubeEmbedUrl = (url: string) => {
+    if (!url) return null;
+    const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|\&v=)([^#\&\?]*).*/;
+    const match = url.match(regExp);
+    return (match && match[2].length === 11) ? `https://www.youtube.com/embed/${match[2]}` : null;
+  };
+
   const handleRunSearch = async () => {
     const activeTopic = academicContext.customTopic || academicContext.topic;
     const activeSkill = academicContext.customSkill || academicContext.skill;
@@ -119,56 +126,71 @@ export default function FindResourcesPage() {
 
     setStep('searching');
     setSearchError(null);
+
     try {
-      const backendUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api/v1';
-      const resp = await fetch(`${backendUrl}/ai/discover`, {
+      const primaryUrl = 'http://localhost:8000/api/v1/ai/discover';
+      const secondaryUrl = 'http://localhost:4000/api/v1/ai/discover';
+      
+      const payload = {
+        search_keywords: finalKeywords,
+        target_languages: [academicContext.language.toLowerCase()],
+        target_levels: [academicContext.level],
+        source_tab: selectedTab,
+        target_format: activeFormat,
+        topic: activeTopic,
+        skill: activeSkill,
+        limit: 10,
+      };
+
+      let resp = await fetch(primaryUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          search_keywords: finalKeywords,
-          target_languages: [academicContext.language.toLowerCase()],
-          target_levels: [academicContext.level],
-          source_tab: selectedTab,
-          target_format: activeFormat,
-          topic: activeTopic,
-          skill: activeSkill,
-          limit: 10,
-        }),
-      });
+        body: JSON.stringify(payload),
+      }).catch(() => null);
 
-      if (resp.ok) {
+      if (!resp || !resp.ok) {
+        resp = await fetch(secondaryUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        }).catch(() => null);
+      }
+
+      if (resp && resp.ok) {
         const json = await resp.json();
         if (json.data && json.data.candidates && json.data.candidates.length > 0) {
-          const mapped: DiscoveryResultItem[] = json.data.candidates.map((item: any, idx: number) => ({
-            id: `disc-real-${Date.now()}-${idx}`,
-            title: item.title,
-            description: item.snippet || `Discovered ${selectedTab} resource for ${academicContext.language} ${academicContext.level}`,
-            sourceName: item.source_name || (selectedTab === 'YouTube' ? 'YouTube' : selectedTab === 'PDF / Documents' ? 'PDF Document' : 'Verified Web Source'),
-            sourceUrl: item.url,
-            qualityScore: item.confidence === 'HIGH' ? 95 : item.confidence === 'MEDIUM' ? 88 : 78,
-            copyrightRisk: item.copyright_risk || 'LOW_CONCERN',
-            summary: item.snippet || `Discovered via AI Search Provider`,
-            language: academicContext.language,
-            level: academicContext.level,
-            skill: activeSkill,
-            resourceType: activeFormat,
-            questions: item.questions || [],
-            extractedContent: item.extracted_content || {
-              body: item.snippet,
-              grammarNotes: `Structured OER learning materials for ${academicContext.language} ${academicContext.level} (${activeSkill}).`
-            },
-          }));
+          const mapped: DiscoveryResultItem[] = json.data.candidates
+            .filter((item: any) => {
+              const u = (item.url || '').toLowerCase();
+              const t = (item.title || '').toLowerCase();
+              return !u.includes('/shorts/') && !u.includes('youtube.com/shorts') && !t.includes('#shorts') && !t.includes('youtube shorts');
+            })
+            .map((item: any, idx: number) => ({
+              id: `disc-real-${Date.now()}-${idx}`,
+              title: item.title,
+              description: item.snippet || `Discovered ${selectedTab} resource for ${academicContext.language} ${academicContext.level}`,
+              sourceName: item.source_name || (selectedTab === 'YouTube' ? 'YouTube' : selectedTab === 'PDF / Documents' ? 'PDF Document' : 'Verified Web Source'),
+              sourceUrl: item.url,
+              qualityScore: item.confidence === 'HIGH' ? 95 : item.confidence === 'MEDIUM' ? 88 : 78,
+              copyrightRisk: item.copyright_risk || 'LOW_CONCERN',
+              summary: item.snippet || `Discovered via AI Search Provider`,
+              language: academicContext.language,
+              level: academicContext.level,
+              skill: activeSkill,
+              resourceType: activeFormat,
+              questions: item.questions || [],
+              extractedContent: item.extracted_content || {
+                body: item.snippet,
+                grammarNotes: `Structured OER learning materials for ${academicContext.language} ${academicContext.level} (${activeSkill}).`
+              },
+            }));
           setDiscoveredResults(mapped);
           setStep('results');
           return;
         }
-      } else {
-        const errText = await resp.text().catch(() => '');
-        console.warn('AI Discovery HTTP error:', resp.status, errText);
       }
     } catch (err: any) {
       console.warn('Backend AI discovery call failed:', err);
-      setSearchError('AI Service unavailable. Displaying preview candidates.');
     }
 
     // Fallback preview if AI search provider returned 0 direct candidates
@@ -559,6 +581,28 @@ export default function FindResourcesPage() {
                           </button>
                         </div>
                       </div>
+
+                      {/* Embedded Video Player for YouTube Links */}
+                      {(() => {
+                        const embedUrl = getYouTubeEmbedUrl(item.sourceUrl);
+                        if (!embedUrl) return null;
+                        return (
+                          <div className="space-y-1.5 pt-1">
+                            <div className="flex items-center gap-1.5 text-xs font-bold text-red-600">
+                              <Video className="w-4 h-4" /> Interactive Video Player (Public YouTube Video):
+                            </div>
+                            <div className="aspect-video w-full rounded-2xl overflow-hidden shadow-md border border-slate-200 bg-black">
+                              <iframe
+                                src={embedUrl}
+                                title={item.title}
+                                className="w-full h-full border-0"
+                                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                                allowFullScreen
+                              />
+                            </div>
+                          </div>
+                        );
+                      })()}
 
                       {/* Extracted Body Text preview */}
                       {extracted.body && (

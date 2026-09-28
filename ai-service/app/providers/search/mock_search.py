@@ -457,40 +457,30 @@ REAL_OER_CATALOG: Dict[str, Dict[str, List[Dict[str, Any]]]] = {
         ],
         "YouTube": [
             {
-                "url": "https://www.youtube.com/watch?v=92qcw4gVikM",
-                "title": "Learn French with Avani – French A1 Conversation: Asking for Directions",
-                "snippet": "Practical French video lesson focusing on spoken conversation, directions, and vocabulary.",
-                "source_name": "YouTube (Learn French with Avani)",
+                "url": "https://www.youtube.com/watch?v=ujDtm0hZyII",
+                "title": "Learn French in 25 Minutes – Complete A1 Beginner Lesson",
+                "snippet": "Full 25-minute comprehensive video lesson breaking down French greetings, alphabet, pronunciation rules, and dialogue structures.",
+                "source_name": "YouTube (FrenchPod101)",
                 "confidence": "HIGH",
                 "suggested_language": "French",
                 "suggested_level": "A1",
                 "suggested_resource_type": "VIDEO",
             },
             {
-                "url": "https://www.youtube.com/watch?v=fJGMDfRHfSA",
-                "title": "Learn French with Avani – French A1 Dialogue: Finding an Apartment",
-                "snippet": "Everyday French listening and conversation practice with clear on-screen subtitles.",
-                "source_name": "YouTube (Learn French with Avani)",
+                "url": "https://www.youtube.com/watch?v=ye52GV--wo8",
+                "title": "French Alphabet & Pronunciation Masterclass (19 Minutes)",
+                "snippet": "Full 19-minute audio-visual masterclass covering French alphabet phonetics, silent letters, and beginner speaking drills.",
+                "source_name": "YouTube (Learn French)",
                 "confidence": "HIGH",
                 "suggested_language": "French",
                 "suggested_level": "A1",
                 "suggested_resource_type": "VIDEO",
             },
             {
-                "url": "https://www.youtube.com/watch?v=XKqhmtg6EVg",
-                "title": "PAMAZA French Learning – Simple French Conversation for Beginners",
-                "snippet": "Slow French conversation practice for absolute beginners focusing on greetings and etiquette.",
-                "source_name": "YouTube (PAMAZA French)",
-                "confidence": "HIGH",
-                "suggested_language": "French",
-                "suggested_level": "A1",
-                "suggested_resource_type": "VIDEO",
-            },
-            {
-                "url": "https://www.youtube.com/watch?v=2tNyPFRFpRM",
-                "title": "Learn French With Frencheezi – A1-A2 French Dialogue & Small Talk",
-                "snippet": "Authentic French listening practice video covering everyday small talk and common expressions.",
-                "source_name": "YouTube (Learn French With Frencheezi)",
+                "url": "https://www.youtube.com/watch?v=9YInf3cLw-E",
+                "title": "French A1 Conversation & Listening Masterclass (14 Minutes)",
+                "snippet": "Full 14-minute structured French dialogue lesson with native speakers, slow speech pacing, and subtitles.",
+                "source_name": "YouTube (French Academy)",
                 "confidence": "HIGH",
                 "suggested_language": "French",
                 "suggested_level": "A1",
@@ -596,8 +586,17 @@ class MockSearchProvider(BaseSearchProvider):
 
             return score
 
+        # Filter out any YouTube Shorts strictly
+        filtered_tab_catalog = []
+        for item in tab_catalog:
+            u_low = str(item.get("url", "")).lower()
+            t_low = (str(item.get("title", "")) + " " + str(item.get("snippet", ""))).lower()
+            if "/shorts/" in u_low or "youtube.com/shorts" in u_low or "#shorts" in t_low or "youtube shorts" in t_low:
+                continue
+            filtered_tab_catalog.append(item)
+
         # Sort catalog items by relevance score descending
-        sorted_catalog = sorted(tab_catalog, key=score_item, reverse=True)
+        sorted_catalog = sorted(filtered_tab_catalog, key=score_item, reverse=True)
 
         # Dynamic topic and skill extraction
         topic_clean = topic.strip() if (topic and topic.strip() and topic != "Other / Custom Topic...") else "Greetings & Expressions"

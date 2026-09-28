@@ -121,9 +121,13 @@ class UrlService:
 
     @classmethod
     async def validate_youtube_availability(cls, url: str) -> Tuple[bool, Optional[str]]:
-        """Validate if a YouTube video URL is publicly available and playable."""
+        """Validate if a YouTube video URL is publicly available, playable, and NOT a short."""
         parsed = urllib.parse.urlparse(url.strip())
+        url_lower = url.strip().lower()
         if "youtube.com" in parsed.netloc.lower() or "youtu.be" in parsed.netloc.lower():
+            if "/shorts/" in parsed.path.lower() or "youtube.com/shorts" in url_lower:
+                return False, "YouTube Shorts format is restricted. Only full long-form educational video lessons are permitted."
+
             if "watch" in parsed.path or "v=" in parsed.query or "youtu.be" in parsed.netloc:
                 oembed_url = f"https://www.youtube.com/oembed?url={urllib.parse.quote(url)}&format=json"
                 try:
@@ -218,7 +222,12 @@ class UrlService:
                 if not valid:
                     raise SSRFSecurityError(f"SSRF violation on redirect to '{current_url}': {redirect_err}")
 
-                resp = await client.get(current_url, headers={"User-Agent": "ISML-AI-Resource-Fetcher/1.0"})
+                browser_headers = {
+                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+                    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+                    "Accept-Language": "en-US,en;q=0.9,de;q=0.8,fr;q=0.7,ja;q=0.6",
+                }
+                resp = await client.get(current_url, headers=browser_headers)
 
                 if resp.is_redirect or resp.status_code in (301, 302, 303, 307, 308):
                     location = resp.headers.get("Location")
