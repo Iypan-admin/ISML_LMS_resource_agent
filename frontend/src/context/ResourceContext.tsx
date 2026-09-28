@@ -106,10 +106,8 @@ export function ResourceProvider({ children }: { children: React.ReactNode }) {
     // Check raw sourceType enum values returned from backend (EXTERNAL, AI_GENERATED, UPLOADED, INTERNAL)
     const rawSourceType = String(item.sourceType || item.sourceOriginType || '').toUpperCase();
 
-    const isSavedExternal = rawSourceType === 'EXTERNAL' || 
-                            rawSourceType === 'EXTERNAL OER' ||
-                            (item.tags && (item.tags.includes('UserSavedExternal') || item.tags.includes('Discovered'))) ||
-                            (typeof item.id === 'string' && (item.id.startsWith('res-ext-') || item.id.startsWith('disc-')));
+    const isExplicitSavedExternal = (item.tags && (item.tags.includes('UserSavedExternal') || item.tags.includes('Discovered'))) ||
+                                    (typeof item.id === 'string' && (item.id.startsWith('res-ext-') || item.id.startsWith('disc-')));
 
     const isExplicitAIGenerated = rawSourceType === 'AI_GENERATED' || 
                                  rawSourceType === 'AI GENERATED' ||
@@ -123,13 +121,14 @@ export function ResourceProvider({ children }: { children: React.ReactNode }) {
                        (typeof item.id === 'string' && item.id.startsWith('res-up-'));
 
     let finalSourceType: SourceType = 'Internal';
-    if (isSavedExternal) {
+    if (isExplicitSavedExternal) {
       finalSourceType = 'External';
     } else if (isExplicitAIGenerated) {
       finalSourceType = 'AI Generated';
     } else if (isUploaded) {
       finalSourceType = 'Uploaded';
     } else {
+      // Excel dataset resources stored in database catalog belong to Internal LMS Resources
       finalSourceType = 'Internal';
     }
 
@@ -285,9 +284,9 @@ export function ResourceProvider({ children }: { children: React.ReactNode }) {
       }
 
       if (filters.sourceType !== 'All') {
-        const isExt = res.sourceType === 'External' || (res.tags && (res.tags.includes('Discovered') || res.tags.includes('UserSavedExternal')));
-        const isAI = res.sourceType === 'AI Generated' || (res.tags && res.tags.includes('AI Generated'));
-        const isInt = res.sourceType === 'Internal' || res.sourceType === 'Uploaded' || (!isExt && !isAI);
+        const isExt = res.sourceType === 'External';
+        const isAI = res.sourceType === 'AI Generated';
+        const isInt = res.sourceType === 'Internal' || res.sourceType === 'Uploaded';
 
         if (filters.sourceType === 'External') {
           if (!isExt) return false;
