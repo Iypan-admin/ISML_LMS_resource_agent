@@ -161,17 +161,23 @@ export default function DashboardPage() {
           </div>
 
           <div className="flex items-center gap-2 ml-auto flex-wrap">
-            <Link
+            {/* <Link
               href="/resources/find"
               className="px-3.5 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-bold transition-all flex items-center gap-1.5"
             >
               <Search className="w-3.5 h-3.5 text-[#0052CC]" /> Find Aligned Resources
-            </Link>
-            <Link
+            </Link> */}
+            {/* <Link
               href="/resources/generate"
               className="px-3.5 py-1.5 rounded-xl bg-[#0052CC] hover:bg-blue-700 text-white text-xs font-bold transition-all flex items-center gap-1.5 shadow-xs"
             >
               <Sparkles className="w-3.5 h-3.5" /> Generate AI Material
+            </Link> */}
+            <Link
+              href="/faculty/studio"
+              className="px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white text-xs font-bold transition-all flex items-center gap-1.5 shadow-xs"
+            >
+              <Sparkles className="w-3.5 h-3.5" /> Faculty Studio
             </Link>
           </div>
         </div>
@@ -187,8 +193,8 @@ export default function DashboardPage() {
           </h3>
         </div>
 
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-          <Link
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+          {/* <Link
             href="/resources/find"
             className="bg-white border border-slate-200 p-4 rounded-2xl hover:border-[#0052CC] transition-all flex flex-col items-start gap-2.5 group shadow-2xs hover:shadow-xs"
           >
@@ -199,9 +205,9 @@ export default function DashboardPage() {
               <h4 className="text-xs font-black text-[#0B2447] group-hover:text-[#0052CC]">Find Resources</h4>
               <p className="text-[10px] text-slate-500">Discover OER content</p>
             </div>
-          </Link>
+          </Link> */}
 
-          <Link
+          {/* <Link
             href="/resources/generate"
             className="bg-white border border-slate-200 p-4 rounded-2xl hover:border-purple-400 transition-all flex flex-col items-start gap-2.5 group shadow-2xs hover:shadow-xs"
           >
@@ -211,6 +217,19 @@ export default function DashboardPage() {
             <div>
               <h4 className="text-xs font-black text-[#0B2447] group-hover:text-purple-700">Generate AI</h4>
               <p className="text-[10px] text-slate-500">Create study guides</p>
+            </div>
+          </Link> */}
+
+          <Link
+            href="/faculty/studio"
+            className="bg-white border border-slate-200 p-4 rounded-2xl hover:border-blue-400 transition-all flex flex-col items-start gap-2.5 group shadow-2xs hover:shadow-xs"
+          >
+            <div className="p-2.5 rounded-xl bg-blue-50 text-blue-600 group-hover:scale-110 transition-transform border border-blue-100">
+              <Sparkles className="w-5 h-5" />
+            </div>
+            <div>
+              <h4 className="text-xs font-black text-[#0B2447] group-hover:text-blue-600">Faculty Studio</h4>
+              <p className="text-[10px] text-slate-500">Curriculum & Teaching Studio</p>
             </div>
           </Link>
 

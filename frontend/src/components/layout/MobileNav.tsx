@@ -30,9 +30,10 @@ const isRouteActive = (pathname: string, href: string): boolean => {
 const mobileNavItems = [
   { name: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
   { name: 'Library', href: '/resources', icon: Library },
-  { name: 'Find', href: '/resources/find', icon: Search },
-  { name: 'Internal AI', href: '/resources/internal-ai', icon: Globe },
-  { name: 'Generate', href: '/resources/generate', icon: Sparkles },
+  // { name: 'Find', href: '/resources/find', icon: Search },
+  // { name: 'Internal AI', href: '/resources/internal-ai', icon: Globe },
+  // { name: 'Generate', href: '/resources/generate', icon: Sparkles },
+  { name: 'Studio', href: '/faculty/studio', icon: Sparkles },
   { name: 'Add', href: '/resources/add', icon: PlusCircle },
 ];
 
