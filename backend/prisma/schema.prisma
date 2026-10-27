@@ -65,6 +65,12 @@ enum CEFRLevel {
   C2
 }
 
+enum CourseTrackMode {
+  STANDARD           // 12 Months Track
+  INTERNSHIP         // 6 to 8 Months Track
+  SUPER_INTERNSHIP   // 3 to 5 Months Fast-Track
+}
+
 enum AIAnalysisType {
   CLASSIFICATION
   QUALITY_SUITABILITY
@@ -562,3 +568,42 @@ model FileStorage {
 
   @@map("file_storage")
 }
+
+// =============================================================================
+// ISML CURRICULUM & SESSION PACKAGES (Phase 2)
+// =============================================================================
+
+enum SessionStatus {
+  DRAFT
+  READY
+  SYNCED_TO_LMS
+}
+
+model SessionPackage {
+  id                    String          @id @default(uuid())
+  sessionId             String          @unique // e.g. isml_session_a1b2c3d4
+  title                 String
+  language              String          // French, German, Japanese, Spanish, Korean
+  level                 String          // A1, A2, B1, etc.
+  trackMode             CourseTrackMode @default(STANDARD) // STANDARD (12 mo), INTERNSHIP (6-8 mo), SUPER_INTERNSHIP (3-5 mo)
+  topic                 String
+  sourceUrl             String?
+  tutorFileRef          String?
+
+  // Full Structured Payload (JSON)
+  sessionPlanJson       Json            // Objectives, steps, timing, homework
+  teacherMaterialsJson  Json            // Slides, teacher cues, handout summary
+  studentLsrwJson       Json            // Listening, Reading, Speaking, Writing + Evaluation Rubrics
+
+  pptxFilePath          String?
+  pptxDownloadUrl       String?
+  status                SessionStatus   @default(READY)
+  lmsSyncedAt           DateTime?
+
+  createdAt             DateTime        @default(now())
+  updatedAt             DateTime        @updatedAt
+
+  @@index([language, level, trackMode])
+  @@map("session_packages")
+}
+

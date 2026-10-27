@@ -26,6 +26,7 @@ const navSections = [
   {
     title: 'AI & CONTENT TOOLS',
     items: [
+      { name: 'Faculty Studio (Plan & PPT)', href: '/faculty/studio', icon: Sparkles, badge: 'NEW' },
       { name: 'Find Resources', href: '/resources/find', icon: Search, badge: 'AI' },
       { name: 'Generate Resource', href: '/resources/generate', icon: Sparkles, badge: 'AI' },
       { name: 'Internal Resource AI', href: '/resources/internal-ai', icon: Globe, badge: 'AI' },

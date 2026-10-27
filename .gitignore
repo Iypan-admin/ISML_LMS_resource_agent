@@ -53,3 +53,12 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# generated runtime assets & uploads
+ai-service/static/documents/*
+!ai-service/static/documents/.gitkeep
+ai-service/static/presentations/*
+!ai-service/static/presentations/.gitkeep
+ai-service/static/uploads/*
+!ai-service/static/uploads/.gitkeep
+

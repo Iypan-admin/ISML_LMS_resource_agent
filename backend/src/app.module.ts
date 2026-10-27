@@ -12,6 +12,7 @@ import { SourcesModule } from './modules/sources/sources.module';
 import { ResourcesModule } from './modules/resources/resources.module';
 import { AiModule } from './modules/ai/ai.module';
 import { FilesModule } from './modules/files/files.module';
+import { SessionsModule } from './modules/sessions/sessions.module';
 
 @Module({
   imports: [
@@ -30,6 +31,7 @@ import { FilesModule } from './modules/files/files.module';
     ResourcesModule,
     AiModule,
     FilesModule,
+    SessionsModule,
   ],
 })
 export class AppModule {}
