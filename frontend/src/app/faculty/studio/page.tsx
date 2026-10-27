@@ -1062,7 +1062,8 @@ export default function FacultyStudioPage() {
                           dayInMonth,
                           mInfo.daysCount,
                           totalDays,
-                          rawDay
+                          rawDay,
+                          sessionPackage
                         );
 
                         allDays.push(dayItem);
