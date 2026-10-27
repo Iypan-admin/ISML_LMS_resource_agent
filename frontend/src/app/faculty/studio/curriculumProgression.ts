@@ -916,17 +916,33 @@ export function generateCurriculumDay(
   };
 
   const profile = LANGUAGE_PROFILES[langKey] || LANGUAGE_PROFILES.fr;
-  const themeIndex = (monthNumber - 1) % profile.themes.length;
-  const theme = profile.themes[themeIndex];
+  
+  // High-granularity progression: Map day to continuous linguistic syllabus subtopics
+  const totalThemes = profile.themes.length;
+  // Compute progressive theme and weekly stage based on exact dayNumber
+  const progressiveIndex = ((dayNumber - 1) % totalThemes);
+  const theme = profile.themes[progressiveIndex];
+
+  // Specific daily pedagogical milestone derived from dayInMonth and dayNumber
+  const dailyMilestoneTypes = [
+    'Syntactic Architecture & Morphological Foundations',
+    'Auditory Phonetics, Pitch & Pronunciation Articulation',
+    'Applied Conversational Discourse & Dialogue Production',
+    'Case Structures, Particles & Structural Word Order',
+    'Oral Fluency Drills, High-Frequency Collocations & Idioms',
+    'Interactive Roleplay & Situational Context Simulation',
+    'Mid-Module Applied Synthesis & Comprehension Mastery'
+  ];
+  const milestoneStage = dailyMilestoneTypes[(dayNumber - 1) % dailyMilestoneTypes.length];
 
   // Derive dynamic daily subtopic ensuring Day 1 to Day N are completely distinct
-  const dailyProgressionPill = `${monthName} Day ${dayInMonth} (Class ${dayNumber}): ${theme.category} • Module Phase ${weekInMonth}`;
+  const dailyProgressionPill = `${monthName} Day ${dayInMonth} (Class ${dayNumber}): ${theme.category} — ${milestoneStage} (Part ${((dayInMonth - 1) % 4) + 1})`;
 
-  // Unique daily vocabulary rotation (3 distinct words chosen specifically per day)
+  // Unique daily vocabulary rotation: Select distinct words per day with dynamic offset
   const vLen = theme.words.length;
-  const vIndex1 = (dayInMonth - 1) % vLen;
-  const vIndex2 = (dayInMonth) % vLen;
-  const vIndex3 = (dayInMonth + 1) % vLen;
+  const vIndex1 = (dayNumber - 1) % vLen;
+  const vIndex2 = (dayNumber) % vLen;
+  const vIndex3 = (dayNumber + 1) % vLen;
   const dayVocab = [
     {
       word: theme.words[vIndex1].word,
@@ -948,39 +964,44 @@ export function generateCurriculumDay(
     }
   ];
 
-  // Daily drills rotation
+  // Daily drills rotation with progressive variations
   const dLen = theme.drills.length;
-  const dIndex1 = (dayInMonth - 1) % dLen;
-  const dIndex2 = (dayInMonth) % dLen;
+  const dIndex1 = (dayNumber - 1) % dLen;
+  const dIndex2 = (dayNumber) % dLen;
   const selectedDrills = [
     {
-      question: theme.drills[dIndex1].q,
+      question: `[Day ${dayNumber} Drill 1] ${theme.drills[dIndex1].q}`,
       answer: theme.drills[dIndex1].a,
       explanation: theme.drills[dIndex1].exp
     },
     {
-      question: theme.drills[dIndex2].q,
+      question: `[Day ${dayNumber} Drill 2] ${theme.drills[dIndex2].q}`,
       answer: theme.drills[dIndex2].a,
       explanation: theme.drills[dIndex2].exp
     }
   ];
 
-  // Dynamic study guide text with authentic linguistic markdown
+  // Dynamic study guide text with unique day-specific linguistic focus, formulas, and paradigms
   const studyNotes = `### Master Study Guide: ${monthName} Day ${dayInMonth} (Course Day ${dayNumber} of ${totalDays})
 Language Track: **${profile.langName}** • Certified CEFR ${level} • ${baseTopic}
 
-**1. Syntactic Architecture & Word Order Formula:**
+**1. Day ${dayNumber} Pedagogical Focus & Linguistic Domain:**
+- **Daily Milestone**: ${milestoneStage}
+- **Structural Target**: ${theme.category}
+- **Linguistic Objective**: ${theme.focus}
+
+**2. Active Syntactic Architecture & Word Order Formula:**
 ${theme.formula}
 
-**2. Active Paradigm & Conjugation Matrix:**
+**3. Active Paradigm & Conjugation Matrix for Day ${dayNumber}:**
 ${theme.table}
 
-**3. Native Phonetic Traps & Auditory Discrimination for Day ${dayNumber}:**
-- ${theme.trap}
-- Daily focus: Continuous pitch cadence, liaison mechanics, and natural speech rhythm.
+**4. Native Phonetic Traps & Auditory Discrimination for Day ${dayNumber}:**
+- **Trap Analysis**: ${theme.trap}
+- **Acoustic Focus for Day ${dayNumber}**: Pay close attention to word boundaries, consonant clustering, native cadence, and unprompted speech rhythm.
 
-**4. Pedagogical Blueprint:**
-Today's 1-hour session emphasizes active communicative production. Students apply these structures in authentic spoken roleplay.`;
+**5. Faculty Lesson Blueprint & Active Retention:**
+Today's 1-hour session emphasizes active communicative production. Students must incorporate today's 3 vocabulary anchors (*${dayVocab.map(v => v.word).join(', ')}*) into spontaneous dialogue.`;
 
   return {
     day_number: dayNumber,
@@ -992,7 +1013,7 @@ Today's 1-hour session emphasizes active communicative production. Students appl
     week_number: weekInMonth,
     module_week: `${monthName} • Day ${dayInMonth} of ${monthTotalDays} (Course Day ${dayNumber} of ${totalDays})`,
     day_topic: dailyProgressionPill,
-    grammar_rules_detail: `Senior Faculty Lecture for ${monthName} Day ${dayInMonth}: ${theme.focus} Systematically engineered for active 1-hour communicative recall and grammar mastery.`,
+    grammar_rules_detail: `Senior Faculty Lecture for ${monthName} Day ${dayInMonth} (Day ${dayNumber}): ${theme.focus} Focuses on ${milestoneStage.toLowerCase()} to build permanent linguistic intuition through 1-hour active oral drills and contextual discourse.`,
     study_notes_markdown: studyNotes,
     vocabulary_bank: dayVocab,
     classroom_dialogues: theme.dialogues,
