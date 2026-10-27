@@ -277,7 +277,7 @@ Generate the educational package as strict JSON with this structure:
   }}
 }}
 
-Generate {min(day_count_to_generate, 5)} days in day_wise_syllabus. Each day must have distinct content.
+Generate {min(day_count_to_generate, 10)} days in day_wise_syllabus. Each day must have distinct, progressive linguistic content covering separate concepts, vocabulary, grammar rules, dialogues, and drills.
 Output ONLY valid JSON. No markdown fences, no preamble."""
 
     return prompt

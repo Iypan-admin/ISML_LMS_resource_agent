@@ -266,7 +266,7 @@ class SessionPlannerAgent:
             topic=topic,
             track_mode=track_mode,
             total_days=total_days,
-            day_count_to_generate=min(total_days, 5),
+            day_count_to_generate=min(total_days, 10),
         )
 
         llm_output = await self._call_gemini(synthesis_prompt, max_tokens=8192)

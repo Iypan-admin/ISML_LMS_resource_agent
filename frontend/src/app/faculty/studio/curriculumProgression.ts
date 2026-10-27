@@ -449,30 +449,538 @@ export function generateCurriculumDay(
     };
   }
 
-  // Otherwise, synthesize dynamic day content strictly aligned with the calendar month's linguistic progression
-  const monthTheme = FRENCH_MONTHS[monthNumber] || FRENCH_MONTHS[1];
+  // ---------------------------------------------------------------------------
+  // DYNAMIC MULTI-LANGUAGE PROGRESSION ENGINE
+  // Covers all 5 Core Languages with authentic grammar, vocabulary, dialogues, and drills
+  // ---------------------------------------------------------------------------
+  const cleanLang = (language || '').toLowerCase();
+  const langKey = cleanLang.includes('span') || cleanLang.includes('espa')
+    ? 'es'
+    : cleanLang.includes('germ') || cleanLang.includes('deut')
+    ? 'de'
+    : cleanLang.includes('jap') || cleanLang.includes('nihon')
+    ? 'ja'
+    : cleanLang.includes('kor') || cleanLang.includes('hangu')
+    ? 'ko'
+    : 'fr';
+
   const weekInMonth = Math.ceil(dayInMonth / 7);
 
-  // Generate distinct subtopics across the days of the month
-  const daySubtopicPill = `${monthName} Day ${dayInMonth} (Class ${dayNumber}): ${monthTheme.topicTitle}`;
+  // Language-specific thematic progressions and vocabularies across stages
+  const LANGUAGE_PROFILES: Record<string, {
+    langName: string;
+    themes: Array<{
+      category: string;
+      focus: string;
+      formula: string;
+      table: string;
+      trap: string;
+      words: Array<{ word: string; meaning: string; pronunciation: string; example: string }>;
+      dialogues: string[];
+      drills: Array<{ q: string; a: string; exp: string }>;
+    }>;
+  }> = {
+    es: {
+      langName: 'Spanish (Español)',
+      themes: [
+        {
+          category: 'Fonética, Saludos & Verbos de Identidad (Ser/Estar)',
+          focus: 'Diferenciación esencial entre ser (cualidades permanentes) y estar (estados y ubicación).',
+          formula: 'Ser: [Sujeto] + ser (soy, eres, es, somos, sois, son) + [Nacionalidad/Profesión]\nEstar: [Sujeto] + estar (estoy, estás, está, estamos, estáis, están) + [Ubicación/Estado]',
+          table: '| Sujeto | Ser (Esencia) | Estar (Condición/Lugar) |\n|---|---|---|\n| Yo | soy | estoy |\n| Tú | eres | estás |\n| Él/Ella/Ud. | es | está |\n| Nosotros | somos | estamos |\n| Vosotros | sois | estáis |\n| Ellos/Ellas/Uds. | son | están |',
+          trap: 'Nunca confundir "es bueno" (persona bondadosa o cosa de calidad) con "está bueno" (comida deliciosa o atractivo físico).',
+          words: [
+            { word: 'aprender', meaning: 'to learn', pronunciation: '/a.pɾenˈdeɾ/', example: 'Aprendo español todos los días con entusiasmo.' },
+            { word: 'trabajar', meaning: 'to work', pronunciation: '/tɾa.βaˈxaɾ/', example: 'Ella trabaja como ingeniera en una empresa internacional.' },
+            { word: 'ubicación', meaning: 'location', pronunciation: '/u.βi.kaˈsjon/', example: 'La oficina está situada en el centro de Madrid.' },
+            { word: 'entusiasmo', meaning: 'enthusiasm', pronunciation: '/en.tuˈsjas.mo/', example: 'Estudiamos con mucho entusiasmo esta semana.' },
+            { word: 'compromiso', meaning: 'commitment', pronunciation: '/kom.pɾoˈmi.so/', example: 'El equipo demuestra un alto compromiso académico.' }
+          ],
+          dialogues: [
+            'Profesor: ¡Hola! ¿De dónde eres y dónde estás viviendo actualmente? (Teacher: Hello! Where are you from and where are you currently living?)',
+            'Estudiante: Soy de Colombia, pero actualmente estoy viviendo en Barcelona. (Student: I am from Colombia, but I am currently living in Barcelona.)',
+            'Profesor: Excelente. ¿Cuál es tu objetivo profesional principal? (Teacher: Excellent. What is your primary professional objective?)',
+            'Estudiante: Mi objetivo es hablar con fluidez en entornos de negocios. (Student: My goal is to speak fluently in business settings.)'
+          ],
+          drills: [
+            { q: 'Completa con la forma correcta de ser o estar: "Nosotros ___ preparados para la reunión."', a: 'estamos', exp: 'Preparado es un estado transitorio, por lo que exige el verbo estar.' },
+            { q: 'Traduce al español: "She is a doctor and is in the clinic now."', a: 'Ella es médica y está en la clínica ahora.', exp: 'Profesión usa ser (es), mientras que ubicación física usa estar (está).' },
+            { q: 'Identifica y corrige el error: "Yo soy muy cansado después del viaje."', a: 'Yo estoy muy cansado después del viaje.', exp: 'El cansancio es un estado físico temporal, por lo que requiere estar.' }
+          ]
+        },
+        {
+          category: 'Presente Regular e Irregular (-ar, -er, -ir) & Rutina Diaria',
+          focus: 'Conjugación sistemática de verbos regulares y reflexivos de la rutina diaria.',
+          formula: 'Reflexivo: [Pronombre: me/te/se/nos/os/se] + [Verbo conjugado] + [Complemento]',
+          table: '| Pronombre | Hablar (-ar) | Comer (-er) | Vivir (-ir) |\n|---|---|---|---|\n| Yo | hablo | como | vivo |\n| Tú | hablas | comes | vives |\n| Él/Ella | habla | come | vive |\n| Nosotros | hablamos | comemos | vivimos |\n| Ellos | hablan | comen | viven |',
+          trap: 'La terminación -emos es exclusiva de verbos -er, mientras que -imos pertenece a verbos -ir.',
+          words: [
+            { word: 'despertarse', meaning: 'to wake up', pronunciation: '/des.peɾˈtaɾ.se/', example: 'Me despierto a las siete de la mañana todos los días.' },
+            { word: 'desayunar', meaning: 'to have breakfast', pronunciation: '/de.sa.ʝuˈnaɾ/', example: 'Desayunamos fruta fresca y café aromático.' },
+            { word: 'desarrollar', meaning: 'to develop', pronunciation: '/de.sa.roˈʎaɾ/', example: 'Desarrollamos soluciones innovadoras en nuestro proyecto.' },
+            { word: 'comunicar', meaning: 'to communicate', pronunciation: '/ko.mu.niˈkaɾ/', example: 'Es vital comunicar las ideas con absoluta claridad.' },
+            { word: 'concluir', meaning: 'to conclude', pronunciation: '/koŋ.kluˈiɾ/', example: 'Concluimos las actividades antes del mediodía.' }
+          ],
+          dialogues: [
+            'Colega A: ¿A qué hora te levantas habitualmente entre semana? (Colleague A: What time do you usually get up on weekdays?)',
+            'Colega B: Me levanto a las seis y media, hago ejercicio y salgo al trabajo. (Colleague B: I get up at 6:30, exercise, and head to work.)',
+            'Colega A: ¿Cómo sueles gestionar los proyectos con plazos estrictos? (Colleague A: How do you typically manage projects with strict deadlines?)',
+            'Colega B: Priorizo las tareas críticas y mantengo comunicación constante. (Colleague B: I prioritize critical tasks and maintain constant communication.)'
+          ],
+          drills: [
+            { q: 'Conjuga el verbo levantarse para la persona "tú".', a: 'te levantas', exp: 'Los verbos reflexivos requieren el pronombre reflexivo te antes del verbo conjugado.' },
+            { q: 'Traduce: "We live in an apartment and we eat healthy food."', a: 'Vivimos en un apartamento y comemos comida saludable.', exp: 'Vivir toma la terminación -imos y comer toma -emos en primera persona plural.' },
+            { q: 'Corrige la concordancia: "Ellos se duerme temprano hoy."', a: 'Ellos se duermen temprano hoy.', exp: 'La tercera persona plural exige la terminación -en: se duermen.' }
+          ]
+        },
+        {
+          category: 'Pasado Indefinido vs Imperfecto: Narración & Contexto Temporal',
+          focus: 'Articulación de acciones completas y puntuales frente a descripciones o hábitos pasados.',
+          formula: 'Indefinido: Acción puntual completada ([Verbo] + -é/-aste/-ió/-ieron)\nImperfecto: Acción habitual o contexto ([Verbo] + -aba / -ía)',
+          table: '| Sujeto | Hablar (Indefinido) | Hablar (Imperfecto) | Vivir (Indefinido) | Vivir (Imperfecto) |\n|---|---|---|---|---|\n| Yo | hablé | hablaba | viví | vivía |\n| Tú | hablaste | hablabas | viviste | vivías |\n| Él/Ella | habló | hablaba | vivió | vivía |\n| Nosotros | hablamos | hablábamos | vivimos | vivíamos |\n| Ellos | hablaron | hablaban | vivieron | vivían |',
+          trap: 'El acento ortográfico en pretérito indefinido (hablé, habló, viví, vivió) es indispensable; sin tilde cambia de tiempo o significado.',
+          words: [
+            { word: 'acontecimiento', meaning: 'event / occurrence', pronunciation: '/a.kon.te.siˈmjen.to/', example: 'Fue un acontecimiento histórico para nuestra empresa.' },
+            { word: 'anteriormente', meaning: 'previously', pronunciation: '/an.te.ɾjoɾˈmen.te/', example: 'Anteriormente trabajábamos de forma presencial.' },
+            { word: 'lograr', meaning: 'to achieve', pronunciation: '/loˈɣɾaɾ/', example: 'Logramos superar todas las metas previstas del trimestre.' },
+            { word: 'consolidar', meaning: 'to consolidate', pronunciation: '/kon.so.liˈðaɾ/', example: 'Consolidaron su posición en el mercado internacional.' },
+            { word: 'experiencia', meaning: 'experience', pronunciation: '/eks.peˈɾjen.sja/', example: 'La experiencia adquirida resultó invaluable.' }
+          ],
+          dialogues: [
+            'Directora: ¿Cómo fue la presentación de ayer ante el comité directivo? (Director: How was yesterday\'s presentation before the executive committee?)',
+            'Gerente: Salió excelente. Cuando yo explicaba las métricas, todos mostraron gran interés. (Manager: It went great. While I was explaining the metrics, everyone showed great interest.)',
+            'Directora: Me alegro mucho. ¿Firmaron el acuerdo preliminar? (Director: I am very glad. Did they sign the preliminary agreement?)',
+            'Gerente: Sí, firmaron el documento oficial al terminar la sesión. (Manager: Yes, they signed the official document right at the end of the session.)'
+          ],
+          drills: [
+            { q: 'Elige entre indefinido o imperfecto: "Ayer yo (visitar) el museo mientras (llover)."', a: 'visité / llovía', exp: 'Visitar es un evento puntual completado (visité); la lluvia constituye el trasfondo continuo (llovía).' },
+            { q: 'Traduce: "When we were children, we used to travel every summer."', a: 'Cuando éramos niños, viajábamos cada verano.', exp: 'Costumbres y hábitos en el pasado exigen pretérito imperfecto.' },
+            { q: 'Corrige el error: "La semana pasada ellos vivían en esa casa solo un día."', a: 'La semana pasada ellos vivieron en esa casa solo un día.', exp: 'Un periodo temporal estrictamente delimitado (un día) exige pretérito indefinido (vivieron).' }
+          ]
+        },
+        {
+          category: 'Modo Subjuntivo, Deseos, Hipótesis & Negociación Profesional',
+          focus: 'Expresión de voluntad, duda, hipótesis y fórmulas de cortesía ejecutiva.',
+          formula: 'Fórmula Subjuntiva: [Cláusula principal de deseo/duda] + que + [Verbo en Subjuntivo]',
+          table: '| Sujeto | Hablar (Subjuntivo) | Comer (Subjuntivo) | Ser (Subjuntivo) |\n|---|---|---|---|\n| Yo | hable | coma | sea |\n| Tú | hables | comas | seas |\n| Él/Ella | hable | coma | sea |\n| Nosotros | hablemos | comamos | seamos |\n| Ellos | hablen | coman | sean |',
+          trap: 'Con verbos de certeza o creencia afirmativa (creo que, es seguro que) se usa INDICATIVO; en negativa (no creo que) se exige SUBJUNTIVO.',
+          words: [
+            { word: 'negociación', meaning: 'negotiation', pronunciation: '/ne.ɣo.sjaˈsjon/', example: 'Es fundamental que la negociación sea transparente.' },
+            { word: 'consenso', meaning: 'consensus', pronunciation: '/konˈsen.so/', example: 'Buscamos que todos los socios alcancen un consenso mutuo.' },
+            { word: 'conveniente', meaning: 'convenient / advisable', pronunciation: '/kom.beˈnjen.te/', example: 'Sería conveniente que revisemos las cláusulas.' },
+            { word: 'imprescindible', meaning: 'essential / indispensable', pronunciation: '/im.pɾe.sinˈdi.βle/', example: 'Es imprescindible que cumplamos con la normativa vigente.' },
+            { word: 'viabilidad', meaning: 'feasibility', pronunciation: '/bja.βi.liˈðað/', example: 'Queremos evaluar la viabilidad técnica de la propuesta.' }
+          ],
+          dialogues: [
+            'Presidente: Es necesario que analicemos todas las cláusulas contractuales antes de firmar. (President: It is necessary that we analyze all contractual clauses before signing.)',
+            'Abogado: Totalmente de acuerdo. Sugiero que mantengamos una reunión de coordinación mañana. (Lawyer: Completely agree. I suggest that we hold a coordination meeting tomorrow.)',
+            'Presidente: Ojalá que alcancemos un acuerdo satisfactorio para ambas instituciones. (President: Hopefully we will reach a satisfactory agreement for both institutions.)',
+            'Abogado: Haremos todo lo posible para que los términos queden formalizados hoy mismo. (Lawyer: We will do our utmost so that terms are formalized this very day.)'
+          ],
+          drills: [
+            { q: 'Completa con subjuntivo: "Deseo que tú (tener) mucho éxito profesional."', a: 'tengas', exp: 'El verbo desear impone el uso del presente de subjuntivo con cambio de raíz (tener -> tengas).' },
+            { q: 'Traduce: "It is important that we arrive on time for the presentation."', a: 'Es importante que lleguemos a tiempo para la presentación.', exp: 'Juicios de valor impersonales (es importante que) rigen subjuntivo.' },
+            { q: 'Corrige: "No creo que él viene hoy."', a: 'No creo que él venga hoy.', exp: 'La negación de un verbo de opinión (no creer) rige obligatoriamente subjuntivo (venga).' }
+          ]
+        }
+      ]
+    },
+    de: {
+      langName: 'German (Deutsch)',
+      themes: [
+        {
+          category: 'Lautlehre, Begrüßung & Verbkonjugation im Präsens (Sein & Haben)',
+          focus: 'Aussprache der Umlaute (ä, ö, ü), Diphthonge (ei, ie, eu) und grundlegende Verbkonjugation.',
+          formula: 'Hauptsatz: [Subjekt] + [Finites Verb an Position 2] + [Objekt / Zeit / Ort]',
+          table: '| Subjekt | Sein (To Be) | Haben (To Have) | Lernen (To Learn) |\n|---|---|---|---|\n| Ich | bin | habe | lerne |\n| Du | bist | hast | lernst |\n| Er/Sie/Es | ist | hat | lernt |\n| Wir | sind | haben | lernen |\n| Ihr | seid | habt | lernt |\n| Sie/sie | sind | haben | lernen |',
+          trap: 'Das Verb steht im deutschen Hauptsatz IMMER an zweiter Stelle (Verb-Zweit-Stellung), auch bei vorangestellter Zeitangabe.',
+          words: [
+            { word: 'begrüßen', meaning: 'to greet / welcome', pronunciation: '/bəˈɡʁyːsn̩/', example: 'Wir begrüßen alle internationalen Studierenden herzlich.' },
+            { word: 'pünktlich', meaning: 'punctual / on time', pronunciation: '/ˈpʏŋktlɪç/', example: 'Der Unterricht beginnt immer pünktlich um neun Uhr.' },
+            { word: 'verstehen', meaning: 'to understand', pronunciation: '/fɛɐ̯ˈʃteːən/', example: 'Ich verstehe die grammatikalischen Regeln sehr gut.' },
+            { word: 'beruflich', meaning: 'professional / career-related', pronunciation: '/bəˈʁuːflɪç/', example: 'Sie ist beruflich in Berlin engagiert.' },
+            { word: 'Zusammenarbeit', meaning: 'collaboration', pronunciation: '/tsuˈzamənˌʔaʁbaɪ̯t/', example: 'Eine enge Zusammenarbeit führt zu großem Erfolg.' }
+          ],
+          dialogues: [
+            'Dozent: Guten Morgen! Wie heißen Sie und woher kommen Sie? (Lecturer: Good morning! What is your name and where do you come from?)',
+            'Student: Guten Tag! Ich heiße Markus und ich komme aus Frankfurt. (Student: Good day! My name is Markus and I come from Frankfurt.)',
+            'Dozent: Sehr erfreut. Was ist Ihr berufliches Hauptziel? (Lecturer: Delighted. What is your primary career goal?)',
+            'Student: Ich möchte fließend Deutsch für meine Karriere in der Industrie sprechen. (Student: I would like to speak fluent German for my career in industry.)'
+          ],
+          drills: [
+            { q: 'Konjugieren Sie das Verb "sein" für "wir".', a: 'wir sind', exp: 'Die 1. Person Plural von sein lautet regelmäßig im Präsens "sind".' },
+            { q: 'Übersetzen Sie ins Deutsche: "Today we have an important meeting."', a: 'Heute haben wir ein wichtiges Treffen.', exp: 'Durch die Voranstellung von "Heute" folgt das finite Verb "haben" zwingend an Position 2.' },
+            { q: 'Korrigieren Sie den Satzbau: "Heute ich lerne Deutsch."', a: 'Heute lerne ich Deutsch.', exp: 'Im Hauptsatz muss das finite Verb an Position 2 stehen, nicht das Subjekt.' }
+          ]
+        },
+        {
+          category: 'Akkusativ, Dativ & Wechselpräpositionen (Wo vs. Wohin)',
+          focus: 'Differenzierung von Bewegung (Wohin? + Akkusativ) und Lage/Position (Wo? + Dativ).',
+          formula: 'Lage (statisch): [Subjekt] + [Verb] + [Präposition] + DATIV (dem / der / dem / den +n)\nRichtung (dynamisch): [Subjekt] + [Verb] + [Präposition] + AKKUSATIV (den / die / das / die)',
+          table: '| Kasus | Maskulin | Feminin | Neutral | Plural |\n|---|---|---|---|---|\n| Nominativ | der | die | das | die |\n| Akkusativ | den | die | das | die |\n| Dativ | dem | der | dem | den (+n) |',
+          trap: 'Verben wie "stellen/stellen", "legen/liegen" und "setzen/sitzen" strikt trennen: transitiv = Akkusativ, intransitiv = Dativ.',
+          words: [
+            { word: 'entscheiden', meaning: 'to decide', pronunciation: '/ʔɛntˈʃaɪ̯dn̩/', example: 'Der Vorstand entscheidet über die neue Strategie.' },
+            { word: 'Termin', meaning: 'appointment / deadline', pronunciation: '/tɛʁˈmiːn/', example: 'Haben Sie morgen einen freien Termin für mich?' },
+            { word: 'Besprechung', meaning: 'meeting / discussion', pronunciation: '/bəˈʃpʁɛçʊŋ/', example: 'Die Besprechung findet im Konferenzraum statt.' },
+            { word: 'Ergebnis', meaning: 'result / outcome', pronunciation: '/ʔɛɐ̯ˈɡeːpnɪs/', example: 'Das Ergebnis der Analyse ist äußerst positiv.' },
+            { word: 'Lösung', meaning: 'solution', pronunciation: '/ˈløːzʊŋ/', example: 'Wir erarbeiten eine nachhaltige Lösung für das Problem.' }
+          ],
+          dialogues: [
+            'Kollegin A: Wo liegt der aktuelle Projektbericht? (Colleague A: Where is the current project report lying?)',
+            'Kollege B: Er liegt auf dem Schreibtisch der Abteilungsleiterin. (Colleague B: It is lying on the department head\'s desk.)',
+            'Kollegin A: Danke. Ich lege die neuen Verträge direkt daneben. (Colleague A: Thanks. I will place the new contracts right next to it.)',
+            'Kollege B: Perfekt, dann haben wir alle Dokumente geordnet beisammen. (Colleague B: Perfect, then we have all documents organized together.)'
+          ],
+          drills: [
+            { q: 'Ergänzen Sie den richtigen Artikel: "Das Buch liegt auf ___ Tisch (m)."', a: 'dem', exp: 'Frage "Wo?" verlangt Dativ. Maskuliner Dativ-Artikel ist "dem".' },
+            { q: 'Übersetzen Sie: "I am putting the document into the folder (f)."', a: 'Ich lege das Dokument in die Mappe.', exp: 'Frage "Wohin?" verlangt Akkusativ. Femininer Akkusativ-Artikel ist "die".' },
+            { q: 'Korrigieren Sie: "Ich helfe der Mann."', a: 'Ich helfe dem Mann.', exp: 'Das Verb "helfen" verlangt obligatorisch das Dativobjekt (dem Mann).' }
+          ]
+        },
+        {
+          category: 'Modalverben, Perfekt mit Haben/Sein & Nebensätze mit Weil/Dass',
+          focus: 'Satzklammer bei Modalverben, Perfektbildung und Verbletztstellung in Nebensätzen.',
+          formula: 'Nebensatz: [Hauptsatz], weil/dass + [Subjekt] + [Objekte/Angaben] + [Verb am ENDE].',
+          table: '| Subjekt | Können | Müssen | Wollen | Dürfen |\n|---|---|---|---|---|\n| Ich | kann | muss | will | darf |\n| Du | kannst | musst | willst | darfst |\n| Er/Sie | kann | muss | will | darf |\n| Wir | können | müssen | wollen | dürfen |\n| Ihr | könnt | müsst | wollt | dürft |\n| Sie | können | müssen | wollen | dürfen |',
+          trap: 'In Nebensätzen mit Konjunktionen (weil, dass, obwohl, wenn) wandert das konjugierte Verb IMMER ganz ans Satzende.',
+          words: [
+            { word: 'vorbereiten', meaning: 'to prepare', pronunciation: '/ˈfoːɐ̯bəˌʁaɪ̯tn̩/', example: 'Wir bereiten die Präsentation sorgfältig vor.' },
+            { word: 'Vereinbarung', meaning: 'agreement', pronunciation: '/fɛɐ̯ˈʔaɪ̯nbaʁʊŋ/', example: 'Die Vereinbarung wurde von beiden Parteien unterzeichnet.' },
+            { word: 'überzeugen', meaning: 'to convince', pronunciation: '/yːbɐˈtsɔɪ̯ɡn̩/', example: 'Ihre überzeugenden Argumente haben den Kunden begeistert.' },
+            { word: 'Herausforderung', meaning: 'challenge', pronunciation: '/hɛˈʁaʊ̯sfɔʁdəʁʊŋ/', example: 'Wir meistern diese technologische Herausforderung gemeinsam.' },
+            { word: 'fortschrittlich', meaning: 'progressive / advanced', pronunciation: '/ˈfɔʁtˌʃʁɪtlɪç/', example: 'Das Institut nutzt fortschrittliche Lehrmethoden.' }
+          ],
+          dialogues: [
+            'Projektleiter: Warum konnten Sie gestern nicht an der Sitzung teilnehmen? (Project Lead: Why couldn\'t you attend yesterday\'s meeting?)',
+            'Entwickler: Ich konnte nicht teilnehmen, weil ich einen dringenden Kundentermin hatte. (Developer: I couldn\'t attend because I had an urgent customer appointment.)',
+            'Projektleiter: Verstehe. Haben Sie das Protokoll bereits durchgelesen? (Project Lead: Understood. Have you already read through the minutes?)',
+            'Entwickler: Ja, ich habe alle Beschlüsse sorgfältig studiert und umgesetzt. (Developer: Yes, I have studied and implemented all resolutions carefully.)'
+          ],
+          drills: [
+            { q: 'Verbinden Sie die Sätze mit "weil": "Er lernt fleißig. Er will die Prüfung bestehen."', a: 'Er lernt fleißig, weil er die Prüfung bestehen will.', exp: 'Die Konjunktion "weil" schickt das konjugierte Hilfs-/Modalverb "will" ans absolute Satzende.' },
+            { q: 'Bilden Sie das Perfekt: "Wir (fahren) nach München."', a: 'Wir sind nach München gefahren.', exp: 'Verben der Ortsveränderung bilden das Perfekt obligatorisch mit dem Hilfsverb "sein".' },
+            { q: 'Korrigieren Sie: "Ich weiß, dass er kommt heute."', a: 'Ich weiß, dass er heute kommt.', exp: 'Im Nebensatz mit "dass" muss das finite Verb "kommt" am Satzende stehen.' }
+          ]
+        },
+        {
+          category: 'Konjunktiv II, Höflichkeit, Passiv & Fachsprache Wirtschaft',
+          focus: 'Hypothetische Höflichkeit (hätte, wäre, würde + Infinitiv) und Vorgangspassiv in der Fachkommunikation.',
+          formula: 'Höfliche Bitte / Konjunktiv II: [Subjekt] + würde gern / könnte / hätte gern + [Infinitiv am Ende]',
+          table: '| Subjekt | Sein (Konjunktiv II) | Haben (Konjunktiv II) | Werden (Konjunktiv II) |\n|---|---|---|---|\n| Ich | wäre | hätte | würde |\n| Du | wärest | hättest | würdest |\n| Er/Sie | wäre | hätte | würde |\n| Wir | wären | hätten | würden |\n| Ihr | wäret | hättet | würdet |\n| Sie | wären | hätten | würden |',
+          trap: 'Verwechseln Sie nicht "wurden" (Präteritum Indikativ = wurden) mit "würden" (Konjunktiv II mit Umlaut = würden).',
+          words: [
+            { word: 'Verhandlung', meaning: 'negotiation', pronunciation: '/fɛɐ̯ˈhantlʊŋ/', example: 'Die Verhandlung führte zu einem soliden Vertragsabschluss.' },
+            { word: 'Vorschlag', meaning: 'proposal / suggestion', pronunciation: '/ˈfoːɐ̯ʃlaːk/', example: 'Wir unterbreiten Ihnen einen konstruktiven Vorschlag.' },
+            { word: 'Gewährleistung', meaning: 'guarantee / warranty', pronunciation: '/ɡəˈveːɐ̯ˌlaɪ̯stʊŋ/', example: 'Die Gewährleistung beträgt vertragsgemäß zwei volle Jahre.' },
+            { word: 'Verantwortung', meaning: 'responsibility', pronunciation: '/fɛɐ̯ˈʔantvɔʁtʊŋ/', example: 'Unsere Führungskräfte übernehmen volle Verantwortung.' },
+            { word: 'wirtschaftlich', meaning: 'economic / commercial', pronunciation: '/ˈvɪʁtʃaftlɪç/', example: 'Das Projekt ist wirtschaftlich äußerst rentabel.' }
+          ],
+          dialogues: [
+            'Geschäftsführer: Wäre es möglich, den Liefertermin um zwei Wochen vorzuziehen? (Managing Director: Would it be possible to bring the delivery date forward by two weeks?)',
+            'Lieferant: Wir würden diesen Zeitplan gerne einhalten, wenn die Rohstofflieferung gesichert ist. (Supplier: We would gladly meet this schedule if the raw material supply is secured.)',
+            'Geschäftsführer: Ausgezeichnet. Könnten Sie uns die schriftliche Bestätigung heute zusenden? (Managing Director: Excellent. Could you send us the written confirmation today?)',
+            'Lieferant: Selbstverständlich. Die Dokumente werden unverzüglich per E-Mail übermittelt. (Supplier: Of course. The documents will be transmitted immediately via email.)'
+          ],
+          drills: [
+            { q: 'Formulieren Sie eine höfliche Bitte im Konjunktiv II: "Geben Sie mir das Dokument."', a: 'Könnten Sie mir bitte das Dokument geben? / Würden Sie mir bitte das Dokument geben?', exp: 'Im Geschäftsleben werden direkte Imperative durch Konjunktiv-II-Konstruktionen ersetzt.' },
+            { q: 'Wandeln Sie ins Vorgangspassiv um: "Der Ingenieur prüft das Bauteil."', a: 'Das Bauteil wird von dem Ingenieur geprüft.', exp: 'Passiv Präsens wird gebildet aus "werden" + Partizip II (geprüft).' },
+            { q: 'Korrigieren Sie: "Wenn ich Zeit habe, ich käme sofort."', a: 'Wenn ich Zeit hätte, käme ich sofort.', exp: 'Ein irrealer Konditionalsatz verlangt in beiden Teilsätzen den Konjunktiv II.' }
+          ]
+        }
+      ]
+    },
+    ja: {
+      langName: 'Japanese (日本語)',
+      themes: [
+        {
+          category: 'Phonetics, Kana Writing & Copula Sentences (A は B です)',
+          focus: 'Gojuon pitch accent, moraic timing, and fundamental copula equational grammar.',
+          formula: 'Equational sentence: [Topic/Noun A] + は (wa) + [Noun B] + です (desu).\nNegative: [Noun A] + は + [Noun B] + ではありません (dewa arimasen).',
+          table: '| Grammatical Role | Particle | Japanese Example | Romaji / Meaning |\n|---|---|---|---|\n| Topic Marker | は (wa) | 私は学生です | Watashi wa gakusei desu (I am a student) |\n| Question Marker | か (ka) | 日本人ですか | Nihonjin desu ka (Are you Japanese?) |\n| Inclusive Marker | も (mo) | 私もエンジニアです | Watashi mo enjinia desu (I am also an engineer) |\n| Genitive / Possessive | の (no) | 大学の先生 | Daigaku no sensei (University professor) |',
+          trap: 'The topic particle は is written with the hiragana character "ha", but pronounced strictly as "wa".',
+          words: [
+            { word: 'はじめまして', meaning: 'Nice to meet you (first time)', pronunciation: '/hadʑimemaɕite/', example: 'はじめまして、山田と申します。どうぞよろしく。' },
+            { word: '勉強', meaning: 'study / learning', pronunciation: '/beŋkʲoː/', example: '毎日日本語の勉強を一生懸命しています。' },
+            { word: '専門', meaning: 'specialty / major', pronunciation: '/semmoɴ/', example: '私の専門は情報工学と人工知能です。' },
+            { word: '仕事', meaning: 'work / profession', pronunciation: '/ɕiɡoto/', example: '東京の国際IT企業で仕事をしています。' },
+            { word: '目標', meaning: 'objective / goal', pronunciation: '/mokɯbʲoː/', example: '今年の目標はJLPTの試験に合格することです。' }
+          ],
+          dialogues: [
+            '先生: はじめまして！お名前とご専門は何ですか？ (Teacher: Nice to meet you! What is your name and specialty?)',
+            '学生: はじめまして、田中です。専門はデータサイエンスです。 (Student: Nice to meet you, I am Tanaka. My specialty is data science.)',
+            '先生: 素晴らしいですね。日本語を学ぶ目的は何ですか？ (Teacher: Wonderful. What is your purpose in studying Japanese?)',
+            '学生: 日本のグローバル企業で研究開発に参加したいからです。 (Student: Because I want to participate in R&D at a global Japanese enterprise.)'
+          ],
+          drills: [
+            { q: 'Fill in the particle: "わたし ___ エンジニアです。"', a: 'は', exp: 'The topic particle は identifies the subject/topic being described.' },
+            { q: 'Translate into polite Japanese: "Mr. Sato is not a student."', a: '佐藤さんは学生ではありません。 (Satō-san wa gakusei dewa arimasen.)', exp: 'Polite non-past negative copula is ではありません (dewa arimasen).' },
+            { q: 'Rectify the error: "わたしは先生ではありませんでしたです。"', a: 'わたしは先生ではありませんでした。', exp: 'ではありませんでした is already the complete polite past negative; appending another です is ungrammatical.' }
+          ]
+        },
+        {
+          category: 'Verb Conjugation (Masu Form, Te Form) & Essential Particles (を, に, で)',
+          focus: 'Godan, Ichidan, and Irregular (Kuru/Suru) verbs in present polite and connective Te forms.',
+          formula: 'Action Sentence: [Agent] + は + [Location] + で + [Object] + を + [Verb ます]\nDestination: [Agent] + は + [Destination] + に/へ + 行きます (ikimasu)',
+          table: '| Verb Class | Dictionary Form | Masu Form (Polite) | Te Form (Connective) | Meaning |\n|---|---|---|---|---|\n| Godan (U-verb) | 書く (kaku) | 書きます (kakimasu) | 書いて (kaite) | to write |\n| Godan (U-verb) | 飲む (nomu) | 飲みます (nomimasu) | 飲んで (nonde) | to drink |\n| Ichidan (Ru-verb) | 食べる (taberu) | 食べます (tabemasu) | 食べて (tabete) | to eat |\n| Irregular | する (suru) | します (shimasu) | して (shite) | to do |\n| Irregular | 来る (kuru) | 来ます (kimasu) | 来て (kite) | to come |',
+          trap: 'Do not confuse location of existence に (iru/aru) with location of active physical action で (e.g. レストランで食べる).',
+          words: [
+            { word: '確認する', meaning: 'to confirm / verify', pronunciation: '/kakuɲiɴ sɯɾɯ/', example: '重要な仕様書の内容を事前に確認します。' },
+            { word: '提出する', meaning: 'to submit', pronunciation: '/teːtɕɯtsɯ sɯɾɯ/', example: '明日の午前中までに進捗報告書を提出してください。' },
+            { word: '連絡', meaning: 'contact / communication', pronunciation: '/ɾeɴɾakɯ/', example: '変更点があれば直ちにメールで連絡します。' },
+            { word: '準備', meaning: 'preparation', pronunciation: '/dʑɯmbi/', example: '来週のカンファレンスの準備を進めています。' },
+            { word: '会議', meaning: 'meeting / conference', pronunciation: '/kaiɡi/', example: '午後二時から本社会議室で定例会議があります。' }
+          ],
+          dialogues: [
+            '課長: 今日の午後のスケジュールを確認しましたか？ (Section Chief: Have you confirmed this afternoon\'s schedule?)',
+            '社員: はい、二時からクライアントとオンラインで会議を行います。 (Employee: Yes, we will hold an online meeting with the client at 2:00.)',
+            '課長: 資料は全て準備できていますか？ (Section Chief: Are all materials completely prepared?)',
+            '社員: はい、最新のデータを反映して全員に配布しました。 (Employee: Yes, I updated with the latest data and distributed to everyone.)'
+          ],
+          drills: [
+            { q: 'Convert "読む (yomu)" into the polite affirmative form.', a: '読みます (yomimasu)', exp: 'Godan verb ending in mu changes its final syllable to mi and appends masu.' },
+            { q: 'Choose the correct particle: "図書館 (Library) ___ 本を読みます。"', a: 'で (de)', exp: 'The particle で marks the setting/location where an active action takes place.' },
+            { q: 'Rectify the error: "東京で行きます。"', a: '東京に行きます / 東京へ行きます。', exp: 'Direction of movement towards a destination requires に or へ, never で.' }
+          ]
+        },
+        {
+          category: 'Te-Form Syntax, Ongoing Actions (〜ています) & Permission/Prohibition',
+          focus: 'Expressing continuous states, current actions, permission (〜てもいいです), and prohibition (〜てはいけません).',
+          formula: 'Continuous state/action: [Verb て-form] + います (imasu)\nPermission: [Verb て-form] + もいいです (mo ii desu)\nProhibition: [Verb て-form] + は行けません (wa ikemasen)',
+          table: '| Pattern | Meaning | Example Sentence |\n|---|---|---|\n| 〜ています | ongoing action / state | 今プロジェクトを進めています (Currently advancing project) |\n| 〜てもいいです | you may / permission | ここで質問してもいいですか (May I ask a question here?) |\n| 〜てはいけません | must not / prohibition | 社外に資料を持ち出してはいけません (Must not take documents out) |\n| 〜てください | please do / polite request | 詳細なデータを送ってください (Please send detailed data) |',
+          trap: '結婚しています and 知っています express continuous states resulting from past events, not temporary progressive actions.',
+          words: [
+            { word: '開発する', meaning: 'to develop (software/tech)', pronunciation: '/kaihatsɯ sɯɾɯ/', example: '新しいAI駆動型プラットフォームを開発しています。' },
+            { word: '改善', meaning: 'continuous improvement (kaizen)', pronunciation: '/kaizeɴ/', example: '業務プロセスの継続的な改善を推進します。' },
+            { word: '効率的', meaning: 'efficient', pronunciation: '/koːɾitsɯteki/', example: 'より効率的なワークフローを設計することが急務です。' },
+            { word: '共有する', meaning: 'to share (info/files)', pronunciation: '/kʲoːjuː sɯɾɯ/', example: '最新の分析結果をチーム全体で共有しましょう。' },
+            { word: '成果', meaning: 'achievement / output', pronunciation: '/seːka/', example: 'このプロジェクトは素晴らしい成果を上げています。' }
+          ],
+          dialogues: [
+            'マネージャー: 現在、開発チームは何に取り組んでいますか？ (Manager: What is the development team currently working on?)',
+            'リード: ユーザーインターフェースの応答性を改善しています。 (Lead: We are currently improving the user interface responsiveness.)',
+            'マネージャー: 素晴らしい進捗ですね。テスト結果を共有してもらえますか？ (Manager: Great progress. Could you share the test results?)',
+            'リード: はい、ただいまドキュメントをまとめていますので少々お待ちください。 (Lead: Yes, I am compiling the documents right now, so please wait a moment.)'
+          ],
+          drills: [
+            { q: 'Formulate permission using "入る (hairu)": "May I enter the laboratory?"', a: '実験室に入ってもいいですか。 (Jikkenshitsu ni haitte mo ii desu ka.)', exp: 'Te-form of hairu is haitte; appending mo ii desu ka creates a polite request for permission.' },
+            { q: 'Express ongoing action: "He is currently reading the technical specification."', a: '彼は今、技術仕様書を読んでいます。 (Kare wa ima, gijutsu shiyōsho o yonde imasu.)', exp: 'Ongoing action uses the verb te-form + imasu (yonde imasu).' },
+            { q: 'Rectify: "ここでタバコを吸うてはいけません。"', a: 'ここでタバコを吸ってはいけません。', exp: 'The verb suu (to smoke) forms its te-form with a geminate stop: sutte, not suute.' }
+          ]
+        },
+        {
+          category: 'Honorifics (Keigo: Sonkeigo, Kenjougo) & Executive Business Japanese',
+          focus: 'Mastery of respect language (Sonkeigo for superiors) and humble language (Kenjougo for oneself).',
+          formula: 'Sonkeigo (Superiors): お + [Verb stem] + になります / Special verbs (いらっしゃる, おっしゃる)\nKenjougo (Self): お/ご + [Verb stem/Noun] + いたします / Special verbs (参る, 申す, 存じ上げる)',
+          table: '| Base Verb | Sonkeigo (Respectful - Superior\'s Action) | Kenjougo (Humble - Speaker\'s Action) |\n|---|---|---|\n| 行く / 来る | いらっしゃる / おいでになる | 参る (mairu) |\n| 言う | おっしゃる (ossharu) | 申す (mōsu) / 申し上げる |\n| 見る | ご覧になる (goran ni naru) | 拝見する (haiken suru) |\n| 知る | ご存知です (gozonji desu) | 存じ上げております (zonjiagete orimasu) |\n| 食べる | 召し上がる (meshiagaru) | いただく (itadaku) |',
+          trap: 'Never use Sonkeigo to describe your own actions or Kenjougo to describe actions of a client or customer.',
+          words: [
+            { word: 'ご検討', meaning: 'consideration / review (polite)', pronunciation: '/ɡokeɴtoː/', example: '何卒前向きにご検討いただけますようお願い申し上げます。' },
+            { word: '恐縮', meaning: 'feeling deeply grateful/obliged', pronunciation: '/kʲoːɕɯkɯ/', example: 'お忙しい中ご足労いただき大変恐縮でございます。' },
+            { word: '承知いたしました', meaning: 'certainly / understood (humble)', pronunciation: '/ɕoːtɕi itaɕimaɕita/', example: 'ご指示の件、かしこまりました。直ちに着手いたします。' },
+            { word: 'ご協調', meaning: 'cooperation / harmony', pronunciation: '/ɡokʲoːtɕoː/', example: '各部門との綿密な協調体制を確立いたします。' },
+            { word: '合意', meaning: 'mutual consensus / agreement', pronunciation: '/ɡoːi/', example: '両社間で事業提携に関する最終合意に達しました。' }
+          ],
+          dialogues: [
+            '代表取締役: 本日のご提案内容、大変興味深く拝見いたしました。 (Representative Director: I have reviewed your proposal today with deep interest.)',
+            '提携先代表: ご覧いただき誠にありがとうございます。何かご不明な点はおありでしょうか？ (Partner Rep: Thank you very much for reviewing it. Do you have any questions?)',
+            '代表取締役: 詳細なロードマップについて、来週改めてお話しいただけますか？ (Representative Director: Could we discuss the detailed roadmap again next week?)',
+            '提携先代表: かしこまりました。弊社の担当チームを同席させてご説明に伺います。 (Partner Rep: Certainly. I will bring our team to attend and explain in person.)'
+          ],
+          drills: [
+            { q: 'Convert "見る (miru)" to the humble form (Kenjougo) for the speaker.', a: '拝見する / 拝見いたします (haiken suru / haiken itashimasu)', exp: 'Haiken suru lowers the speaker\'s action of looking to show deep deference to the listener.' },
+            { q: 'Identify the error in this email: "お客様、明日の10時に弊社へ参ってください。"', a: 'お客様、明日の10時に弊社へいらしてください / お越しください。', exp: 'Mairu is humble (Kenjougo); commanding an honorable guest with mairu is a grave keigo breach.' },
+            { q: 'Translate: "I have understood the specifications."', a: '仕様書の件、承知いたしました / かしこまりました。', exp: 'In executive Japanese, standard "wakarimashita" is replaced with humble shōchi itashimashita.' }
+          ]
+        }
+      ]
+    },
+    ko: {
+      langName: 'Korean (한국어)',
+      themes: [
+        {
+          category: 'Hangul Phonology, Batchim & Fundamental Equational Sentences (-이에요/예요, -입니다)',
+          focus: 'Vowel harmony, complex batchim (final consonants), and formal vs polite equational copula.',
+          formula: 'Informal Polite: [Noun ending with consonant] + 이에요 / [Noun ending with vowel] + 예요\nFormal Polite: [Noun] + 입니다 (imnida) / Negative: [Noun] + 이/가 아닙니다 (i/ga animnida)',
+          table: '| Register | Affirmative Copula | Negative Copula | Usage Context |\n|---|---|---|---|\n| Formal Polite | 입니다 (imnida) | 아닙니다 (animnida) | Business meetings, news, military, official presentations |\n| Informal Polite | 이에요 / 예요 | 아니에요 | Daily conversations with peers, teachers, respectable adults |\n| Question Formal | 입니까? (imnikka?) | 아닙니까? | Formal professional inquiry |',
+          trap: 'Batchim liaison: When a syllable with a final consonant is followed by a vowel, the batchim sound carries over to the next syllable (e.g. 한국어 -> [한구거]).',
+          words: [
+            { word: '안녕하세요', meaning: 'Hello / How are you', pronunciation: '/an.njʌŋ.ha.se.jo/', example: '안녕하세요! 한국어 학습을 시작하게 되어 기쁩니다.' },
+            { word: '배우다', meaning: 'to learn', pronunciation: '/pɛ.u.da/', example: '우리는 매일 실용적인 한국어 표현을 배웁니다.' },
+            { word: '전공', meaning: 'academic major', pronunciation: '/tɕʌn.ɡoŋ/', example: '제 대학 전공은 소프트웨어 공학과 인공지능입니다.' },
+            { word: '열정', meaning: 'passion / enthusiasm', pronunciation: '/jʌl.t͈ɕʌŋ/', example: '모든 학생들이 배움에 대한 뜨거운 열정을 가지고 있습니다.' },
+            { word: '목표', meaning: 'goal / objective', pronunciation: '/mok.pʰjo/', example: '저의 궁극적인 목표는 글로벌 기업 취업입니다.' }
+          ],
+          dialogues: [
+            '선생님: 안녕하세요! 이름과 전공이 무엇입니까? (Teacher: Hello! What is your name and major?)',
+            '학생: 안녕하십니까! 저는 이준호이고 전공은 컴퓨터공학입니다. (Student: Hello! I am Lee Jun-ho and my major is computer engineering.)',
+            '선생님: 반갑습니다. 한국어를 공부하는 주된 목적은 무엇인가요? (Teacher: Nice to meet you. What is your main purpose in studying Korean?)',
+            '학생: 서울에 있는 IT 연구소에서 연구원으로 일하고 싶기 때문입니다. (Student: Because I want to work as a researcher at an IT lab in Seoul.)'
+          ],
+          drills: [
+            { q: 'Attach the correct informal polite copula to "학생" (Student).', a: '학생이에요', exp: '학생 ends in the batchim consonant "ㅇ", so 이에요 is attached.' },
+            { q: 'Translate: "I am not an American."', a: '저는 미국 사람이 아닙니다. (Jeoneun miguk sarami animnida.)', exp: 'Negative formal copula requires subject particle 이/가 + 아닙니다.' },
+            { q: 'Rectify the error: "저는 선생님 예요."', a: '저는 선생님이에요.', exp: '선생님 ends in a final consonant (ㅁ), so it must take 이에요, not 예요.' }
+          ]
+        },
+        {
+          category: 'Present Tense Verb Conjugation (-아요/어요) & Core Particles (은/는, 이/가, 을/를, 에/에서)',
+          focus: 'Vowel harmony rules for regular and irregular verb stems and functional case particles.',
+          formula: 'Verb conjugation: Bright vowels (ㅏ, ㅗ) -> + 아요 / All other vowels -> + 어요 / 하다 -> 해요\nLocation of Action: [Location] + 에서 + [Object] + 을/를 + [Action Verb]',
+          table: '| Verb Root | Stem Vowel | Regular Conjugation | Polite Present | Meaning |\n|---|---|---|---|---|\n| 가다 (to go) | ㅏ (Bright) | 가 + 아요 | 가요 | I go / you go |\n| 먹다 (to eat) | ㅓ (Dark) | 먹 + 어요 | 먹어요 | I eat / you eat |\n| 공부하다 (to study) | 하다 | 공부 + 해요 | 공부해요 | I study |\n| 마시다 (to drink) | ㅣ (Neutral) | 마시 + 어요 | 마셔요 | I drink |\n| 일하다 (to work) | 하다 | 일 + 해요 | 일해요 | I work |',
+          trap: 'Differentiate 에 (destination of movement e.g. 회사에 가요 or static existence) from 에서 (location where dynamic action occurs e.g. 회사에서 일해요).',
+          words: [
+            { word: '협력하다', meaning: 'to cooperate / collaborate', pronunciation: '/hjʌm.njʌkʰa.da/', example: '우리는 다국적 팀과 긴밀하게 협력하고 있습니다.' },
+            { word: '회의', meaning: 'meeting / conference', pronunciation: '/hø.i/', example: '오후 두 시에 본사 대회의실에서 전략 회의가 있습니다.' },
+            { word: '발표하다', meaning: 'to present / announce', pronunciation: '/pal.pʰjo.ha.da/', example: '오늘 연구 성과를 동료들 앞에서 발표합니다.' },
+            { word: '해결책', meaning: 'solution', pronunciation: '/hɛ.ɡjʌl.tɕʰɛk/', example: '복잡한 기술적 문제에 대한 혁신적인 해결책을 찾았습니다.' },
+            { word: '중요하다', meaning: 'to be important', pronunciation: '/tɕuŋ.jo.ha.da/', example: '팀원 간의 투명한 의사소통은 대단히 중요합니다.' }
+          ],
+          dialogues: [
+            '팀장: 오늘 어디에서 프로젝트 기획 회의를 진행합니까? (Team Leader: Where are we holding the project planning meeting today?)',
+            '연구원: 3층 스마트 회의실에서 진행합니다. 자료도 이미 준비했습니다. (Researcher: In the 3rd-floor smart meeting room. Materials are already prepared.)',
+            '팀장: 아주 훌륭합니다. 주요 안건에 대해 핵심을 잘 짚어주세요. (Team Leader: Very excellent. Please pinpoint the key issues clearly.)',
+            '연구원: 네, 철저하게 준비하여 명확하게 발표하겠습니다. (Researcher: Yes, I will prepare thoroughly and present with clarity.)'
+          ],
+          drills: [
+            { q: 'Conjugate "만나다 (to meet)" into the informal polite present tense.', a: '만나요', exp: 'Stem vowel is ㅏ (bright), so 아요 is added: 만나 + 아요 -> 만나요.' },
+            { q: 'Select the correct particle: "도서관 (Library) ___ 한국어를 공부해요."', a: '에서', exp: 'Active learning action takes place inside the library, requiring dynamic location particle 에서.' },
+            { q: 'Rectify: "저는 커피를 카페에 마셔요."', a: '저는 커피를 카페에서 마셔요.', exp: 'Drinking coffee is an action occurring inside the cafe, which requires 에서 instead of 에.' }
+          ]
+        },
+        {
+          category: 'Past Tense (-았/었어요), Future Intentions (-(으)ㄹ 거예요) & Connective Particles',
+          focus: 'Chronological narrative discourse, completed milestones, future planning, and contrastive conjunctions (-지만, -고).',
+          formula: 'Past: Stem + -았어요 (bright) / -었어요 (other) / -했어요 (하다)\nFuture: Stem with batchim + 을 거예요 / Stem without batchim + ㄹ 거예요',
+          table: '| Verb | Past Tense (과거) | Future Tense (미래) | Connective (-고 / -지만) |\n|---|---|---|---|\n| 가다 (go) | 갔어요 | 갈 거예요 | 가고 / 가지만 |\n| 만들다 (make) | 만들었어요 | 만들 거예요 | 만들고 / 만들지만 |\n| 개발하다 (develop) | 개발했어요 | 개발할 거예요 | 개발하고 / 개발하지만 |\n| 읽다 (read) | 읽었어요 | 읽을 거예요 | 읽고 / 읽지만 |',
+          trap: 'Irregular ㅂ verbs: Verb roots ending in ㅂ (like 돕다, 춥다, 어렵다) change ㅂ into 우 before vowel endings (어려웠어요, 어려울 거예요).',
+          words: [
+            { word: '달성하다', meaning: 'to achieve / accomplish', pronunciation: '/tal.sʌŋ.ha.da/', example: '지난 분기 목표 실적을 성공적으로 달성했습니다.' },
+            { word: '추진하다', meaning: 'to propel / promote forward', pronunciation: '/tɕʰu.dʑin.ha.da/', example: '글로벌 시장 진출 전략을 적극적으로 추진할 것입니다.' },
+            { word: '경험', meaning: 'experience', pronunciation: '/kjʌŋ.hʌm/', example: '다양한 실무 경험이 큰 자산이 되었습니다.' },
+            { word: '발전', meaning: 'development / progress', pronunciation: '/pal.tɕʌn/', example: '지속적인 기술 혁신을 통해 큰 발전을 이루었습니다.' },
+            { word: '일정', meaning: 'schedule / itinerary', pronunciation: '/il.tɕʌŋ/', example: '상반기 프로젝트 일정을 철저히 준수하겠습니다.' }
+          ],
+          dialogues: [
+            '이사: 어제 고객사와의 미팅 결과는 어떠했습니까? (Director: How was the result of yesterday\'s meeting with the client?)',
+            '수석: 상호 협력 방안에 대해 심도 있게 논의했고 매우 긍정적인 반응을 얻었습니다. (Principal: We discussed mutual cooperation in depth and received very positive feedback.)',
+            '이사: 잘하셨습니다. 향후 실행 계획은 어떻게 준비할 예정입니까? (Director: Well done. How do you plan to prepare the future execution plan?)',
+            '수석: 다음 주까지 구체적인 계약서 초안을 작성하여 보고드리겠습니다. (Principal: I will draft the specific contract proposal and report by next week.)'
+          ],
+          drills: [
+            { q: 'Conjugate "배우다 (to learn)" into past tense.', a: '배웠어요', exp: 'Stem ends in ㅜ, which contracts with -었어요 to produce 배웠어요.' },
+            { q: 'Translate: "We will sign the agreement next month."', a: '우리는 다음 달에 협약서에 서명할 거예요.', exp: 'Future probability/plan requires -(으)ㄹ 거예요.' },
+            { q: 'Rectify: "어제 날씨가 춥었어요."', a: '어제 날씨가 추웠어요.', exp: '춥다 is an irregular ㅂ verb; the ㅂ transforms to 우, yielding 추웠어요.' }
+          ]
+        },
+        {
+          category: 'Business Honorifics (-(으)시-, -드리다), Professional Hierarchy & Corporate Negotiations',
+          focus: 'Subject honorific infix -(으)시-, humble objective verbs, and formal business register (-습니다/십니까).',
+          formula: 'Subject Honorific: [Verb stem] + -(으)십니다 / -(으)세요\nObjective Humble: [Superior에게] + [Verb stem] + -어/아 드리다 (말씀드리다, 전해드리다)',
+          table: '| Standard Verb | Honorific Form (Subject is Superior) | Humble Form (Speaker to Superior) |\n|---|---|---|\n| 말하다 (to speak) | 말씀하시다 | 말씀드리다 |\n| 주다 (to give) | 주시다 | 드리다 |\n| 만나다 (to meet) | 만나시다 | 뵙다 / 찾아뵙다 |\n| 있다 (to exist) | 계시다 (person) / 있으시다 (possession) | - |\n| 먹다 (to eat) | 드시다 / 잡수시다 | - |',
+          trap: 'Differentiate 계시다 (respecting the person directly e.g. 사장님께서 방에 계십니다) from 있으시다 (respecting the person\'s attributes e.g. 사장님께서는 질문이 있으십니다).',
+          words: [
+            { word: '검토하시다', meaning: 'to review / examine (honorific)', pronunciation: '/kʌm.tʰo.ha.ɕi.da/', example: '대표이사님께서 계약 조건을 직접 검토하셨습니다.' },
+            { word: '말씀드리다', meaning: 'to tell / report (humble)', pronunciation: '/mal.s͈ɯm.dɯ.ɾi.da/', example: '오늘 회의에서 결정된 주요 사안을 간략히 말씀드리겠습니다.' },
+            { word: '합의', meaning: 'mutual agreement / accord', pronunciation: '/ha.bwi/', example: '양측의 이견을 조율하여 최종 합의에 도달하였습니다.' },
+            { word: '신뢰', meaning: 'trust / confidence', pronunciation: '/ɕil.lø/', example: '고객과의 두터운 신뢰 구축이 기업의 최우선 가치입니다.' },
+            { word: '전략적', meaning: 'strategic', pronunciation: '/tɕʌn.ɾjak̚.tɕ͈ʌk/', example: '두 회사는 글로벌 시장에서 전략적 동반자 관계를 맺었습니다.' }
+          ],
+          dialogues: [
+            '대표: 이번 분기 해외 진출 전략에 대해 보고해 주시겠습니까? (CEO: Would you please report on this quarter\'s overseas expansion strategy?)',
+            '본부장: 네, 대표이사님. 현지 시장 분석 및 파트너십 구축 계획을 말씀드리겠습니다. (Head: Yes, CEO. I will present the local market analysis and partnership plans.)',
+            '대표: 아주 꼼꼼하게 검토하셨군요. 위험 요인은 어떻게 대비하고 있습니까? (CEO: You reviewed it very thoroughly. How are you preparing for risk factors?)',
+            '본부장: 철저한 법률 자문과 비상 대응 매뉴얼을 수립하여 철저히 대비하고 있습니다. (Head: We are preparing thoroughly by establishing legal counsel and a contingency manual.)'
+          ],
+          drills: [
+            { q: 'Convert "말하다 (to speak)" into the humble form when addressing an executive superior.', a: '말씀드리다 (말씀드리겠습니다)', exp: 'When the speaker reports to an honored superior, humble 말씀드리다 is required.' },
+            { q: 'Identify the error: "대표님, 여기에 이름을 쓰세요."', a: '대표님, 여기에 성함을 써 주십시오 / 작성해 주십시오.', exp: 'To address a CEO, 이름 is elevated to 성함 and the directive is softened with respectful requests.' },
+            { q: 'Translate: "The Director is currently on a business trip abroad."', a: '이사님께서는 지금 해외 출장 중이십니다 / 출장을 가셨습니다.', exp: 'Subject honorific infix -시- is mandatory when speaking of the actions of a senior director.' }
+          ]
+        }
+      ]
+    },
+    fr: {
+      langName: 'French (Français)',
+      themes: Object.values(FRENCH_MONTHS).map(m => ({
+        category: m.topicTitle,
+        focus: m.grammarFocus,
+        formula: m.syntacticFormula,
+        table: m.conjugationTable,
+        trap: m.phoneticsTrap,
+        words: m.vocab.map(v => ({ word: v.word, meaning: v.meaning, pronunciation: v.pronunciation, example: v.example_sentence })),
+        dialogues: m.dialogue,
+        drills: m.drills.map(d => ({ q: d.question, a: d.answer, exp: d.explanation }))
+      }))
+    }
+  };
 
-  // Rotate vocabulary selection per day so every day highlights different words
-  const vocabOffset = (dayInMonth - 1) % monthTheme.vocab.length;
+  const profile = LANGUAGE_PROFILES[langKey] || LANGUAGE_PROFILES.fr;
+  const themeIndex = (monthNumber - 1) % profile.themes.length;
+  const theme = profile.themes[themeIndex];
+
+  // Derive dynamic daily subtopic ensuring Day 1 to Day N are completely distinct
+  const dailyProgressionPill = `${monthName} Day ${dayInMonth} (Class ${dayNumber}): ${theme.category} • Module Phase ${weekInMonth}`;
+
+  // Unique daily vocabulary rotation (3 distinct words chosen specifically per day)
+  const vLen = theme.words.length;
+  const vIndex1 = (dayInMonth - 1) % vLen;
+  const vIndex2 = (dayInMonth) % vLen;
+  const vIndex3 = (dayInMonth + 1) % vLen;
   const dayVocab = [
-    monthTheme.vocab[vocabOffset],
-    monthTheme.vocab[(vocabOffset + 1) % monthTheme.vocab.length],
-    monthTheme.vocab[(vocabOffset + 2) % monthTheme.vocab.length]
+    {
+      word: theme.words[vIndex1].word,
+      meaning: theme.words[vIndex1].meaning,
+      pronunciation: theme.words[vIndex1].pronunciation,
+      example_sentence: theme.words[vIndex1].example
+    },
+    {
+      word: theme.words[vIndex2].word,
+      meaning: theme.words[vIndex2].meaning,
+      pronunciation: theme.words[vIndex2].pronunciation,
+      example_sentence: theme.words[vIndex2].example
+    },
+    {
+      word: theme.words[vIndex3].word,
+      meaning: theme.words[vIndex3].meaning,
+      pronunciation: theme.words[vIndex3].pronunciation,
+      example_sentence: theme.words[vIndex3].example
+    }
   ];
 
-  // Rotate drills so every day within the month highlights different exercises
-  const drillOffset = (dayInMonth - 1) % monthTheme.drills.length;
-  const dayDrills = [
-    monthTheme.drills[drillOffset],
-    monthTheme.drills[(drillOffset + 1) % monthTheme.drills.length],
-    monthTheme.drills[(drillOffset + 2) % monthTheme.drills.length]
+  // Daily drills rotation
+  const dLen = theme.drills.length;
+  const dIndex1 = (dayInMonth - 1) % dLen;
+  const dIndex2 = (dayInMonth) % dLen;
+  const selectedDrills = [
+    {
+      question: theme.drills[dIndex1].q,
+      answer: theme.drills[dIndex1].a,
+      explanation: theme.drills[dIndex1].exp
+    },
+    {
+      question: theme.drills[dIndex2].q,
+      answer: theme.drills[dIndex2].a,
+      explanation: theme.drills[dIndex2].exp
+    }
   ];
 
-  const studyNotes = `### Master Study Guide: ${monthName} Day ${dayInMonth} (Course Day ${dayNumber} of ${totalDays})\nCertified CEFR ${level} Curriculum — ${baseTopic}\n\n**1. Syntactic Architecture & Word Order Formula:**\n${monthTheme.syntacticFormula}\n\n**2. Active Conjugation Matrix & Paradigm Tables:**\n${monthTheme.conjugationTable}\n\n**3. Phonetic Nuance & Native Traps:**\n- ${monthTheme.phoneticsTrap}\n- **Focus for Day ${dayNumber}**: Pay special attention to elision, liaisons, and sentence cadence in fast conversational speech.\n\n**4. Pedagogical Blueprint:**\nToday's 1-hour session emphasizes active communicative recall. Students must apply the target structures in natural, unprompted spoken exchanges.`;
+  // Dynamic study guide text with authentic linguistic markdown
+  const studyNotes = `### Master Study Guide: ${monthName} Day ${dayInMonth} (Course Day ${dayNumber} of ${totalDays})
+Language Track: **${profile.langName}** • Certified CEFR ${level} • ${baseTopic}
+
+**1. Syntactic Architecture & Word Order Formula:**
+${theme.formula}
+
+**2. Active Paradigm & Conjugation Matrix:**
+${theme.table}
+
+**3. Native Phonetic Traps & Auditory Discrimination for Day ${dayNumber}:**
+- ${theme.trap}
+- Daily focus: Continuous pitch cadence, liaison mechanics, and natural speech rhythm.
+
+**4. Pedagogical Blueprint:**
+Today's 1-hour session emphasizes active communicative production. Students apply these structures in authentic spoken roleplay.`;
 
   return {
     day_number: dayNumber,
@@ -483,15 +991,18 @@ export function generateCurriculumDay(
     month_total_days: monthTotalDays,
     week_number: weekInMonth,
     module_week: `${monthName} • Day ${dayInMonth} of ${monthTotalDays} (Course Day ${dayNumber} of ${totalDays})`,
-    day_topic: daySubtopicPill,
-    grammar_rules_detail: `Senior Faculty Lecture for ${monthName} Day ${dayInMonth}: ${monthTheme.grammarFocus} This lesson systematically builds retention through structured 1-hour applied drills, auditory discrimination, and contextual discourse.`,
+    day_topic: dailyProgressionPill,
+    grammar_rules_detail: `Senior Faculty Lecture for ${monthName} Day ${dayInMonth}: ${theme.focus} Systematically engineered for active 1-hour communicative recall and grammar mastery.`,
     study_notes_markdown: studyNotes,
     vocabulary_bank: dayVocab,
-    classroom_dialogues: monthTheme.dialogue,
-    pedagogical_instructions: `Faculty Instruction for Day ${dayNumber}: Conduct choral pronunciation drills on target forms. Rectify syntax errors immediately before moving to interactive roleplay.`,
-    video_breakdown_analysis: `Analytical breakdown for ${monthName} Day ${dayInMonth}: In-depth analysis of vocal inflection, speaker interaction, and authentic communicative phrases extracted from ${monthName}'s thematic milestone (${monthTheme.topicTitle}). Focus on liaison mechanics and spoken rhythm.`,
-    in_class_exercises: dayDrills.map(d => d.question),
-    exercise_solutions: dayDrills,
-    homework_tasks: monthTheme.homework
+    classroom_dialogues: theme.dialogues,
+    pedagogical_instructions: `Faculty Directive for Day ${dayNumber}: Conduct choral pronunciation on target items. Rectify syntax errors immediately during active student production.`,
+    video_breakdown_analysis: `Audio/Video Analysis for ${monthName} Day ${dayInMonth}: Detailed breakdown of authentic native vocal inflections, pitch accent, and communicative context for ${theme.category}.`,
+    in_class_exercises: selectedDrills.map(d => d.question),
+    exercise_solutions: selectedDrills,
+    homework_tasks: [
+      `Complete written workbook exercises for Day ${dayNumber} applying the target syntactic formula.`,
+      `Record a 60-second voice note practicing the Day ${dayNumber} live dialogue script with authentic native pronunciation.`
+    ]
   };
 }
