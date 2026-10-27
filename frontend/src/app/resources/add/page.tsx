@@ -20,6 +20,7 @@ import {
   Database,
   ArrowRight
 } from 'lucide-react';
+import SessionParametersSelector, { SessionParametersValue, CourseTrackMode } from '@/components/academic/SessionParametersSelector';
 
 const CATEGORY_PRESETS = [
   'Grammar & Vocab',
@@ -34,35 +35,6 @@ const CATEGORY_PRESETS = [
   'Study Materials'
 ];
 
-const LANGUAGE_OPTIONS = ['Japanese', 'German', 'French', 'Spanish', 'English'];
-
-const getDynamicLevelOptions = (language: string) => {
-  if (language.toLowerCase() === 'japanese') {
-    return [
-      { value: 'N5–N1', label: 'JLPT N5–N1 (All Levels)' },
-      { value: 'N5', label: 'JLPT N5 (Beginner)' },
-      { value: 'N4', label: 'JLPT N4 (Basic)' },
-      { value: 'N3', label: 'JLPT N3 (Intermediate)' },
-      { value: 'N2', label: 'JLPT N2 (Pre-Advanced)' },
-      { value: 'N1', label: 'JLPT N1 (Advanced)' },
-      { value: 'Beginner-Interm', label: 'Beginner–Intermediate' },
-      { value: 'All Levels', label: 'All Levels' },
-    ];
-  }
-
-  return [
-    { value: 'A1–C2', label: 'CEFR A1–C2 (All Levels)' },
-    { value: 'A1', label: 'CEFR A1 (Beginner)' },
-    { value: 'A2', label: 'CEFR A2 (Elementary)' },
-    { value: 'B1', label: 'CEFR B1 (Intermediate)' },
-    { value: 'B2', label: 'CEFR B2 (Upper Intermediate)' },
-    { value: 'C1', label: 'CEFR C1 (Advanced)' },
-    { value: 'C2', label: 'CEFR C2 (Mastery)' },
-    { value: 'Beginner-Interm', label: 'Beginner–Intermediate' },
-    { value: 'All Levels', label: 'All Levels' },
-  ];
-};
-
 interface BulkRowItem {
   tutorName: string;
   category: string;
@@ -71,6 +43,19 @@ interface BulkRowItem {
   purpose: string;
   link: string;
   language: string;
+}
+
+interface SingleFormState {
+  tutorName: string;
+  category: string;
+  title: string;
+  language: string;
+  level: string;
+  trackMode: CourseTrackMode;
+  customDays: number;
+  customDaysMode: 'TOTAL' | 'MONTHLY';
+  purpose: string;
+  link: string;
 }
 
 export default function AddResourcePage() {
@@ -82,13 +67,16 @@ export default function AddResourcePage() {
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
-  // Single Entry Form State (Empty by default)
-  const [singleForm, setSingleForm] = useState({
+  // Single Entry Form State
+  const [singleForm, setSingleForm] = useState<SingleFormState>({
     tutorName: '',
     category: '',
     title: '',
-    language: '',
-    level: '',
+    language: 'Spanish',
+    level: 'A1',
+    trackMode: 'STANDARD',
+    customDays: 5,
+    customDaysMode: 'TOTAL',
     purpose: '',
     link: '',
   });
@@ -267,8 +255,11 @@ Hhmika Jain,Study Notes,JP Notes,Beginner-Interm,"Japanese grammar notes, vocabu
         tutorName: '',
         category: '',
         title: '',
-        language: '',
-        level: '',
+        language: 'Spanish',
+        level: 'A1',
+        trackMode: 'STANDARD',
+        customDays: 5,
+        customDaysMode: 'TOTAL',
         purpose: '',
         link: '',
       });
@@ -405,58 +396,31 @@ Hhmika Jain,Study Notes,JP Notes,Beginner-Interm,"Japanese grammar notes, vocabu
             <span className="text-[11px] font-bold text-slate-400">* Required Fields</span>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            {/* 1. Target Language */}
-            <div className="space-y-1">
-              <label className="text-xs font-extrabold text-slate-700 flex items-center gap-1">
-                <Globe className="w-3.5 h-3.5 text-cyan-600" /> 1. Target Language *
-              </label>
-              <select
-                value={singleForm.language}
-                required
-                onChange={e => {
-                  const newLang = e.target.value;
-                  setSingleForm(prev => ({
-                    ...prev,
-                    language: newLang,
-                    level: '',
-                    category: '',
-                  }));
-                }}
-                className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs font-semibold text-slate-800 outline-none focus:ring-2 focus:ring-[#0052CC] cursor-pointer"
-              >
-                <option value="">-- Select Target Language --</option>
-                {LANGUAGE_OPTIONS.map(lang => (
-                  <option key={lang} value={lang}>{lang}</option>
-                ))}
-              </select>
-            </div>
+          {/* 1. Unified Session Parameters & Course Track Selector */}
+          <SessionParametersSelector
+            value={{
+              language: singleForm.language,
+              level: singleForm.level,
+              trackMode: singleForm.trackMode,
+              customDays: singleForm.customDays,
+              customDaysMode: singleForm.customDaysMode,
+            }}
+            onChange={(params) => {
+              setSingleForm(prev => ({
+                ...prev,
+                language: params.language,
+                level: params.level,
+                trackMode: params.trackMode,
+                customDays: params.customDays || 5,
+                customDaysMode: params.customDaysMode || 'TOTAL',
+              }));
+            }}
+            compact={false}
+            collapsible={true}
+            defaultExpanded={true}
+          />
 
-            {/* 2. Level */}
-            <div className="space-y-1">
-              <label className="text-xs font-extrabold text-slate-700 flex items-center gap-1">
-                <Layers className="w-3.5 h-3.5 text-amber-600" /> 2. Level ({singleForm.language === 'Japanese' ? 'JLPT' : singleForm.language ? 'CEFR' : 'Framework'}) *
-              </label>
-              <select
-                value={singleForm.level}
-                required
-                disabled={!singleForm.language}
-                onChange={e => {
-                  const newLevel = e.target.value;
-                  setSingleForm(prev => ({
-                    ...prev,
-                    level: newLevel,
-                    category: '',
-                  }));
-                }}
-                className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs font-semibold text-slate-800 outline-none focus:ring-2 focus:ring-[#0052CC] cursor-pointer disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed opacity-80"
-              >
-                <option value="">{!singleForm.language ? '-- Select Language First --' : '-- Select Level --'}</option>
-                {getDynamicLevelOptions(singleForm.language).map(opt => (
-                  <option key={opt.value} value={opt.value}>{opt.label}</option>
-                ))}
-              </select>
-            </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
 
             {/* 3. Resource Category */}
             <div className="space-y-1">

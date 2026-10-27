@@ -21,6 +21,7 @@ import {
   CheckCircle2,
   Zap
 } from 'lucide-react';
+import SessionParametersSelector, { SessionParametersValue } from '@/components/academic/SessionParametersSelector';
 
 // Helper Component for Animated Smooth Number Count-Up (Hydration-Safe)
 function AnimatedStatNumber({ value, isLoading }: { value: number; isLoading: boolean }) {
@@ -77,6 +78,14 @@ export default function DashboardPage() {
   const { resources, stats, isLoading, error } = useResources();
   const { languages, categories } = useMasterData();
 
+  const [dashboardSessionParams, setDashboardSessionParams] = React.useState<SessionParametersValue>({
+    language: 'Spanish',
+    level: 'A1',
+    trackMode: 'STANDARD',
+    customDays: 5,
+    customDaysMode: 'TOTAL',
+  });
+
   const recentResources = resources.slice(0, 4);
   const pendingResources = resources.filter(r => 
     r.status === 'PENDING_REVIEW' || r.status === 'CHANGES_REQUIRED' || r.status === 'Pending Review'
@@ -126,6 +135,47 @@ export default function DashboardPage() {
           <span>{error}</span>
         </div>
       )}
+
+      {/* 2. Unified Session Parameters & Academic Track Engine */}
+      <div className="space-y-3">
+        <SessionParametersSelector
+          value={dashboardSessionParams}
+          onChange={(newParams) => setDashboardSessionParams(newParams)}
+          title="Active Session Parameters & Academic Track"
+          subtitle="Configure target foreign language, proficiency level, and calendar duration track across your academic workspace"
+          compact={false}
+          collapsible={true}
+          defaultExpanded={true}
+        />
+
+        {/* Quick 1-Click Launch Bar for Active Parameters */}
+        <div className="p-3.5 bg-white border border-slate-200 rounded-2xl flex flex-wrap items-center justify-between gap-3 shadow-2xs">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-xs font-bold text-slate-700">Configured Focus:</span>
+            <span className="px-2.5 py-1 rounded-full bg-blue-50 text-[#0052CC] border border-blue-200 text-xs font-black">
+              {dashboardSessionParams.language} • {dashboardSessionParams.level}
+            </span>
+            <span className="px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-200 text-xs font-black">
+              {dashboardSessionParams.trackMode === 'CUSTOM' ? `${dashboardSessionParams.customDays || 5} Days Sprint` : dashboardSessionParams.trackMode.replace('_', ' ')}
+            </span>
+          </div>
+
+          <div className="flex items-center gap-2 ml-auto flex-wrap">
+            <Link
+              href="/resources/find"
+              className="px-3.5 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-bold transition-all flex items-center gap-1.5"
+            >
+              <Search className="w-3.5 h-3.5 text-[#0052CC]" /> Find Aligned Resources
+            </Link>
+            <Link
+              href="/resources/generate"
+              className="px-3.5 py-1.5 rounded-xl bg-[#0052CC] hover:bg-blue-700 text-white text-xs font-bold transition-all flex items-center gap-1.5 shadow-xs"
+            >
+              <Sparkles className="w-3.5 h-3.5" /> Generate AI Material
+            </Link>
+          </div>
+        </div>
+      </div>
 
 
       {/* 3. Quick AI & Management Hub */}

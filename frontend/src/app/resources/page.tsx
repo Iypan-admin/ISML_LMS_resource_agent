@@ -9,6 +9,7 @@ import SearchableSelect from '@/components/common/SearchableSelect';
 import { EmptyState } from '@/components/common/States';
 import { LayoutGrid, List, RotateCcw, Filter, Plus } from 'lucide-react';
 import Link from 'next/link';
+import SessionParametersSelector, { SessionParametersValue } from '@/components/academic/SessionParametersSelector';
 
 export default function ResourceLibraryPage() {
   const { filters, setFilters, resetFilters, filteredResources, resources, isLoading, error } = useResources();
@@ -249,11 +250,37 @@ export default function ResourceLibraryPage() {
         })}
       </div>
 
+      {/* Unified Session Parameters & Course Track Filter */}
+      <SessionParametersSelector
+        value={{
+          language: filters.language === 'All' ? 'Spanish' : (filters.language || 'Spanish'),
+          level: filters.level === 'All' ? 'A1' : (filters.level || 'A1'),
+          trackMode: (filters as any).trackMode || 'STANDARD',
+          customDays: (filters as any).customDays || 5,
+          customDaysMode: (filters as any).customDaysMode || 'TOTAL',
+        }}
+        onChange={(params) => {
+          setFilters(prev => ({
+            ...prev,
+            language: params.language,
+            level: params.level,
+            trackMode: params.trackMode,
+            customDays: params.customDays,
+            customDaysMode: params.customDaysMode,
+          } as any));
+        }}
+        title="Session Parameters & Course Track Filter"
+        subtitle="Filter library resources by Core Foreign Language, CEFR/JLPT Proficiency, and Calendar Duration Track"
+        compact={false}
+        collapsible={true}
+        defaultExpanded={true}
+      />
+
       {/* Filter Control Bar */}
       <div className="isml-card p-4 space-y-3 bg-white border border-slate-200 rounded-2xl shadow-xs">
         <div className="flex items-center justify-between">
           <span className="text-xs font-black text-[#0B2447] flex items-center gap-1.5 uppercase tracking-wider">
-            <Filter className="w-3.5 h-3.5 text-[#0052CC]" /> Search & Filter Knowledge Base
+            <Filter className="w-3.5 h-3.5 text-[#0052CC]" /> Additional Filters (Topic, Format, Status)
           </span>
 
           <button

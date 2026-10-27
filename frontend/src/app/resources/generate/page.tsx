@@ -23,6 +23,7 @@ import {
   Trash2,
   X
 } from 'lucide-react';
+import SessionParametersSelector, { SessionParametersValue } from '@/components/academic/SessionParametersSelector';
 
 interface GeneratedMaterial {
   id?: string;
@@ -622,10 +623,19 @@ export default function GenerateResourcePage() {
   // SSR Hydration mount state
   const [isMounted, setIsMounted] = useState<boolean>(false);
 
-  // 3 Dropdown States (Empty by default)
-  const [selectedLanguage, setSelectedLanguage] = useState<string>('');
-  const [selectedLevel, setSelectedLevel] = useState<string>('');
-  const [selectedSkill, setSelectedSkill] = useState<string>('');
+  // Unified Session Parameters & Track State
+  const [sessionParams, setSessionParams] = useState<SessionParametersValue>({
+    language: 'Spanish',
+    level: 'A1',
+    trackMode: 'STANDARD',
+    customDays: 5,
+    customDaysMode: 'TOTAL',
+  });
+
+  // Selected State
+  const [selectedLanguage, setSelectedLanguage] = useState<string>('Spanish');
+  const [selectedLevel, setSelectedLevel] = useState<string>('A1');
+  const [selectedSkill, setSelectedSkill] = useState<string>('Speaking');
 
   // Input & Chat State
   const [inputText, setInputText] = useState<string>('');
@@ -964,69 +974,42 @@ This learning material provides structured academic instruction for **${activeLa
           )}
         </div>
 
-        {/* 3 Required Dropdown Controls Grid */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4 pt-1">
-          {/* Dropdown 1: Language */}
-          <div className="space-y-1.5">
-            <label className="text-xs font-extrabold text-slate-700 flex items-center gap-1.5">
-              <Languages className="w-4 h-4 text-[#0052CC]" /> Target Language *
-            </label>
-            <select
-              value={selectedLanguage}
-              onChange={e => {
-                setSelectedLanguage(e.target.value);
-                setSelectedLevel('');
-                setSelectedSkill('');
-              }}
-              className="w-full p-2.5 sm:p-3 bg-slate-50 border border-slate-300 rounded-xl text-xs font-bold text-slate-900 outline-none focus:ring-2 focus:ring-[#0052CC] cursor-pointer shadow-2xs"
-            >
-              {LANGUAGES.map(lang => (
-                <option key={lang.value} value={lang.value}>
-                  {lang.flag} {lang.label}
-                </option>
-              ))}
-            </select>
-          </div>
+        {/* Unified Session Parameters & Course Track Selector */}
+        <SessionParametersSelector
+          value={sessionParams}
+          onChange={(newParams) => {
+            setSessionParams(newParams);
+            setSelectedLanguage(newParams.language);
+            setSelectedLevel(newParams.level);
+          }}
+          compact={false}
+          collapsible={true}
+          defaultExpanded={true}
+        />
 
-          {/* Dropdown 2: Level */}
-          <div className="space-y-1.5">
-            <label className="text-xs font-extrabold text-slate-700 flex items-center gap-1.5">
-              <GraduationCap className="w-4 h-4 text-[#0052CC]" /> CEFR Level / JLPT *
-            </label>
-            <select
-              value={selectedLevel}
-              disabled={!selectedLanguage}
-              onChange={e => {
-                setSelectedLevel(e.target.value);
-                setSelectedSkill('');
-              }}
-              className="w-full p-2.5 sm:p-3 bg-slate-50 border border-slate-300 rounded-xl text-xs font-bold text-slate-900 outline-none focus:ring-2 focus:ring-[#0052CC] cursor-pointer shadow-2xs disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed opacity-80"
-            >
-              {getDynamicLevelsForLanguage(selectedLanguage).map(lvl => (
-                <option key={lvl.value} value={lvl.value}>
-                  {lvl.label}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          {/* Dropdown 3: Skill / Format */}
-          <div className="space-y-1.5">
-            <label className="text-xs font-extrabold text-slate-700 flex items-center gap-1.5">
-              <Layers className="w-4 h-4 text-[#0052CC]" /> Academic Skill *
-            </label>
-            <select
-              value={selectedSkill}
-              disabled={!selectedLevel}
-              onChange={e => setSelectedSkill(e.target.value)}
-              className="w-full p-2.5 sm:p-3 bg-slate-50 border border-slate-300 rounded-xl text-xs font-bold text-slate-900 outline-none focus:ring-2 focus:ring-[#0052CC] cursor-pointer shadow-2xs disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed opacity-80"
-            >
-              {SKILLS.map(skl => (
-                <option key={skl.value} value={skl.value}>
+        {/* Target Academic Skill Focus */}
+        <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-2xl flex flex-wrap items-center justify-between gap-3">
+          <label className="text-xs font-black text-slate-800 flex items-center gap-1.5 uppercase tracking-wider">
+            <Layers className="w-4 h-4 text-[#0052CC]" /> Target Academic Skill Domain *
+          </label>
+          <div className="flex flex-wrap gap-1.5">
+            {SKILLS.filter(s => s.value).map(skl => {
+              const isSelected = selectedSkill === skl.value;
+              return (
+                <button
+                  key={skl.value}
+                  type="button"
+                  onClick={() => setSelectedSkill(skl.value)}
+                  className={`py-1.5 px-3 text-xs font-bold rounded-xl transition-all cursor-pointer ${
+                    isSelected
+                      ? 'bg-[#0052CC] text-white shadow-sm ring-2 ring-blue-400 font-extrabold'
+                      : 'bg-white text-slate-700 hover:bg-slate-200 border border-slate-200'
+                  }`}
+                >
                   {skl.label}
-                </option>
-              ))}
-            </select>
+                </button>
+              );
+            })}
           </div>
         </div>
 

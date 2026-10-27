@@ -26,6 +26,7 @@ import {
   Check
 } from 'lucide-react';
 import Link from 'next/link';
+import SessionParametersSelector, { SessionParametersValue } from '@/components/academic/SessionParametersSelector';
 
 interface ScrapeResultData {
   url: string;
@@ -100,11 +101,20 @@ export default function InternalResourceAiPage() {
 
   // State for direct URL input & layout mode
   const [customUrl, setCustomUrl] = useState<string>('');
-  const [selectedLanguage, setSelectedLanguage] = useState<string>('All');
   const [catalogLayoutMode, setCatalogLayoutMode] = useState<'table' | 'grid'>('table');
   const [isScraping, setIsScraping] = useState<boolean>(false);
   const [scrapingTargetId, setScrapingTargetId] = useState<string | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+
+  // Session Parameters & Course Track Filter State
+  const [sessionParams, setSessionParams] = useState<SessionParametersValue>({
+    language: 'Spanish',
+    level: 'A1',
+    trackMode: 'STANDARD',
+    customDays: 5,
+    customDaysMode: 'TOTAL',
+  });
+  const [showAllLanguages, setShowAllLanguages] = useState<boolean>(false);
 
   // Reader View State
   const [viewMode, setViewMode] = useState<'catalog' | 'reader'>('catalog');
@@ -117,12 +127,12 @@ export default function InternalResourceAiPage() {
     return resources.filter(res => {
       const hasUrl = Boolean(res.sourceUrl && res.sourceUrl.trim() !== '' && res.sourceUrl.startsWith('http'));
       if (!hasUrl) return false;
-      if (selectedLanguage !== 'All' && res.academicContext.language.toLowerCase() !== selectedLanguage.toLowerCase()) {
+      if (!showAllLanguages && res.academicContext.language.toLowerCase() !== sessionParams.language.toLowerCase()) {
         return false;
       }
       return true;
     });
-  }, [resources, selectedLanguage]);
+  }, [resources, sessionParams.language, showAllLanguages]);
 
   const languageOptions = [
     { value: 'All', label: 'All Languages', icon: '🌐' },
@@ -445,6 +455,15 @@ export default function InternalResourceAiPage() {
         </div>
       </div>
 
+      {/* Unified Session Parameters & Course Track Selector */}
+      <SessionParametersSelector
+        value={sessionParams}
+        onChange={(newParams) => setSessionParams(newParams)}
+        compact={false}
+        collapsible={true}
+        defaultExpanded={true}
+      />
+
       {/* Direct Custom URL Scraper Input Card */}
       <div className="isml-card p-5 bg-white border border-slate-200 rounded-2xl shadow-xs space-y-4">
         <div className="flex items-center justify-between">
@@ -521,14 +540,15 @@ export default function InternalResourceAiPage() {
               </button>
             </div>
 
-            <div className="w-full sm:w-56">
-              <SearchableSelect
-                label="Filter Language"
-                options={languageOptions}
-                value={selectedLanguage}
-                onChange={val => setSelectedLanguage(val)}
+            <label className="flex items-center gap-2 text-xs font-bold text-slate-700 bg-slate-100 hover:bg-slate-200 px-3 py-2 rounded-xl cursor-pointer border border-slate-200 transition-colors">
+              <input
+                type="checkbox"
+                checked={showAllLanguages}
+                onChange={(e) => setShowAllLanguages(e.target.checked)}
+                className="rounded text-[#0052CC] focus:ring-[#0052CC]"
               />
-            </div>
+              <span>Show All Languages</span>
+            </label>
           </div>
         </div>
 

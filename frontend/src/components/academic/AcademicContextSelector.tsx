@@ -5,6 +5,7 @@ import SearchableSelect from '../common/SearchableSelect';
 import { AcademicContext } from '@/types/academic';
 import { useMasterData } from '@/context/MasterDataContext';
 import { GraduationCap, CheckCircle2, AlertCircle, Edit3, ChevronDown, ChevronUp, Sparkles, SlidersHorizontal, Loader2 } from 'lucide-react';
+import SessionParametersSelector, { SessionParametersValue } from './SessionParametersSelector';
 
 interface AcademicContextSelectorProps {
   value: AcademicContext;
@@ -164,8 +165,9 @@ export default function AcademicContextSelector({
   ];
 
   const missingCore = coreFields.filter(f => {
-    const val = value[f.key as keyof AcademicContext];
-    if (!val || val.trim() === '' || val === 'Select option...') return true;
+    const rawVal = value[f.key as keyof AcademicContext];
+    const val = typeof rawVal === 'string' ? rawVal.trim() : rawVal ? String(rawVal).trim() : '';
+    if (!val || val === '' || val === 'Select option...') return true;
     if (f.key === 'topic' && (val === 'Other / Custom Topic...' || isCustomTopicActive)) {
       return !value.customTopic || value.customTopic.trim() === '';
     }
@@ -291,31 +293,47 @@ export default function AcademicContextSelector({
         </div>
       )}
 
-      {/* Primary 5 Core Selectors Grid */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-        {/* 1. Language */}
-        <SearchableSelect
-          label="1. Target Language *"
-          options={languageOptions}
-          value={value.language}
-          placeholder="Select Target Language..."
-          onChange={val => handleFieldChange('language', val)}
-        />
+      {/* 1. Unified Session Parameters & Course Track Selector */}
+      <SessionParametersSelector
+        value={{
+          language: value.language || 'Spanish',
+          level: value.level || 'A1',
+          trackMode: value.trackMode || 'STANDARD',
+          customDays: value.customDays || 5,
+          customDaysMode: value.customDaysMode || 'TOTAL',
+        }}
+        onChange={(params) => {
+          const langChanged = params.language !== value.language;
+          const levelChanged = params.level !== value.level;
+          const updated: AcademicContext = {
+            ...value,
+            language: params.language,
+            level: params.level,
+            trackMode: params.trackMode,
+            customDays: params.customDays,
+            customDaysMode: params.customDaysMode,
+          };
+          if (langChanged) {
+            updated.course = `${params.language} General Program`;
+            updated.topic = '';
+            updated.skill = '';
+            updated.resourceType = '';
+          } else if (levelChanged) {
+            updated.topic = '';
+            updated.skill = '';
+            updated.resourceType = '';
+          }
+          onChange(updated);
+        }}
+        compact={false}
+      />
 
-        {/* 2. Level */}
-        <SearchableSelect
-          label={isJapanese ? "2. JLPT Level *" : "2. CEFR Level *"}
-          options={levelOptions}
-          value={value.level}
-          placeholder={!value.language ? "Select Language First..." : "Select Level..."}
-          disabled={!value.language}
-          onChange={val => handleFieldChange('level', val)}
-        />
-
-        {/* 3. Specific Topic */}
+      {/* Curriculum Focus: Topic, Skill & Format Grid */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 pt-2">
+        {/* Specific Topic */}
         <div className="space-y-1">
           <SearchableSelect
-            label="3. Specific Topic *"
+            label="Specific Topic / Focus Area *"
             options={availableTopics}
             value={isCustomTopicActive ? 'Other / Custom Topic...' : value.topic}
             placeholder={!value.level ? "Select Level First..." : "Select Specific Topic..."}
@@ -340,10 +358,10 @@ export default function AcademicContextSelector({
           )}
         </div>
 
-        {/* 4. Target Skill */}
+        {/* Target Skill */}
         <div className="space-y-1">
           <SearchableSelect
-            label="4. Primary Skill *"
+            label="Primary Skill Focus *"
             options={skillOptions}
             value={isCustomSkillActive ? 'Other / Custom Skill...' : value.skill}
             placeholder={!value.topic ? "Select Topic First..." : "Select Primary Skill..."}
@@ -368,10 +386,10 @@ export default function AcademicContextSelector({
           )}
         </div>
 
-        {/* 5. Resource Format */}
+        {/* Resource Format */}
         <div className="space-y-1">
           <SearchableSelect
-            label="5. Resource Format *"
+            label="Resource Format *"
             options={resourceTypeOptions}
             value={isCustomFormatActive ? 'Other / Custom Format...' : value.resourceType}
             placeholder={!value.skill ? "Select Skill First..." : "Select Resource Format..."}

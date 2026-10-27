@@ -82,6 +82,8 @@ export interface LearningObjective {
   title: string;
 }
 
+export type CourseTrackMode = 'STANDARD' | 'INTERNSHIP' | 'SUPER_INTERNSHIP' | 'CUSTOM';
+
 export interface AcademicContext {
   language: string;
   course: string;
@@ -96,4 +98,7 @@ export interface AcademicContext {
   customResourceType?: string;
   difficulty: DifficultyLevel;
   contentLength?: string;
+  trackMode?: CourseTrackMode;
+  customDays?: number;
+  customDaysMode?: 'TOTAL' | 'MONTHLY';
 }
