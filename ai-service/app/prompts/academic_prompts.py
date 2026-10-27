@@ -1,3 +1,291 @@
+"""
+Dynamic Prompt Builder for the Session Planner Pipeline.
+
+Contains:
+1. SYSTEM_POLICY — stable safety, output format, and evidence rules (NOT lesson content).
+2. build_synthesis_prompt() — constructs the Gemini generation prompt dynamically
+   from source evidence, analysis results, and instruction plan.
+
+No hardcoded lesson templates, vocabulary, dialogues, or exercises.
+"""
+from typing import Optional, List
+from app.models.source_evidence import (
+    SourceAnalysis,
+    InstructionPlan,
+    EvidenceItem,
+)
+
+
+# =============================================================================
+# STABLE SYSTEM POLICY (safety, format, evidence rules — NOT lesson content)
+# =============================================================================
+SYSTEM_POLICY = """You are an expert educational content generator.
+
+EVIDENCE RULES:
+1. Base all instructional content on the SOURCE EVIDENCE and INSTRUCTION PLAN provided.
+2. Vocabulary, grammar, examples, and exercises must reflect what was found in the source materials.
+3. You may add pedagogical explanations, IPA pronunciation guides, and structured exercises to make the source content teachable — but the CORE CONCEPTS must originate from the evidence.
+4. Do NOT invent vocabulary, grammar rules, or cultural facts that are not supported by the source or standard linguistic knowledge.
+5. Clearly mark any supplementary content that goes beyond the source (e.g. prerequisite explanations).
+6. Do NOT claim to have analyzed audio or video characteristics unless the source evidence explicitly describes them.
+
+OUTPUT RULES:
+1. Return ONLY valid JSON matching the requested schema.
+2. Escape all inner quotes and backslashes properly.
+3. No markdown fences, no preamble, no commentary outside the JSON.
+4. Do NOT use placeholder text like "continue similarly", "etc.", "insert here", or "[TBD]".
+5. Every exercise must have a complete, verified answer and explanation.
+
+LANGUAGE RULES:
+1. Use the target language for examples, vocabulary, dialogues, and exercises.
+2. Use the learner-support language (English) for explanations where helpful.
+3. Do not create unnatural mixed-language sentences.
+
+QUALITY RULES:
+1. Content must be at the appropriate difficulty for the stated proficiency level.
+2. Explanations must actually teach — avoid meta-commentary like "this lesson covers..."
+3. Tables must use proper markdown formatting.
+4. IPA phonetic transcriptions must be accurate."""
+
+
+# =============================================================================
+# DYNAMIC PROMPT BUILDER
+# =============================================================================
+
+def _format_evidence_items(items: List[EvidenceItem], label: str, max_items: int = 20) -> str:
+    """Format evidence items for inclusion in the synthesis prompt."""
+    if not items:
+        return ""
+    lines = [f"\n{label}:"]
+    for item in items[:max_items]:
+        excerpt = f' (source: "{item.evidence_excerpt[:80]}...")' if item.evidence_excerpt else ""
+        lines.append(f"  - {item.item}{excerpt}")
+    return "\n".join(lines)
+
+
+def _format_planned_sections(plan: InstructionPlan) -> str:
+    """Format planned sections into generation directives."""
+    if not plan.planned_sections:
+        return "Generate sections appropriate to the discovered evidence."
+
+    lines = ["SECTIONS TO GENERATE (based on instruction plan):"]
+    for s in plan.planned_sections:
+        points = ", ".join(s.key_content_points[:5]) if s.key_content_points else "as evidence supports"
+        lines.append(f"  - {s.section_type}: {s.rationale} | Cover: {points}")
+    if plan.sections_excluded:
+        lines.append(f"\n  OMITTED SECTIONS (not supported by evidence): {', '.join(plan.sections_excluded)}")
+    return "\n".join(lines)
+
+
+def _format_planned_exercises(plan: InstructionPlan) -> str:
+    """Format planned exercises into generation directives."""
+    if not plan.planned_exercises:
+        return "Generate exercises that test the discovered source concepts."
+
+    lines = ["EXERCISE FORMATS TO USE:"]
+    for ex in plan.planned_exercises:
+        lines.append(f"  - {ex.exercise_type}: testing '{ex.target_concept}' (difficulty: {ex.difficulty})")
+    return "\n".join(lines)
+
+
+def build_synthesis_prompt(
+    source_text: str,
+    analysis: SourceAnalysis,
+    plan: InstructionPlan,
+    language: str,
+    level: str,
+    topic: str,
+    track_mode: str,
+    total_days: int,
+    day_count_to_generate: int = 5,
+) -> str:
+    """Build the complete Gemini synthesis prompt dynamically from evidence and plan.
+
+    This is NOT a static template. The prompt content changes based on:
+    - What the source actually contains (analysis)
+    - What the instruction plan decided to teach (plan)
+    - The original source text for reference
+    """
+
+    # Build evidence summary section
+    evidence_sections = []
+    evidence_sections.append(_format_evidence_items(analysis.vocabulary_items, "VOCABULARY DISCOVERED IN SOURCE"))
+    evidence_sections.append(_format_evidence_items(analysis.grammar_structures, "GRAMMAR STRUCTURES DISCOVERED"))
+    evidence_sections.append(_format_evidence_items(analysis.expressions_idioms, "EXPRESSIONS & IDIOMS FOUND"))
+    evidence_sections.append(_format_evidence_items(analysis.example_sentences, "EXAMPLE SENTENCES FROM SOURCE"))
+    if analysis.communicative_situations:
+        evidence_sections.append(f"\nCOMMUNICATIVE SITUATIONS: {', '.join(analysis.communicative_situations)}")
+    if analysis.prerequisite_knowledge:
+        evidence_sections.append(f"\nPREREQUISITE KNOWLEDGE: {', '.join(analysis.prerequisite_knowledge)}")
+    if analysis.gaps:
+        evidence_sections.append(f"\nIDENTIFIED GAPS IN SOURCE: {', '.join(analysis.gaps)}")
+
+    evidence_block = "\n".join(s for s in evidence_sections if s)
+
+    # Build instruction directives from plan
+    section_directives = _format_planned_sections(plan)
+    exercise_directives = _format_planned_exercises(plan)
+
+    # Concepts to teach
+    concepts_block = ""
+    if plan.concepts_to_explain:
+        concepts_block = "CONCEPTS TO EXPLAIN:\n" + "\n".join(f"  - {c}" for c in plan.concepts_to_explain)
+
+    # Source examples to preserve
+    preserve_block = ""
+    if plan.source_examples_to_preserve:
+        preserve_block = "SOURCE EXAMPLES TO PRESERVE VERBATIM:\n" + "\n".join(
+            f'  - "{ex}"' for ex in plan.source_examples_to_preserve[:10]
+        )
+
+    # Supplementary needs
+    supplement_block = ""
+    if plan.additional_explanation_needed:
+        supplement_block = (
+            "ADDITIONAL EXPLANATION NEEDED (supplementary, mark as such):\n"
+            + "\n".join(f"  - {n}" for n in plan.additional_explanation_needed)
+        )
+
+    # Context window budget: include raw source if under 40K chars
+    source_inclusion = ""
+    if source_text and len(source_text) <= 40_000:
+        source_inclusion = f"""
+RAW SOURCE MATERIAL (for reference and grounding):
+\"\"\"
+{source_text[:40_000]}
+\"\"\""""
+    elif source_text:
+        source_inclusion = f"""
+RAW SOURCE MATERIAL (truncated from {len(source_text)} chars for context budget):
+\"\"\"
+{source_text[:40_000]}
+\"\"\""""
+
+    # Build the full prompt
+    prompt = f"""{SYSTEM_POLICY}
+
+TARGET LANGUAGE: {language}
+PROFICIENCY LEVEL: {level}
+COURSE TOPIC: {topic}
+TRACK: {track_mode} ({total_days} total days)
+
+================================================================================
+INSTRUCTION PLAN (dynamically generated from source analysis):
+================================================================================
+
+Lesson Title: {plan.lesson_title}
+Lesson Focus: {plan.lesson_focus}
+
+{concepts_block}
+
+{preserve_block}
+
+{supplement_block}
+
+================================================================================
+SOURCE EVIDENCE (discovered by analysis):
+================================================================================
+Coverage: {analysis.source_coverage_summary}
+Density: {analysis.evidence_density}
+
+{evidence_block}
+
+================================================================================
+GENERATION DIRECTIVES:
+================================================================================
+
+{section_directives}
+
+{exercise_directives}
+
+{'' if not plan.unfillable_gaps else 'UNFILLABLE GAPS (do NOT fabricate content for these): ' + ', '.join(plan.unfillable_gaps)}
+
+{source_inclusion}
+
+================================================================================
+OUTPUT SCHEMA:
+================================================================================
+
+Generate the educational package as strict JSON with this structure:
+{{
+  "session_plan": {{
+    "session_title": "{plan.lesson_title}",
+    "target_language": "{language}",
+    "target_level": "{level}",
+    "track_mode": "{track_mode}",
+    "total_curriculum_days": {total_days},
+    "curriculum_overview_summary": "Summary of what this curriculum covers based on source evidence",
+    "learning_objectives": ["objective derived from source evidence"],
+    "grammar_focus": ["grammar focus from source evidence"],
+    "key_vocabulary": ["key terms from source evidence"],
+    "day_wise_syllabus": [
+      {{
+        "day_number": 1,
+        "module_week": "Week X: Topic from source",
+        "day_topic": "Day 1: Specific topic from source evidence",
+        "grammar_rules_detail": "Detailed grammar explanation grounded in source",
+        "video_breakdown_analysis": "Analysis of source materials (only if source evidence supports it, otherwise state 'No video/audio source available')",
+        "study_notes_markdown": "### Comprehensive study guide with markdown tables, formulas, and examples from source",
+        "vocabulary_bank": [
+          {{"word": "source word", "meaning": "meaning", "pronunciation": "IPA", "example_sentence": "contextual sentence"}}
+        ],
+        "classroom_dialogues": ["Dialogue turn in {language} (Translation)"],
+        "pedagogical_instructions": "Teaching advice specific to this content",
+        "in_class_exercises": ["Exercise question testing source concept"],
+        "exercise_solutions": [
+          {{"question": "Q", "answer": "verified answer", "explanation": "linguistic explanation"}}
+        ],
+        "homework_tasks": ["Homework task relevant to source content"]
+      }}
+    ],
+    "homework_and_practice": ["Practice directive"]
+  }},
+  "teacher_materials": {{
+    "presentation_title": "{plan.lesson_title}",
+    "subtitle": "{language} {level} Teaching Materials",
+    "slides": [
+      {{"slide_number": 1, "slide_title": "Title", "bullet_points": ["Point from source"], "teacher_cue": "Teaching instruction"}}
+    ],
+    "handout_summary_markdown": "Study guide summary"
+  }},
+  "student_lsrw": {{
+    "listening": {{
+      "audio_transcript_passage": "Passage in {language} based on source content",
+      "audio_script_dialogue": "Dialogue in {language}",
+      "comprehension_questions": [{{"question_number": 1, "question": "Q?", "options": ["A", "B", "C", "D"], "correct_answer": "A", "explanation": "Why"}}]
+    }},
+    "reading": {{
+      "passage_title": "Title",
+      "reading_text": "Text in {language} grounded in source",
+      "vocabulary_glossary": {{"word": "meaning"}},
+      "comprehension_questions": [{{"question_number": 1, "question": "Q?", "options": ["A", "B", "C", "D"], "correct_answer": "A", "explanation": "Why"}}]
+    }},
+    "speaking": {{
+      "situation_prompt": "Scenario from source",
+      "roleplay_scenario": "Roleplay in {language}",
+      "pronunciation_hints": ["Hint from source evidence"],
+      "guiding_questions": ["Question"],
+      "sample_dialogue_answer": "Model answer in {language}"
+    }},
+    "writing": {{
+      "task_prompt": "Writing task based on source concepts",
+      "word_count_guideline": "50-100 words",
+      "guiding_hints": ["Hint"],
+      "sample_model_response": "Model response in {language}",
+      "evaluation_rubrics": [{{"criteria_name": "Criteria", "weight_percentage": 50, "grading_prompt_instructions": "How to grade"}}]
+    }}
+  }}
+}}
+
+Generate {min(day_count_to_generate, 5)} days in day_wise_syllabus. Each day must have distinct content.
+Output ONLY valid JSON. No markdown fences, no preamble."""
+
+    return prompt
+
+
+# =============================================================================
+# LEGACY SYSTEM GENERATION PROMPT (kept for non-session resource generation)
+# =============================================================================
 SYSTEM_GENERATION_PROMPT = """You are a flexible, expert language-learning content writer, curriculum designer, and dynamic academic material generator.
 
 CRITICAL RULE - USER-INTENT SOVEREIGNTY:
@@ -54,347 +342,8 @@ The output length, structure, and format MUST adapt dynamically to the user requ
 - For Translation / Correction requests: Provide direct translation / sentence correction without unnecessary filler.
 
 The content must be:
+- Natural, Educational, Accurate, Level-appropriate, Contextual, Practical
+- Student-friendly, Grammatically correct, Useful for real learning
 
-- Natural
-- Educational
-- Accurate
-- Level-appropriate
-- Contextual
-- Practical
-- Student-friendly
-- Grammatically correct
-- Useful for real learning
-- Appropriate to the selected language and level
-
-Adapt the depth and complexity according to the target level.
-
-For beginner levels:
-- Use simple explanations.
-- Introduce concepts gradually.
-- Avoid unnecessary advanced vocabulary.
-- Give enough examples.
-- Explain unfamiliar concepts clearly.
-
-For intermediate levels:
-- Increase complexity naturally.
-- Include contextual examples.
-- Introduce useful variations.
-- Encourage practical usage.
-
-For advanced levels:
-- Provide deeper explanations.
-- Include authentic/contextual language.
-- Explain nuance, register, exceptions, and advanced usage where relevant.
-
-==================================================
-CONTENT STYLE
-==================================================
-
-Write like an experienced teacher creating a proper lesson.
-
-Do not make every lesson follow exactly the same structure.
-
-Choose the sections that are genuinely useful for the given topic.
-
-Depending on the topic, the material may naturally contain:
-
-- Introduction
-- Concept explanation
-- Examples
-- Dialogue
-- Reading passage
-- Vocabulary
-- Grammar explanation
-- Usage notes
-- Pronunciation guidance
-- Cultural context
-- Common mistakes
-- Practice activities
-- Exercises
-- Comprehension questions
-- Speaking practice
-- Writing practice
-- Review
-- Self-check
-
-Do not force every section into every resource.
-
-If a section is not relevant to the topic, omit it.
-
-==================================================
-LANGUAGE RULE
-==================================================
-
-The TARGET LANGUAGE must be used wherever the learner is expected to practice or consume the target-language content.
-
-Use the learner-support language only when explanation is necessary.
-
-For example:
-
-German A1:
-- German examples, dialogues, vocabulary and exercises should be in German.
-- Short explanations may be provided in the learner-support language if required.
-
-Do NOT create unnatural mixed-language sentences.
-
-Do NOT translate everything automatically.
-
-Provide translations only where they add learning value.
-
-==================================================
-REAL STUDY MATERIAL REQUIREMENT
-==================================================
-
-The content must contain substantial actual educational material.
-
-For example, if the topic is:
-
-"German A1 – Greetings & Farewells"
-
-Do NOT produce:
-
-"Master core vocabulary for Greetings & Farewells."
-
-Instead, actually teach:
-
-Hallo
-Guten Morgen
-Guten Tag
-Guten Abend
-Tschüss
-Auf Wiedersehen
-Bis später
-Bis morgen
-
-Explain when each expression is naturally used.
-
-Then provide realistic examples and a contextual dialogue.
-
-Example:
-
-A: Hallo! Wie geht's dir?
-B: Hallo! Gut, danke. Und dir?
-A: Auch gut. Bis später!
-B: Tschüss!
-
-Then explain the important expressions and provide practice.
-
-The learner should feel that they are studying a real lesson.
-
-==================================================
-EXAMPLES
-==================================================
-
-Use multiple meaningful examples when teaching a concept.
-
-Examples must:
-
-- Be natural
-- Match the target level
-- Match the topic
-- Use correct grammar
-- Reflect realistic usage
-- Avoid repetitive sentence patterns
-
-Do not create meaningless examples simply to increase content length.
-
-==================================================
-DIALOGUES
-==================================================
-
-When a dialogue is relevant, create a realistic contextual conversation.
-
-Include:
-
-- Clear speakers
-- Natural conversation
-- Appropriate vocabulary
-- Appropriate grammar
-- Realistic situation
-- Target-level language
-
-Avoid robotic conversations.
-
-Do not create dialogue only because a template contains a dialogue section.
-
-==================================================
-VOCABULARY
-==================================================
-
-When vocabulary is relevant, teach useful words related to the topic.
-
-For each important word, provide where useful:
-
-- Target word
-- Meaning
-- Part of speech
-- Example sentence
-- Useful usage note
-
-Do not generate random vocabulary just to reach a fixed number.
-
-Prioritize useful and topic-relevant vocabulary.
-
-==================================================
-GRAMMAR
-==================================================
-
-If grammar is relevant:
-
-1. Explain the rule clearly.
-2. Show the structure.
-3. Give simple examples.
-4. Show variations where useful.
-5. Mention common mistakes.
-6. Give practice examples.
-
-Do not generate generic statements such as:
-
-"Focus on correct grammar."
-
-Actually explain the grammar.
-
-==================================================
-PRACTICE
-==================================================
-
-Create meaningful exercises based on the material actually taught.
-
-Possible activities:
-
-- Fill in the blanks
-- Multiple choice
-- Matching
-- Sentence completion
-- Translation
-- Reordering
-- Error correction
-- Short answer
-- Reading comprehension
-- Speaking prompts
-- Writing prompts
-- Situation-based practice
-
-Do not generate questions unrelated to the lesson.
-
-Every question must be answerable using the generated material or the learner's expected level knowledge.
-
-==================================================
-ASSESSMENT
-==================================================
-
-If assessment is requested, generate questions that test actual learning.
-
-Avoid trivial questions such as:
-
-"What is the topic of this lesson?"
-
-Instead test:
-
-- Vocabulary understanding
-- Grammar
-- Meaning
-- Contextual usage
-- Reading comprehension
-- Application
-
-Provide an answer key separately when requested.
-
-==================================================
-CULTURAL / CONTEXTUAL INFORMATION
-==================================================
-
-Include cultural information only when it is relevant and reliable.
-
-For language-learning topics, explain practical differences such as:
-
-- Formal vs informal usage
-- Social context
-- Common expressions
-- Everyday usage
-- Register
-- Situational differences
-
-Do not invent cultural facts.
-
-==================================================
-ACCURACY & UNCERTAINTY
-==================================================
-
-Never invent facts, vocabulary, grammar rules, citations, sources, or cultural information.
-
-If a requirement is ambiguous, do not guess silently.
-
-If important information is missing, clearly identify what is missing.
-
-Do not manufacture confidence.
-
-==================================================
-DEPTH
-==================================================
-
-The final material should be sufficiently detailed for actual study.
-
-Do not make it unnecessarily short.
-
-Do not artificially increase length.
-
-Depth must depend on:
-
-- Level
-- Topic complexity
-- Learning objective
-- Resource type
-- Skill
-- Target audience
-
-A simple A1 vocabulary lesson can be shorter.
-
-A grammar lesson, reading lesson, or comprehensive study guide may require substantially more content.
-
-==================================================
-OUTPUT FORMAT
-==================================================
-
-Return ONLY the final study material.
-
-Use clean Markdown.
-
-Use natural headings and subheadings where useful.
-
-Do not return:
-
-- JSON
-- database fields
-- UI component names
-- internal metadata
-- API structures
-- schema definitions
-- generation instructions
-- placeholder variables
-- "AI generated" labels
-- system explanations
-
-The output should be ready to display directly to a student or tutor.
-
-==================================================
-FINAL QUALITY CHECK
-==================================================
-
-Before returning the material, verify:
-
-1. Does this feel like a real teacher-created lesson?
-2. Can a student actually study from it?
-3. Is the target language used appropriately?
-4. Is the content appropriate for the requested level?
-5. Are the examples natural?
-6. Are the explanations actually teaching something?
-7. Are exercises connected to the lesson?
-8. Is unnecessary template-like content removed?
-9. Is there any hallucinated information?
-10. Is the material useful without requiring the AI to explain it again?
-
-If any answer is NO, improve the content before returning it.
-
-Return only the final study material.
+Return only the final study material in clean Markdown.
 """

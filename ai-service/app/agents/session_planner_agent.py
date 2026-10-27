@@ -1,6 +1,20 @@
+"""
+Session Planner Agent — Pipeline Orchestrator.
+
+Orchestrates the dynamic source-driven pipeline:
+  Stage A: Source extraction (handled by sessions.py + extractor.py)
+  Stage B: Source evidence analysis (SourceAnalyzerAgent)
+  Stage C: Dynamic instruction design (InstructionDesignerAgent)
+  Stage D: Content synthesis with Gemini (this agent)
+  Stage E: Evidence validation (EvidenceValidator)
+  Stage F: Quality evaluation (QualityEvaluator)
+
+No hardcoded lesson content. All generation driven by source evidence.
+"""
 import json
 import logging
 from typing import Optional, Dict, Any, List
+
 import httpx
 
 from app.config.settings import settings
@@ -18,15 +32,34 @@ from app.models.session_package import (
     WritingEvaluationRubric,
     FullSessionPackageResult,
 )
+from app.models.source_evidence import (
+    ExtractionBundle,
+    ExtractedSource,
+    SourceAnalysis,
+    InstructionPlan,
+    ValidationReport,
+    QualityReport,
+)
+from app.agents.source_analyzer import SourceAnalyzerAgent
+from app.agents.instruction_designer import InstructionDesignerAgent
+from app.agents.evidence_validator import EvidenceValidator, QualityEvaluator
+from app.prompts.academic_prompts import build_synthesis_prompt
 from app.services.ppt_generator import PPTGenerator
 
 logger = logging.getLogger(__name__)
 
-class SessionPlannerAgent:
-    """Agent that creates session plans, teacher presentation materials, and student LSRW packages."""
 
-    async def _call_gemini(self, prompt: str) -> Optional[str]:
-        """Calls Gemini API with prompt."""
+class SessionPlannerAgent:
+    """Orchestrates the full source-driven dynamic generation pipeline."""
+
+    def __init__(self):
+        self.source_analyzer = SourceAnalyzerAgent()
+        self.instruction_designer = InstructionDesignerAgent()
+        self.evidence_validator = EvidenceValidator()
+        self.quality_evaluator = QualityEvaluator()
+
+    async def _call_gemini(self, prompt: str, max_tokens: int = 8192) -> Optional[str]:
+        """Calls Gemini API with prompt and JSON response mode."""
         if not settings.GEMINI_API_KEY or settings.GEMINI_API_KEY.startswith("AQ.placeholder"):
             return None
 
@@ -35,22 +68,126 @@ class SessionPlannerAgent:
             "contents": [{"parts": [{"text": prompt}]}],
             "generationConfig": {
                 "temperature": 0.2,
-                "maxOutputTokens": 8192,
+                "maxOutputTokens": max_tokens,
                 "response_mime_type": "application/json"
             },
         }
 
         try:
-            async with httpx.AsyncClient(timeout=90.0) as client:
+            async with httpx.AsyncClient(timeout=120.0) as client:
                 resp = await client.post(url, json=payload)
                 if resp.status_code == 200:
                     data = resp.json()
                     candidates = data.get("candidates", [])
                     if candidates:
                         return candidates[0]["content"]["parts"][0]["text"]
+                else:
+                    logger.warning(f"Gemini synthesis returned {resp.status_code}: {resp.text[:300]}")
         except Exception as e:
             logger.warning(f"Gemini API call failed in SessionPlannerAgent: {e}")
         return None
+
+    @staticmethod
+    def _parse_json(raw: str) -> Optional[Dict]:
+        """Parse JSON from Gemini output, tolerating markdown fences."""
+        clean = raw.strip()
+        if clean.startswith("```json"):
+            clean = clean[7:]
+        if clean.startswith("```"):
+            clean = clean[3:]
+        if clean.endswith("```"):
+            clean = clean[:-3]
+        try:
+            return json.loads(clean.strip(), strict=False)
+        except Exception:
+            import re
+            # Fix unescaped backslashes often produced in IPA phonetic transcriptions (e.g. \ʁ, \ɛ)
+            repaired = re.sub(r'\\(?![/"\\bfnrtu]|u[0-9a-fA-F]{4})', r'\\\\', clean.strip())
+            try:
+                return json.loads(repaired, strict=False)
+            except Exception:
+                match = re.search(r'(\{[\s\S]*\})', clean)
+                if match:
+                    try:
+                        return json.loads(match.group(1), strict=False)
+                    except Exception:
+                        repaired_match = re.sub(r'\\(?![/"\\bfnrtu]|u[0-9a-fA-F]{4})', r'\\\\', match.group(1))
+                        try:
+                            return json.loads(repaired_match, strict=False)
+                        except Exception:
+                            pass
+        return None
+
+    def _build_extraction_bundle(self, source_context: str) -> ExtractionBundle:
+        """Convert the legacy source_context string into an ExtractionBundle.
+        This bridges the existing sessions.py extraction output to the new pipeline models."""
+        if not source_context or len(source_context.strip()) < 30:
+            return ExtractionBundle(
+                total_sources=0,
+                successful_sources=0,
+                combined_text="",
+                combined_text_length=0,
+            )
+
+        # Parse the labeled sections from the existing extraction format
+        import re
+        sections = re.split(r'\n\[(?:Tutor Upload|Reference) #', source_context)
+
+        sources = []
+        for i, section in enumerate(sections):
+            if not section.strip():
+                continue
+            # Try to extract source type and name from the label
+            label_match = re.match(r'(\d+)\s+(.+?)\]:\n([\s\S]*)', section)
+            if label_match:
+                idx = label_match.group(1)
+                label = label_match.group(2).strip()
+                text = label_match.group(3).strip()
+
+                source_type = "TEXT"
+                if "YouTube" in label:
+                    source_type = "YOUTUBE"
+                elif "PDF" in label:
+                    source_type = "PDF"
+                elif "Word" in label:
+                    source_type = "DOCX"
+                elif "Slides" in label or "Presentation" in label:
+                    source_type = "PPTX"
+                elif "Image" in label:
+                    source_type = "IMAGE"
+                elif "Audio" in label:
+                    source_type = "AUDIO"
+                elif "Web" in label:
+                    source_type = "WEB_ARTICLE"
+
+                sources.append(ExtractedSource(
+                    source_id=f"src_{idx}",
+                    source_name=label,
+                    source_type=source_type,
+                    extracted_text=text,
+                    text_length=len(text),
+                ))
+            else:
+                # Unlabeled content
+                sources.append(ExtractedSource(
+                    source_id=f"src_{i}",
+                    source_name=f"Source {i}",
+                    source_type="TEXT",
+                    extracted_text=section.strip(),
+                    text_length=len(section.strip()),
+                ))
+
+        successful = [s for s in sources if s.text_length > 10]
+        combined = source_context.strip()
+
+        return ExtractionBundle(
+            sources=sources,
+            total_sources=len(sources),
+            successful_sources=len(successful),
+            failed_sources=len(sources) - len(successful),
+            combined_text=combined,
+            combined_text_length=len(combined),
+        )
 
     async def generate_full_package(
         self,
@@ -63,169 +200,140 @@ class SessionPlannerAgent:
         source_context: str = "",
         pptx_output_dir: str = "static/presentations",
     ) -> FullSessionPackageResult:
-        """Generates: 1. Deep Day-wise Master Curriculum 2. Teacher PPT Deck 3. Student LSRW Practice Kit with Evaluation Rubrics."""
+        """Orchestrates the full dynamic pipeline:
+        Extract → Analyze → Plan → Synthesize → Validate → Evaluate."""
 
+        # ── Track Configuration ──────────────────────────────────────────
         track_labels = {
-            "STANDARD": ("Standard Course (12 Calendar Months • 365 Days)", 365, "Comprehensive 12-calendar-month academic curriculum from January to December (365 calendar days)"),
-            "INTERNSHIP": ("Internship Program (6 Calendar Months • 181 Days)", 181, "Semester-length corporate professional communication from January to June (181 calendar days)"),
-            "SUPER_INTERNSHIP": ("Super Internship Fast-Track (3 Calendar Months • 90 Days)", 90, "Intensive quarterly curriculum from January to March (90 calendar days)"),
-            "CUSTOM": ("Custom Calendar Track", 30, "Targeted calendar block course mastery focused directly on key concepts"),
+            "STANDARD": ("Standard Course (12 Calendar Months • 365 Days)", 365),
+            "INTERNSHIP": ("Internship Program (6 Calendar Months • 181 Days)", 181),
+            "SUPER_INTERNSHIP": ("Super Internship Fast-Track (3 Calendar Months • 90 Days)", 90),
+            "CUSTOM": ("Custom Calendar Track", 30),
         }
         track_info = track_labels.get(track_mode.upper(), track_labels["SUPER_INTERNSHIP"])
-        track_label, total_days, track_intensity = track_info
+        track_label, total_days = track_info
         if custom_days and custom_days > 0:
             total_days = custom_days
             track_label = f"Custom Focus ({custom_days} Days)"
 
-        # Construct Master Prompt for Gemini
-        has_source = bool(source_context and len(source_context.strip()) > 30)
-        grounding_directive = (
-            "STRICT GROUNDING & ZERO-HALLUCINATION RULES:\n"
-            "1. You MUST extract the actual vocabulary, verbs, sentence examples, dialogues, and core lesson points DIRECTLY from the 'FACULTY INPUTS & REFERENCE CONTEXT' provided below.\n"
-            "2. Do NOT invent unrelated or generic textbook content. Every vocabulary item in 'vocabulary_bank' must originate from or directly explain the words present in the reference transcripts/files.\n"
-            "3. Use the exact grammar concepts taught or discussed in the reference video/link (e.g. if the video teaches specific -ar verbs, only build the lesson around those exact -ar verbs).\n"
-            "4. You are permitted to add pedagogical structure, phonetic pronunciation guides, and practice exercises, but the CORE LINGUISTIC CONTENT MUST BE GROUNDED 100% IN THE INPUT DATA."
-            if has_source else
-            "STANDARD CURRICULUM RULE:\nNo external reference file was provided. Synthesize an authoritative master curriculum based on official CEFR/JLPT/TOPIK standards."
+        # ── Stage A: Build Extraction Bundle ─────────────────────────────
+        extraction_bundle = self._build_extraction_bundle(source_context)
+        has_source = extraction_bundle.has_usable_evidence()
+
+        logger.info(
+            f"Pipeline start: session={session_id}, lang={language}, level={level}, "
+            f"sources={extraction_bundle.successful_sources}, "
+            f"text_len={extraction_bundle.combined_text_length}"
         )
 
-        master_prompt = f"""You are a World-Class Senior Professor & Chief Academic Officer at ISML (International School of Modern Languages).
-TARGET LANGUAGE: {language}
-PROFICIENCY LEVEL: {level}
-COURSE TRACK: {track_label} (Target Scope: {total_days} Structured Days)
-PRIMARY SYLLABUS TOPIC / FOCUS: {topic}
+        # ── Stage B: Source Evidence Analysis ────────────────────────────
+        analysis = await self.source_analyzer.analyze(
+            extraction_bundle=extraction_bundle,
+            language=language,
+            level=level,
+            topic=topic,
+        )
+        logger.info(
+            f"Analysis complete: topics={len(analysis.main_topics)}, "
+            f"vocab={len(analysis.vocabulary_items)}, "
+            f"grammar={len(analysis.grammar_structures)}, "
+            f"density={analysis.evidence_density}"
+        )
 
-DYNAMIC MULTI-SOURCE INGESTION & CONTENT SYNTHESIS ENGINE:
-You have been provided with real-world extracted materials below, which include:
-- Real-time scraped educational web articles and pedagogical documentation
-- YouTube video transcripts with spoken conversational audio transcripts
-- Tutor-uploaded reference notes, lesson files, and textbook excerpts
+        # ── Stage C: Dynamic Instruction Design ─────────────────────────
+        plan = await self.instruction_designer.design(
+            analysis=analysis,
+            language=language,
+            level=level,
+            topic=topic,
+            day_number=1,
+            total_days=total_days,
+            track_mode=track_mode,
+        )
+        logger.info(
+            f"Instruction plan: '{plan.lesson_title}', "
+            f"sections={len(plan.planned_sections)}, "
+            f"exercises={len(plan.planned_exercises)}"
+        )
 
-==================== EXTRACTED MULTI-SOURCE INTELLIGENCE & REFERENCE DATA ====================
-{source_context if source_context else 'No external reference uploaded. Synthesize a brand-new, original curriculum based on official CEFR/JLPT/TOPIK standards.'}
-=============================================================================================
+        # ── Stage D: Content Synthesis with Gemini ──────────────────────
+        synthesis_prompt = build_synthesis_prompt(
+            source_text=extraction_bundle.combined_text if has_source else "",
+            analysis=analysis,
+            plan=plan,
+            language=language,
+            level=level,
+            topic=topic,
+            track_mode=track_mode,
+            total_days=total_days,
+            day_count_to_generate=min(total_days, 5),
+        )
 
-MANDATORY SYNTHESIS & ZERO-TEMPLATE GENERATION DIRECTIVE:
-1. DEEP SOURCE DIGESTION:
-   - Thoroughly read and analyze every word in the extracted source intelligence above.
-   - Extract the EXACT linguistic concepts, specific verbs, grammar rules, native expressions, situational themes, and vocabulary introduced across the scraped websites, YouTube video dialogues, and uploaded tutor documents.
-   - Do NOT produce generic or cookie-cutter templates. Every section must directly reflect and teach the real material contained in the inputs.
-
-2. ORIGINAL PROGRESSIVE CURRICULUM ARCHITECTURE:
-   - Distribute the extracted source concepts across progressive daily sessions (Day 1 to Day {min(total_days, 5)}).
-   - "day_topic": Distinct, authentic sub-topic extracted directly from the uploaded reference materials.
-   - "grammar_rules_detail": An exhaustive, multi-paragraph university-level lecture breakdown analyzing the exact structural formulas, grammatical mechanics, sentence architecture, and phonetics from the sources.
-   - "study_notes_markdown": A comprehensive, textbook-grade chapter for each day containing:
-     * Precise syntactic formulas and word-order mechanics
-     * Formatted markdown tables displaying complete verb conjugation paradigms with IPA phonetic keys
-     * Natural contextual contrast sentences in {language}
-     * Phonetic traps, silent letters, liaisons, and native spoken nuances
-     * Real-world communicative register rules (formal workplace vs daily conversational)
-   - "vocabulary_bank": Real authentic vocabulary extracted directly from the scraped articles and video transcripts, complete with IPA phonetics, accurate English translations, and natural usage examples (8 to 12 words per day).
-   - "classroom_dialogues": Complete multi-turn native conversations in {language} with parallel English translations modeled directly on the video and text scenarios (4 to 6 dialogue turns).
-   - "video_breakdown_analysis": An exhaustive, minute-by-minute analytical breakdown of the reference video/materials for this day: analyzing native vocal delivery, pronunciation accents, audio cadence, and exact pedagogical moments shown in the video.
-   - "in_class_exercises": 5 distinct, high-yield practice questions tailored directly to that day's lesson (conjugation drills, sentence translation, error rectification, fill-in-the-blank).
-   - "exercise_solutions": The exact correct answer in {language} and comprehensive linguistic explanation for each question.
-   - "homework_tasks": 3 to 4 actionable daily LMS assignments (written workbook exercises, oral speech recording prompts, and reading analysis).
-
-Generate the comprehensive educational package in strict JSON format:
-{{
-  "session_plan": {{
-    "session_title": "{topic} - {total_days}-Day Master Teaching & Study Material",
-    "target_language": "{language}",
-    "target_level": "{level}",
-    "track_mode": "{track_mode.upper()}",
-    "total_curriculum_days": {total_days},
-    "curriculum_overview_summary": "Comprehensive faculty pedagogical breakdown analyzing the exact source material provided and structuring it into daily progressive mastery.",
-    "learning_objectives": [
-      "Master the specific vocabulary and grammar patterns introduced in the source material",
-      "Apply the exact conversational scenarios from the reference links into active speech",
-      "Achieve full retention through structured 1-hour daily drills"
-    ],
-    "grammar_focus": ["Exact grammar rule 1 from source", "Exact grammar rule 2 from source"],
-    "key_vocabulary": ["Core term 1 from reference context", "Core term 2 from reference context"],
-    "day_wise_syllabus": [
-      {{
-        "day_number": 1,
-        "module_week": "Week 1: Core Fundamentals & Phonetic Drill",
-        "day_topic": "Day 1: Comprehensive Study Material for {topic}",
-        "grammar_rules_detail": "Complete breakdown of sentence structure in {language} based on source materials.",
-        "video_breakdown_analysis": "Detailed analysis of reference video & audio clips for Day 1: key vocal inflections, native idioms used, and exact conversational cadence.",
-        "study_notes_markdown": "### Master Study Guide: Day 1 - {topic}\\n\\n**1. Syntactic Formula & Word Order:**\\n- Formula and rules.\\n\\n**2. Conjugation Matrix:**\\n| Person | Ending | Example | Phonetics |\\n|---|---|---|---|\\n| Je | -e | parle | /paʁl/ |\\n\\n**3. Native Spoken Nuance & Liaison Mechanics:**\\n- Deep phonetic traps, liaisons, and conversational flow.",
-        "vocabulary_bank": [
-          {{"word": "word 1", "meaning": "meaning", "pronunciation": "IPA", "example_sentence": "sentence in {language}"}}
-        ],
-        "classroom_dialogues": [
-          "Teacher: Dialogue prompt in {language} (English: Translation)",
-          "Student: Response in {language} (English: Translation)"
-        ],
-        "pedagogical_instructions": "Faculty Pedagogical Advice: How to teach this without English translation.",
-        "in_class_exercises": [
-          "Q1: Question 1", "Q2: Question 2", "Q3: Question 3", "Q4: Question 4", "Q5: Question 5"
-        ],
-        "exercise_solutions": [
-          {{"question": "Q1: Question 1", "answer": "Answer 1", "explanation": "Grammatical explanation 1"}},
-          {{"question": "Q2: Question 2", "answer": "Answer 2", "explanation": "Grammatical explanation 2"}},
-          {{"question": "Q3: Question 3", "answer": "Answer 3", "explanation": "Grammatical explanation 3"}},
-          {{"question": "Q4: Question 4", "answer": "Answer 4", "explanation": "Grammatical explanation 4"}},
-          {{"question": "Q5: Question 5", "answer": "Answer 5", "explanation": "Grammatical explanation 5"}}
-        ],
-        "homework_tasks": [
-          "Daily homework task 1",
-          "Daily homework task 2",
-          "Daily homework task 3"
-        ]
-      }}
-    ],
-    "homework_and_practice": ["Continuous review of daily vocabulary", "Audio recordings submission"]
-  }},
-  "teacher_materials": {{
-    "presentation_title": "{topic} ({language} - {level})",
-    "subtitle": "ISML Master Faculty Presentation",
-    "slides": [
-      {{"slide_number": 1, "slide_title": "Overview", "bullet_points": ["Point 1", "Point 2"], "teacher_cue": "Cue 1"}}
-    ],
-    "handout_summary_markdown": "Master Study Guide"
-  }},
-  "student_lsrw": {{
-    "listening": {{"audio_transcript_passage": "Audio passage in {language}", "audio_script_dialogue": "A: ... B: ...", "comprehension_questions": [{{"question_number": 1, "question": "Q1?", "options": ["A", "B"], "correct_answer": "A", "explanation": "Exp 1"}}]}},
-    "reading": {{"passage_title": "Reading", "reading_text": "Text in {language}", "vocabulary_glossary": {{"Term": "Meaning"}}, "comprehension_questions": [{{"question_number": 1, "question": "Q1?", "options": ["A", "B"], "correct_answer": "A", "explanation": "Exp 1"}}]}},
-    "speaking": {{"situation_prompt": "Prompt", "roleplay_scenario": "Scenario", "pronunciation_hints": ["Hint 1"], "guiding_questions": ["Q1"], "sample_dialogue_answer": "Model"}},
-    "writing": {{"task_prompt": "Prompt", "word_count_guideline": "50 words", "guiding_hints": ["Hint 1"], "sample_model_response": "Sample", "evaluation_rubrics": [{{"criteria_name": "Grammar", "weight_percentage": 50, "grading_prompt_instructions": "Check accuracy"}}]}}
-  }}
-}}
-
-Output ONLY valid JSON. Escape all inner quotes and backslashes properly. No markdown ticks, no preamble."""
-
-        llm_output = await self._call_gemini(master_prompt)
+        llm_output = await self._call_gemini(synthesis_prompt, max_tokens=8192)
         parsed_data = None
 
         if llm_output:
-            try:
-                clean_json = llm_output.strip()
-                if clean_json.startswith("```json"):
-                    clean_json = clean_json[7:]
-                if clean_json.startswith("```"):
-                    clean_json = clean_json[3:]
-                if clean_json.endswith("```"):
-                    clean_json = clean_json[:-3]
-                parsed_data = json.loads(clean_json.strip(), strict=False)
-            except Exception as e:
-                logger.warning(f"Failed to parse LLM JSON output with standard parser: {e}")
-                # Try finding outermost JSON brackets
-                try:
-                    import re
-                    match = re.search(r'(\{[\s\S]*\})', clean_json)
-                    if match:
-                        parsed_data = json.loads(match.group(1), strict=False)
-                except Exception as inner_e:
-                    logger.warning(f"Regex JSON recovery also failed: {inner_e}")
+            parsed_data = self._parse_json(llm_output)
+            if parsed_data:
+                logger.info("Gemini synthesis returned valid JSON.")
+            else:
+                logger.warning("Gemini synthesis returned unparseable output.")
 
-        # Fallback if LLM offline
+        # ── Handle synthesis failure explicitly ──────────────────────────
         if not parsed_data:
-            parsed_data = self._generate_fallback(language, level, topic, source_context, track_mode=track_mode.upper(), total_days_override=total_days)
+            if not has_source:
+                # No source AND no LLM — explicit failure, no silent fallback
+                logger.error("No source evidence and Gemini unavailable. Cannot generate.")
+                raise ValueError(
+                    "Unable to generate session package: no source materials were provided "
+                    "and the AI model is currently unavailable. Please upload reference "
+                    "materials (videos, documents, or links) and try again."
+                )
+            else:
+                # Has source but LLM failed — create minimal package from analysis
+                logger.warning("Gemini synthesis failed. Building minimal package from analysis results.")
+                parsed_data = self._build_analysis_based_package(
+                    analysis=analysis,
+                    plan=plan,
+                    language=language,
+                    level=level,
+                    topic=topic,
+                    track_mode=track_mode,
+                    total_days=total_days,
+                )
 
-        # Generate PPTX file
+        # ── Stage E: Evidence Validation ────────────────────────────────
+        validation = self.evidence_validator.validate(
+            generated_data=parsed_data,
+            analysis=analysis,
+            plan=plan,
+            language=language,
+            level=level,
+        )
+        logger.info(
+            f"Validation: valid={validation.is_valid}, "
+            f"passed={validation.passed_checks}/{validation.total_checks}, "
+            f"issues={len(validation.issues)}"
+        )
+
+        # ── Stage F: Quality Evaluation ─────────────────────────────────
+        quality = self.quality_evaluator.evaluate(
+            generated_data=parsed_data,
+            analysis=analysis,
+            plan=plan,
+            validation=validation,
+        )
+        logger.info(
+            f"Quality: acceptable={quality.overall_acceptable}, "
+            f"recommendation={quality.recommendation}"
+        )
+
+        # Log warnings but don't block — validation issues are informational
+        if validation.warnings:
+            for w in validation.warnings[:5]:
+                logger.info(f"  Validation warning: {w}")
+
+        # ── Generate PPTX ───────────────────────────────────────────────
         pptx_filename = f"{session_id}_{language}_{level}.pptx".replace(" ", "_")
         pptx_filepath = f"{pptx_output_dir}/{pptx_filename}"
         try:
@@ -241,6 +349,7 @@ Output ONLY valid JSON. Escape all inner quotes and backslashes properly. No mar
         except Exception as e:
             logger.error(f"Failed to generate PPTX file: {e}")
 
+        # ── Assemble Final Result ───────────────────────────────────────
         return FullSessionPackageResult(
             session_id=session_id,
             topic=topic,
@@ -251,347 +360,224 @@ Output ONLY valid JSON. Escape all inner quotes and backslashes properly. No mar
             session_plan=SessionPlanResult(**parsed_data["session_plan"]),
             teacher_materials=TeacherMaterialResult(**parsed_data["teacher_materials"]),
             student_lsrw=StudentLSRWPackage(**parsed_data["student_lsrw"]),
-            extracted_source_summary=source_context[:300] if source_context else None,
+            extracted_source_summary=(
+                f"Sources: {extraction_bundle.successful_sources} analyzed "
+                f"({extraction_bundle.combined_text_length} chars). "
+                f"Evidence density: {analysis.evidence_density}. "
+                f"Validation: {validation.passed_checks}/{validation.total_checks} checks passed."
+            ),
         )
 
-    def _generate_fallback(self, language: str, level: str, topic: str, source: str, track_mode: str = "SUPER_INTERNSHIP", total_days_override: Optional[int] = None) -> Dict[str, Any]:
-        """Rich pedagogical generator providing deep, authentic day-wise curriculum with verified answers and linguistic notes."""
-        if total_days_override and total_days_override > 0:
-            total_days = total_days_override
-        else:
-            total_days = 90 if "SUPER" in track_mode else (181 if "INTERN" in track_mode else 365)
+    def _build_analysis_based_package(
+        self,
+        analysis: SourceAnalysis,
+        plan: InstructionPlan,
+        language: str,
+        level: str,
+        topic: str,
+        track_mode: str,
+        total_days: int,
+    ) -> Dict[str, Any]:
+        """Build a minimal package directly from analysis results when Gemini synthesis fails.
+        This is NOT a generic fallback — it uses actual analysis findings."""
 
-        # Language-specific linguistic data for authentic grounding
-        lang_data = {
-            "French": {
-                "vocab": [
-                    {"word": "parler", "meaning": "to speak", "pronunciation": "/paʁ.le/", "example_sentence": "Je parle français avec mon professeur tous les matins."},
-                    {"word": "habiter", "meaning": "to live / reside", "pronunciation": "/a.bi.te/", "example_sentence": "Nous habitons à Paris dans un bel appartement."},
-                    {"word": "aimer", "meaning": "to like / to love", "pronunciation": "/e.me/", "example_sentence": "J'aime apprendre de nouvelles langues chaque jour."},
-                    {"word": "travailler", "meaning": "to work", "pronunciation": "/tʁa.va.je/", "example_sentence": "Elle travaille dans une grande entreprise internationale."},
-                    {"word": "écouter", "meaning": "to listen", "pronunciation": "/e.ku.te/", "example_sentence": "Vous écoutez attentivement les dialogues audio en classe."},
-                ],
-                "dialogues": [
-                    "Professeur: Bonjour ! Comment vous vous appelez et quelle langue parlez-vous ? (Teacher: Hello! What is your name and what language do you speak?)",
-                    "Étudiant: Bonjour professeur ! Je m'appelle Thomas et j'apprends le français avec enthousiasme. (Student: Hello professor! My name is Thomas and I am enthusiastically learning French.)",
-                    "Professeur: Très bien, où habitez-vous actuellement ? (Teacher: Very good, where do you currently live?)",
-                    "Étudiant: J'habite à Lyon, mais je travaille à distance. (Student: I live in Lyon, but I work remotely.)",
-                ],
-                "study_guide": (
-                    f"### Master Study Guide: {topic} (French {level})\n\n"
-                    "**1. Core Syntactic Formula & Word Order:**\n"
-                    "- Affirmative Sentence: `[Sujet] + [Verbe Conjugué] + [Complément d'Objet Direct / Indirect]`\n"
-                    "- Negative Sentence: `[Sujet] + ne + [Verbe Conjugué] + pas + [Complément]` (Note: *ne* elides to *n'* before vowels).\n\n"
-                    "**2. Complete Present Tense Conjugation Matrix (-er Verbs):**\n"
-                    "| Pronom Sujet | Terminaison | Exemple (Parler) | Phonétique |\n"
-                    "|---|---|---|---|\n"
-                    "| Je | -e | je parle | /ʒə paʁl/ |\n"
-                    "| Tu | -es | tu parles | /ty paʁl/ |\n"
-                    "| Il / Elle / On | -e | il/elle parle | /il paʁl/ |\n"
-                    "| Nous | -ons | nous parlons | /nu paʁ.lɔ̃/ |\n"
-                    "| Vous | -ez | vous parlez | /vu paʁ.le/ |\n"
-                    "| Ils / Elles | -ent | ils/elles parlent | /il paʁl/ |\n\n"
-                    "**3. Phonetic Nuance & Native Traps:**\n"
-                    "- The singular forms (*parle, parles, parle*) and the 3rd person plural (*parlent*) are phonetically IDENTICAL (/paʁl/).\n"
-                    "- The ending *-ent* in 3rd person plural verbs is ALWAYS silent. Never pronounce it like the noun suffix *-ent*.\n"
-                    "- Mandatory Liaison: In *nous parlons* vs *nous habitons* (/nu.za.bi.tɔ̃/), the silent 's' links with following vowels as a /z/ sound."
-                ),
-                "drills": [
-                    {
-                        "question": "Conjugate the verb 'parler' (to speak) for the subject pronoun 'nous'.",
-                        "answer": "nous parlons",
-                        "explanation": "To conjugate regular 1st-group French verbs, drop the infinitive '-er' ending to get the radical 'parl-', and append the 1st-person plural suffix '-ons'."
-                    },
-                    {
-                        "question": "Translate into French: 'I live in Paris and I speak French.'",
-                        "answer": "J'habite à Paris et je parle français.",
-                        "explanation": "Before a verb starting with a mute 'h' or vowel, 'je' undergoes elision and becomes 'j''. The city preposition 'à' is required for Paris."
-                    },
-                    {
-                        "question": "Identify and rectify the error in this sentence: 'Ils écoute la radio tous les soirs.'",
-                        "answer": "Ils écoutent la radio tous les soirs.",
-                        "explanation": "The subject pronoun 'ils' (3rd person plural) demands the plural verbal ending '-ent' (silent). 'écoute' with an '-e' ending is restricted to 3rd person singular (il/elle)."
-                    }
-                ]
-            },
-            "Spanish": {
-                "vocab": [
-                    {"word": "hablar", "meaning": "to speak", "pronunciation": "/aˈblaɾ/", "example_sentence": "Hablo español con mis colegas todos los días."},
-                    {"word": "vivir", "meaning": "to live", "pronunciation": "/biˈbiɾ/", "example_sentence": "Vivimos en Madrid en un apartamento céntrico."},
-                    {"word": "trabajar", "meaning": "to work", "pronunciation": "/tɾa.βaˈxaɾ/", "example_sentence": "Ella trabaja en una empresa internacional."},
-                    {"word": "estudiar", "meaning": "to study", "pronunciation": "/es.tuˈðjaɾ/", "example_sentence": "Estudiamos la gramática con mucha atención."},
-                    {"word": "comprender", "meaning": "to understand", "pronunciation": "/kom.pɾenˈdeɾ/", "example_sentence": "Usted comprende todas las lecciones del curso."},
-                ],
-                "dialogues": [
-                    "Profesor: ¡Buenos días! ¿Cómo te llamas y qué idioma estudias? (Teacher: Good morning! What is your name and what language are you studying?)",
-                    "Estudiante: ¡Buenos días! Me llamo Carlos y estudio español con mucho entusiasmo. (Student: Good morning! My name is Carlos and I study Spanish with enthusiasm.)",
-                    "Profesor: Excelente, ¿dónde vives actualmente? (Teacher: Excellent, where do you live currently?)",
-                    "Estudiante: Vivo en Barcelona con mi familia. (Student: I live in Barcelona with my family.)",
-                ],
-                "study_guide": (
-                    f"### Master Study Guide: {topic} (Spanish {level})\n\n"
-                    "**1. Core Syntactic Formula & Word Order:**\n"
-                    "- Spanish allows subject pronoun omission because the conjugated verb ending clearly marks the person: `(Sujeto) + Verbo + Objeto`.\n\n"
-                    "**2. Present Tense Regular -AR Verb Conjugation:**\n"
-                    "| Pronombre | Terminación | Ejemplo (Hablar) |\n"
-                    "|---|---|---|\n"
-                    "| Yo | -o | hablo |\n"
-                    "| Tú | -as | hablas |\n"
-                    "| Él / Ella / Usted | -a | habla |\n"
-                    "| Nosotros / Nosotras | -amos | hablamos |\n"
-                    "| Vosotros / Vosotras | -áis | habláis |\n"
-                    "| Ellos / Ellas / Ustedes | -an | hablan |\n\n"
-                    "**3. Common Pitfalls:**\n"
-                    "- Do not confuse 'ser' (permanent essence) with 'estar' (temporary state/location).\n"
-                    "- Note the difference between informal 'tú' (second person singular) and polite 'usted' (takes 3rd person singular verb forms)."
-                ),
-                "drills": [
-                    {
-                        "question": "Conjugate the verb 'hablar' for the 1st person singular (Yo).",
-                        "answer": "hablo",
-                        "explanation": "Drop the '-ar' infinitive ending and add the standard 1st person present suffix '-o'."
-                    },
-                    {
-                        "question": "Translate into Spanish: 'We live in Spain and we work here.'",
-                        "answer": "Vivimos en España y trabajamos aquí.",
-                        "explanation": "Subject pronouns (nosotros) are omitted in natural Spanish speech. 'Vivir' ends in '-imos' and 'trabajar' ends in '-amos'."
-                    },
-                    {
-                        "question": "Rectify the grammatical agreement error: 'Ellos habla español muy bien.'",
-                        "answer": "Ellos hablan español muy bien.",
-                        "explanation": "The 3rd person plural pronoun 'ellos' requires the plural verb ending '-an' ('hablan'), not the singular form 'habla'."
-                    }
-                ]
-            },
-            "German": {
-                "vocab": [
-                    {"word": "sprechen", "meaning": "to speak", "pronunciation": "/ˈʃpʁɛçn̩/", "example_sentence": "Ich spreche Deutsch mit meinem Dozenten."},
-                    {"word": "wohnen", "meaning": "to live / reside", "pronunciation": "/ˈvoːnən/", "example_sentence": "Wir wohnen in Berlin in einer schönen Wohnung."},
-                    {"word": "arbeiten", "meaning": "to work", "pronunciation": "/ˈʔaʁbaɪ̯tn̩/", "example_sentence": "Sie arbeitet bei einem internationalen Technologieunternehmen."},
-                    {"word": "lernen", "meaning": "to learn", "pronunciation": "/ˈlɛʁnən/", "example_sentence": "Wir lernen jeden Tag fleißig neue Vokabeln."},
-                    {"word": "verstehen", "meaning": "to understand", "pronunciation": "/fɛɐ̯ˈʃteːən/", "example_sentence": "Verstehen Sie die Grammatikregel für diesen Satz?"},
-                ],
-                "dialogues": [
-                    "Lehrer: Guten Morgen! Wie heißen Sie und welche Sprache lernen Sie? (Teacher: Good morning! What is your name and what language are you learning?)",
-                    "Student: Guten Morgen! Ich heiße Lukas und ich lerne Deutsch an der Sprachschule. (Student: Good morning! My name is Lukas and I am learning German at the language school.)",
-                    "Lehrer: Sehr schön, wo wohnen Sie zurzeit? (Teacher: Very nice, where do you live currently?)",
-                    "Student: Ich wohne in München. (Student: I live in Munich.)",
-                ],
-                "study_guide": (
-                    f"### Master Study Guide: {topic} (German {level})\n\n"
-                    "**1. Verb-Second Rule (V2 Rule):**\n"
-                    "- In standard German main clauses, the conjugated verb ALWAYS occupies the second position: `[Position 1] + [Verb] + [Subjekt] + [Objekt]`.\n\n"
-                    "**2. Present Tense Regular Verb Endings:**\n"
-                    "| Pronomen | Endung | Beispiel (Wohnen) |\n"
-                    "|---|---|---|\n"
-                    "| Ich | -e | ich wohne |\n"
-                    "| Du | -st | du wohnst |\n"
-                    "| Er / Sie / Es | -t | er/sie/es wohnt |\n"
-                    "| Wir | -en | wir wohnen |\n"
-                    "| Ihr | -t | ihr wohnt |\n"
-                    "| Sie / sie | -en | Sie/sie wohnen |\n\n"
-                    "**3. Vowel Shifts in Strong Verbs:**\n"
-                    "- Note the stem vowel mutation in strong verbs like *sprechen* (du sprichst, er spricht)."
-                ),
-                "drills": [
-                    {
-                        "question": "Conjugate the verb 'wohnen' for 'wir' (we).",
-                        "answer": "wir wohnen",
-                        "explanation": "Regular 1st person plural takes the standard '-en' infinitive ending matching the stem."
-                    },
-                    {
-                        "question": "Translate into German: 'Today I speak German with my teacher.' (Apply V2 rule).",
-                        "answer": "Heute spreche ich Deutsch mit meinem Lehrer.",
-                        "explanation": "Because 'Heute' occupies Position 1, the conjugated verb 'spreche' must immediately occupy Position 2, followed by the subject 'ich'."
-                    },
-                    {
-                        "question": "Correct the verb agreement mistake: 'Du wohnen in Frankfurt.'",
-                        "answer": "Du wohnst in Frankfurt.",
-                        "explanation": "The 2nd person singular pronoun 'du' requires the verb ending '-st' ('wohnst'), not the infinitive '-en'."
-                    }
-                ]
-            }
-        }
-
-        # 12-Month Academic Curriculum Stages for French
-        french_stages = {
-            1: {"title": "Present Indicative: Group 1 (-er) Regular Verbs & Pronoun Elision", "verb": "parler", "matrix": "| Je | -e | parle |\n| Tu | -es | parles |\n| Il/Elle | -e | parle |\n| Nous | -ons | parlons |\n| Vous | -ez | parlez |\n| Ils/Elles | -ent | parlent |", "drill": ("Conjugate 'parler' for 'nous'.", "nous parlons", "Regular -er verbs take '-ons' for nous.")},
-            2: {"title": "Vital Auxiliaries: Être (To Be) & Avoir (To Have)", "verb": "être / avoir", "matrix": "| Je | suis / ai |\n| Tu | es / as |\n| Il/Elle | est / a |\n| Nous | sommes / avons |\n| Vous | êtes / avez |\n| Ils/Elles | sont / ont |", "drill": ("Conjugate 'être' for 'vous'.", "vous êtes", "Irregular 2nd person plural of être is 'êtes'.")},
-            3: {"title": "Second & Third Group Verbs: Finir & Prendre", "verb": "finir / prendre", "matrix": "| Je | finis / prends |\n| Tu | finis / prends |\n| Il/Elle | finit / prend |\n| Nous | finissons / prenons |\n| Vous | finissez / prenez |\n| Ils/Elles | finissent / prennent |", "drill": ("Conjugate 'finir' for 'nous'.", "nous finissons", "2nd group verbs take '-issons' for nous.")},
-            4: {"title": "Food, Commerce & Partitive Articles (du, de la, des)", "verb": "manger / boire", "matrix": "| Je | mange / bois |\n| Tu | manges / bois |\n| Il/Elle | mange / boit |\n| Nous | mangeons / buvons |\n| Vous | mangez / buvez |\n| Ils/Elles | mangent / boivent |", "drill": ("Fill in: 'Je voudrais ___ eau.'", "de l'eau", "Partitive before vowel is 'de l''.")},
-            5: {"title": "Passé Composé with Avoir: Completed Past Narratives", "verb": "avoir + participe passé", "matrix": "| J'ai parlé | nous avons parlé |\n| Tu as parlé | vous avez parlé |\n| Il a parlé | ils ont parlé |", "drill": ("Conjugate 'terminer' in passé composé for 'nous'.", "nous avons terminé", "Auxiliary avoir + terminé.")},
-            6: {"title": "Passé Composé with Être: Motion Verbs & Agreement", "verb": "être + participe passé", "matrix": "| Je suis allé(e) | nous sommes allés |\n| Tu es allé(e) | vous êtes allé(e)s |\n| Il est allé / Elle est allée | ils sont allés / elles sont allées |", "drill": ("Agreement: 'Marie (partir) hier.'", "Marie est partie hier.", "Feminine singular takes '+e'.")},
-            7: {"title": "Travel, Geographical Prepositions & Descriptive Adjectives", "verb": "voyager / visiter", "matrix": "| Ville | à Paris |\n| Pays fém | en France |\n| Pays masc | au Japon |\n| Pays plur | aux États-Unis |", "drill": ("Insert preposition: 'Nous allons ___ Italie.'", "en Italie", "Feminine countries take 'en'.")},
-            8: {"title": "Professional Communication & Corporate Email Etiquette", "verb": "envoyer / recevoir", "matrix": "| Je | reçois / transmets |\n| Nous | recevons / transmettons |\n| Salutation | Veuillez agréer... |", "drill": ("Translate: 'Please find attached the contract.'", "Veuillez trouver ci-joint le contrat.", "Formal professional directive.")},
-            9: {"title": "L'Imparfait: Habitual Past, Background Descriptions & Nostalgia", "verb": "imparfait (-ais, -ais, -ait, -ions, -iez, -aient)", "matrix": "| J'étais | nous étions |\n| Tu étais | vous étiez |\n| Il était | ils étaient |", "drill": ("Conjugate 'prendre' in imparfait for 'nous'.", "nous prenions", "Radical 'pren-' + '-ions'.")},
-            10: {"title": "Le Futur Simple & Hypotheses: Career Goals & Projections", "verb": "futur simple (-ai, -as, -a, -ons, -ez, -ont)", "matrix": "| Je serai | nous serons |\n| J'aurai | nous aurons |\n| Je ferai | nous ferons |", "drill": ("Conjugate 'aller' in futur simple for 'nous'.", "nous irons", "Irregular future root is 'ir-'.")},
-            11: {"title": "Le Conditionnel Présent: Polite Advice, Diplomacy & Modality", "verb": "conditionnel (-ais, -ais, -ait, -ions, -iez, -aient)", "matrix": "| J'aimerais | nous aimerions |\n| Pourriez-vous | voudriez-vous |", "drill": ("Form polite request with 'pouvoir' for 'vous'.", "Pourriez-vous nous aider ?", "Polite conditional request.")},
-            12: {"title": "Master Conversational Synthesis: Executive Negotiation & Subjunctive", "verb": "subjonctif & négociation", "matrix": "| Que je sache | que nous sachions |\n| Que je puisse | que nous puissions |\n| Qu'il soit | qu'ils soient |", "drill": ("Counter-proposal: 'We would agree provided that...'", "Nous serions disposés à accepter sous réserve que...", "Diplomatic negotiation register.")}
-        }
-
-        day_wise_lessons = []
-        for d_num in range(1, total_days + 1):
-            m_stage_num = min(12, ((d_num - 1) // 30) + 1)
-            stage = french_stages.get(m_stage_num, french_stages[1])
-            w_num = ((d_num - 1) // 7) + 1
-
-            day_drill_q, day_drill_a, day_drill_exp = stage["drill"]
-
-            study_guide = (
-                f"### Master Study Guide: Month {m_stage_num} • Day {d_num} ({language} {level})\n"
-                f"Certified Academic Curriculum — {stage['title']}\n\n"
-                f"**1. Core Syntactic Formula & Grammar:**\n"
-                f"Target Focus: {stage['title']}. Systematically mastered through structural drills.\n\n"
-                f"**2. Active Conjugation Matrix:**\n"
-                f"{stage['matrix']}\n\n"
-                f"**3. Native Spoken Nuance & Phonetics:**\n"
-                f"Ensure accurate articulation, liaisons, and native conversational rhythm.\n"
-            )
-
-            day_wise_lessons.append({
-                "day_number": d_num,
-                "module_week": f"Month {m_stage_num} • Week {w_num}: {stage['title']}",
-                "day_topic": f"Day {d_num}: {stage['title']} — Applied Mastery & Drills",
-                "grammar_rules_detail": f"In-depth 1-Hour Faculty Lecture for Day {d_num}: Comprehensive coverage of {stage['title']} with syntactic formulas, tense agreements, and situational dialogue execution in {language}.",
-                "vocabulary_bank": [
-                    {"word": stage["verb"].split()[0], "meaning": f"Core verb for {stage['title']}", "pronunciation": "IPA", "example_sentence": f"Exemple contextualisé pour le jour {d_num}."}
-                ],
-                "classroom_dialogues": [
-                    f"Professeur: Bienvenue au jour {d_num}. Aujourd'hui, nous maîtrisons {stage['title']}.",
-                    "Étudiant: Parfait professeur, nous appliquons ces structures en contexte professionnel."
-                ],
-                "pedagogical_instructions": "Conduct active choral repetition and error-rectification drills. Discourage translation crutches; anchor retention with direct context.",
-                "study_notes_markdown": study_guide,
-                "in_class_exercises": [day_drill_q],
-                "exercise_solutions": [{"question": day_drill_q, "answer": day_drill_a, "explanation": day_drill_exp}],
-                "homework_tasks": [
-                    f"Write a 100-word daily journal in {language} applying today's grammar formulas ({stage['title']}).",
-                    "Record a 60-second voice note practicing the dialogues with correct pronunciation on the ISML portal."
-                ]
+        # Build vocabulary bank from discovered items
+        vocab_bank = []
+        for v in analysis.vocabulary_items[:8]:
+            vocab_bank.append({
+                "word": v.item,
+                "meaning": f"Extracted from source: {v.category}",
+                "pronunciation": "IPA unavailable (model offline)",
+                "example_sentence": v.evidence_excerpt or f"Example for: {v.item}",
             })
+
+        # Build study notes from analysis
+        study_parts = [f"### Source-Derived Study Guide: {plan.lesson_title}\n"]
+        study_parts.append(f"**Source Coverage:** {analysis.source_coverage_summary}\n")
+
+        if analysis.grammar_structures:
+            study_parts.append("**Grammar Structures Found in Source:**")
+            for g in analysis.grammar_structures[:6]:
+                study_parts.append(f"- {g.item}")
+                if g.evidence_excerpt:
+                    study_parts.append(f"  > Source evidence: \"{g.evidence_excerpt}\"")
+            study_parts.append("")
+
+        if analysis.vocabulary_items:
+            study_parts.append("**Vocabulary from Source:**")
+            study_parts.append("| Word | Category | Source Evidence |")
+            study_parts.append("|---|---|---|")
+            for v in analysis.vocabulary_items[:10]:
+                excerpt = (v.evidence_excerpt or "")[:50]
+                study_parts.append(f"| {v.item} | {v.category} | {excerpt} |")
+            study_parts.append("")
+
+        if analysis.expressions_idioms:
+            study_parts.append("**Expressions & Idioms:**")
+            for e in analysis.expressions_idioms[:5]:
+                study_parts.append(f"- {e.item}")
+
+        study_notes = "\n".join(study_parts)
+
+        # Build exercises from plan
+        exercises = []
+        solutions = []
+        for i, pe in enumerate(plan.planned_exercises[:3]):
+            q = f"Q{i+1}: {pe.exercise_type} exercise for '{pe.target_concept}'"
+            exercises.append(q)
+            solutions.append({
+                "question": q,
+                "answer": f"[Answer requires model generation - based on {pe.target_concept}]",
+                "explanation": f"This tests {pe.target_concept} from the source material.",
+            })
+
+        # Build dialogues from source expressions
+        dialogues = []
+        for e in analysis.expressions_idioms[:4]:
+            dialogues.append(f"Speaker: {e.item}")
+
+        day_lesson = {
+            "day_number": 1,
+            "module_week": f"Week 1: {plan.lesson_focus}",
+            "day_topic": f"Day 1: {plan.lesson_title}",
+            "grammar_rules_detail": (
+                f"Grammar structures from source: "
+                + ", ".join(g.item for g in analysis.grammar_structures[:5])
+                if analysis.grammar_structures
+                else f"Grammar rules were not explicitly found in the provided source materials for {topic}."
+            ),
+            "video_breakdown_analysis": (
+                "Source material analysis is based on uploaded text/documents. "
+                "No audio/video characteristics were analyzed."
+            ),
+            "study_notes_markdown": study_notes,
+            "vocabulary_bank": vocab_bank,
+            "classroom_dialogues": dialogues or [f"[Dialogue generation requires AI model for {language}]"],
+            "pedagogical_instructions": (
+                f"This lesson is derived from uploaded source materials. "
+                f"Focus on the {len(analysis.vocabulary_items)} vocabulary items and "
+                f"{len(analysis.grammar_structures)} grammar structures discovered in the source."
+            ),
+            "in_class_exercises": exercises or ["[Exercise generation requires AI model]"],
+            "exercise_solutions": solutions,
+            "homework_tasks": [
+                f"Review the vocabulary items extracted from the source material.",
+                f"Practice the grammar structures identified in today's lesson.",
+            ],
+        }
 
         return {
             "session_plan": {
-                "session_title": f"{topic} ({language} {level}) - {total_days}-Day Master Professional Teaching Blueprint",
+                "session_title": f"{plan.lesson_title} - Source Analysis Package",
                 "target_language": language,
                 "target_level": level,
                 "track_mode": track_mode,
                 "total_curriculum_days": total_days,
-                "curriculum_overview_summary": f"Comprehensive {total_days}-Day curriculum engineered for accelerated fluency in {language} ({level}).",
-                "learning_objectives": [
-                    f"Master core syntactic formulas and functional grammar for {topic}",
-                    f"Acquire native conversational reflexes and idiomatic expressions",
-                    f"Perform with certified precision in CEFR/JLPT/TOPIK benchmarks"
+                "curriculum_overview_summary": (
+                    f"This package was generated from source evidence analysis. "
+                    f"{analysis.source_coverage_summary} "
+                    f"Note: Full AI synthesis was unavailable; content is derived directly from source analysis."
+                ),
+                "learning_objectives": analysis.learning_outcomes_inferred[:3] or [
+                    f"Study the concepts found in the uploaded source materials for {topic}"
                 ],
-                "grammar_focus": [
-                    f"Active sentence construction and verb patterns for {topic}",
-                    f"Direct/indirect object placement and polite registers"
+                "grammar_focus": [g.item for g in analysis.grammar_structures[:3]] or [
+                    f"Grammar focus from source for {topic}"
                 ],
-                "key_vocabulary": [
-                    f"High-frequency terms and workplace collocations in {language}"
+                "key_vocabulary": [v.item for v in analysis.vocabulary_items[:5]] or [
+                    f"Key terms from source for {topic}"
                 ],
-                "day_wise_syllabus": day_wise_lessons,
+                "day_wise_syllabus": [day_lesson],
                 "homework_and_practice": [
-                    f"Complete all day-wise exercises for {topic}",
-                    "Regular review of vocabulary bank on ISML mobile app"
-                ]
+                    "Review extracted vocabulary and grammar from source materials.",
+                ],
             },
             "teacher_materials": {
-                "presentation_title": f"{topic} - {language} {level}",
-                "subtitle": "ISML Curriculum & Lecture Deck",
+                "presentation_title": plan.lesson_title,
+                "subtitle": f"{language} {level} — Source-Derived Materials",
                 "slides": [
                     {
                         "slide_number": 1,
-                        "slide_title": "Class Objectives & Overview",
-                        "bullet_points": [f"Welcome to {topic}", f"CEFR Level target: {level}", "Session agenda (Warm-up, Theory, Practice)"],
-                        "teacher_cue": f"Greet in {language} and explain why {topic} is essential."
-                    },
-                    {
-                        "slide_number": 2,
-                        "slide_title": "Core Grammar & Syntactic Formulas",
-                        "bullet_points": ["Formula Breakdown with Structural Patterns", "Direct vs Indirect Object Rules", "Critical Exceptions & Irregular Forms"],
-                        "teacher_cue": "Demand choral repetition before moving to sentence construction."
-                    },
-                    {
-                        "slide_number": 3,
-                        "slide_title": "High-Yield Professional Vocabulary Bank",
-                        "bullet_points": ["Contextual Workplace & Daily Expressions", "Collocations & Native Prepositions", "Phonetic Stress & Accent Traps"],
-                        "teacher_cue": "Correct pronunciation on the spot using the phonetic cues."
-                    },
-                    {
-                        "slide_number": 4,
-                        "slide_title": "Classroom Drill & Interactive Paired Roleplay",
-                        "bullet_points": ["Scenario: High-Stakes Situational Dialogue", "Step 1: Greet & Frame Context", "Step 2: Negotiate & Deliver Key Message", "Step 3: Formal Closing"],
-                        "teacher_cue": "Pair strongest with developing students and circulate to grade fluency."
-                    },
-                    {
-                        "slide_number": 5,
-                        "slide_title": "Curriculum Milestones & Homework Directives",
-                        "bullet_points": ["Daily Lesson Summary & Takeaways", "Student LMS Practice Requirements", "Preparation for Next Day Session"],
-                        "teacher_cue": "Reinforce accountability: Homework submission is graded before next class."
+                        "slide_title": f"{plan.lesson_title}",
+                        "bullet_points": [
+                            f"Topics covered: {', '.join(analysis.main_topics[:3])}",
+                            f"Vocabulary items: {len(analysis.vocabulary_items)}",
+                            f"Grammar structures: {len(analysis.grammar_structures)}",
+                        ],
+                        "teacher_cue": "Review the source materials with students.",
                     }
                 ],
-                "handout_summary_markdown": cur["study_guide"]
+                "handout_summary_markdown": study_notes,
             },
             "student_lsrw": {
                 "listening": {
-                    "audio_transcript_passage": f"Realistic spoken {language} passage/dialogue at {level} level.",
-                    "audio_script_dialogue": cur["dialogues"][0],
+                    "audio_transcript_passage": (
+                        dialogues[0] if dialogues
+                        else f"[Listening passage for {topic} requires AI synthesis]"
+                    ),
+                    "audio_script_dialogue": (
+                        "\n".join(dialogues[:2]) if dialogues
+                        else f"[Dialogue for {topic} requires AI synthesis]"
+                    ),
                     "comprehension_questions": [
                         {
                             "question_number": 1,
-                            "question": cur["drills"][0]["question"],
-                            "options": [cur["drills"][0]["answer"], "Incorrect form 1", "Incorrect form 2", "Incorrect form 3"],
-                            "correct_answer": cur["drills"][0]["answer"],
-                            "explanation": cur["drills"][0]["explanation"]
+                            "question": exercises[0] if exercises else f"[Question about {topic}]",
+                            "options": ["Option A", "Option B", "Option C", "Option D"],
+                            "correct_answer": "Option A",
+                            "explanation": "Based on source analysis.",
                         }
-                    ]
+                    ],
                 },
                 "reading": {
-                    "passage_title": f"{topic} in Context",
-                    "reading_text": f"Rich, authentic reading text in {language} appropriate for {level}.",
+                    "passage_title": f"{topic} — Reading Material",
+                    "reading_text": study_notes[:500],
                     "vocabulary_glossary": {
-                        item["word"]: item["meaning"] for item in cur["vocab"][:3]
-                    },
+                        v.item: f"{v.category}" for v in analysis.vocabulary_items[:3]
+                    } or {"[term]": "[meaning]"},
                     "comprehension_questions": [
                         {
                             "question_number": 1,
-                            "question": cur["drills"][1]["question"],
-                            "options": [cur["drills"][1]["answer"], "Option B", "Option C", "Option D"],
-                            "correct_answer": cur["drills"][1]["answer"],
-                            "explanation": cur["drills"][1]["explanation"]
+                            "question": f"What are the key concepts covered in this source material about {topic}?",
+                            "options": analysis.main_topics[:4] or ["Topic A", "Topic B", "Topic C", "Topic D"],
+                            "correct_answer": analysis.main_topics[0] if analysis.main_topics else "Topic A",
+                            "explanation": "Based on source evidence analysis.",
                         }
-                    ]
+                    ],
                 },
                 "speaking": {
-                    "situation_prompt": f"Real-world conversational scenario for {topic} in {language}.",
-                    "roleplay_scenario": "You are meeting a colleague or instructor. Enact the conversation in French.",
-                    "pronunciation_hints": ["Liaison between words", "Silent final consonants"],
-                    "guiding_questions": ["What is your name?", "Where do you live?", "What language do you speak?"],
-                    "sample_dialogue_answer": cur["dialogues"][1]
+                    "situation_prompt": f"Practice using the vocabulary from {topic} in a conversational setting.",
+                    "roleplay_scenario": f"You are discussing {topic} with a language partner.",
+                    "pronunciation_hints": [
+                        p.item for p in analysis.pronunciation_observations[:2]
+                    ] or ["Focus on clear articulation of new vocabulary."],
+                    "guiding_questions": [f"What did you learn about {t}?" for t in analysis.main_topics[:3]] or [f"Discuss {topic}"],
+                    "sample_dialogue_answer": dialogues[0] if dialogues else f"[Sample dialogue for {topic}]",
                 },
                 "writing": {
-                    "task_prompt": f"Write an introduction in {language} applying the verbs and expressions learned today.",
+                    "task_prompt": f"Write a short paragraph about {topic} using vocabulary from the source materials.",
                     "word_count_guideline": "50-80 words",
-                    "guiding_hints": ["Use at least 3 newly learned verbs", "Include proper subject-verb agreement"],
-                    "sample_model_response": cur["vocab"][0]["example_sentence"] + " " + cur["vocab"][1]["example_sentence"],
+                    "guiding_hints": [
+                        f"Use at least 3 vocabulary items: {', '.join(v.item for v in analysis.vocabulary_items[:3])}"
+                    ] if analysis.vocabulary_items else ["Use vocabulary from the lesson."],
+                    "sample_model_response": f"[Model response for {topic} requires AI synthesis]",
                     "evaluation_rubrics": [
                         {
-                            "criteria_name": "Grammar Accuracy",
+                            "criteria_name": "Source Vocabulary Usage",
                             "weight_percentage": 40,
-                            "grading_prompt_instructions": "Verify subject-verb agreement and proper conjugation."
+                            "grading_prompt_instructions": "Check that vocabulary from the source material is used correctly.",
                         },
                         {
-                            "criteria_name": "Vocabulary & Fluency",
+                            "criteria_name": "Grammar Accuracy",
                             "weight_percentage": 30,
-                            "grading_prompt_instructions": "Assess application of target words."
+                            "grading_prompt_instructions": "Verify correct application of grammar structures.",
                         },
                         {
                             "criteria_name": "Task Completion",
                             "weight_percentage": 30,
-                            "grading_prompt_instructions": "Verify prompt requirements were met within word count."
-                        }
-                    ]
-                }
-            }
+                            "grading_prompt_instructions": "Verify the prompt requirements were met.",
+                        },
+                    ],
+                },
+            },
         }

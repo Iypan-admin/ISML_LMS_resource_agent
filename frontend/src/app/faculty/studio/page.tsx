@@ -977,45 +977,69 @@ export default function FacultyStudioPage() {
                       { monthIndex: 12, name: 'December', shortName: 'Dec', standardDays: 31 },
                     ];
 
-                    // Determine total months based on course track mode
-                    let totalMonths = 12;
-                    if (trackMode === 'STANDARD') {
-                      totalMonths = 12; // Jan through Dec
-                    } else if (trackMode === 'INTERNSHIP') {
-                      totalMonths = 6; // Jan through Jun
-                    } else if (trackMode === 'SUPER_INTERNSHIP') {
-                      totalMonths = 3; // Jan through Mar
-                    } else if (trackMode === 'CUSTOM') {
-                      const curDays = sessionPackage.session_plan.total_curriculum_days || 30;
-                      if (curDays <= 31) totalMonths = 1;
-                      else if (curDays <= 59) totalMonths = 2;
-                      else if (curDays <= 90) totalMonths = 3;
-                      else if (curDays <= 181) totalMonths = 6;
-                      else totalMonths = 12;
-                    } else {
-                      totalMonths = 12;
-                    }
-
-                    // Build Month Metadata with accurate start day and end day based on real calendar days
-                    const activeMonths = [];
+                    // Build Month Metadata accurately based on real calendar days
+                    const activeMonths: Array<{
+                      monthNumber: number;
+                      name: string;
+                      shortName: string;
+                      daysCount: number;
+                      startDay: number;
+                      endDay: number;
+                    }> = [];
                     let runningDayCount = 0;
-                    for (let m = 0; m < totalMonths; m++) {
-                      const calMonth = GREGORIAN_MONTHS[m % 12];
-                      const startDay = runningDayCount + 1;
-                      const endDay = runningDayCount + calMonth.standardDays;
-                      runningDayCount += calMonth.standardDays;
 
-                      activeMonths.push({
-                        monthNumber: m + 1,
-                        name: calMonth.name,
-                        shortName: calMonth.shortName,
-                        daysCount: calMonth.standardDays,
-                        startDay,
-                        endDay,
-                      });
+                    if (trackMode === 'CUSTOM') {
+                      // Custom Focus Track: strictly respect requested custom days (e.g. 5 days = 5 days total, not 30/31!)
+                      const targetDays = sessionPackage.session_plan.total_curriculum_days || (typeof customDays === 'number' && customDays > 0 ? customDays : 5);
+                      let remainingDays = targetDays;
+                      let m = 0;
+
+                      while (remainingDays > 0 && m < 12) {
+                        const calMonth = GREGORIAN_MONTHS[m % 12];
+                        const daysInThisMonth = Math.min(calMonth.standardDays, remainingDays);
+                        const startDay = runningDayCount + 1;
+                        const endDay = runningDayCount + daysInThisMonth;
+                        runningDayCount += daysInThisMonth;
+                        remainingDays -= daysInThisMonth;
+
+                        activeMonths.push({
+                          monthNumber: m + 1,
+                          name: calMonth.name,
+                          shortName: calMonth.shortName,
+                          daysCount: daysInThisMonth,
+                          startDay,
+                          endDay,
+                        });
+                        m++;
+                      }
+                    } else {
+                      // Standard / Internship predefined tracks based on full authentic calendar months
+                      let totalMonths = 12;
+                      if (trackMode === 'INTERNSHIP') {
+                        totalMonths = 6; // Jan through Jun
+                      } else if (trackMode === 'SUPER_INTERNSHIP') {
+                        totalMonths = 3; // Jan through Mar
+                      }
+
+                      for (let m = 0; m < totalMonths; m++) {
+                        const calMonth = GREGORIAN_MONTHS[m % 12];
+                        const startDay = runningDayCount + 1;
+                        const endDay = runningDayCount + calMonth.standardDays;
+                        runningDayCount += calMonth.standardDays;
+
+                        activeMonths.push({
+                          monthNumber: m + 1,
+                          name: calMonth.name,
+                          shortName: calMonth.shortName,
+                          daysCount: calMonth.standardDays,
+                          startDay,
+                          endDay,
+                        });
+                      }
                     }
 
                     const totalDays = runningDayCount;
+                    const totalMonths = activeMonths.length;
                     const isShortCourse = totalMonths === 1;
 
                     // Generate full days array mapped accurately to real calendar months
