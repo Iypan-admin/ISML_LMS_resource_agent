@@ -20,6 +20,7 @@ import {
   Download,
   FileText
 } from 'lucide-react';
+import { generateCurriculumDay } from './curriculumProgression';
 
 export default function FacultyStudioPage() {
   const [selectedLanguage, setSelectedLanguage] = useState<'Spanish' | 'German' | 'French' | 'Japanese' | 'Korean'>('Spanish');
@@ -1024,37 +1025,23 @@ export default function FacultyStudioPage() {
                     activeMonths.forEach((mInfo) => {
                       for (let d = mInfo.startDay; d <= mInfo.endDay; d++) {
                         const dayInMonth = d - mInfo.startDay + 1;
-                        const weekInMonth = Math.ceil(dayInMonth / 7);
                         const rawDay = (d <= rawDays.length) ? rawDays[d - 1] : null;
-                        const baseDay = rawDay || ((rawDays.length > 0) ? rawDays[(d - 1) % rawDays.length] : null);
 
-                        allDays.push({
-                          day_number: d,
-                          month_number: mInfo.monthNumber,
-                          calendar_month_name: mInfo.name,
-                          calendar_month_short: mInfo.shortName,
-                          day_in_month: dayInMonth,
-                          month_total_days: mInfo.daysCount,
-                          week_number: weekInMonth,
-                          module_week: isShortCourse 
-                            ? `Sprint Day ${d}` 
-                            : `${mInfo.name} • Day ${dayInMonth} of ${mInfo.daysCount} (Course Day ${d})`,
-                          day_topic: baseDay?.day_topic || `${mInfo.name} Day ${dayInMonth}: ${sessionPackage.topic} — Applied Mastery & Drills`,
-                          grammar_rules_detail: baseDay?.grammar_rules_detail || `Faculty Lecture on ${sessionPackage.topic}: Syntactic rules, formulas, and contrastive examples derived directly from reference material.`,
-                          study_notes_markdown: baseDay?.study_notes_markdown || `### Master Study Guide: ${mInfo.name} Day ${dayInMonth} (Course Day ${d}) - ${sessionPackage.topic}\n\n**1. Syntactic Architecture & Word Order:**\nSyntactic formulas directly derived from the reference material.\n\n**2. Core Linguistic Paradigm:**\nComplete breakdown grounded in the lesson context.`,
-                          vocabulary_bank: baseDay?.vocabulary_bank || [],
-                          classroom_dialogues: baseDay?.classroom_dialogues || [],
-                          pedagogical_instructions: baseDay?.pedagogical_instructions || `Senior Faculty Advice: Emphasize practical communicative competence grounded strictly in the reference material.`,
-                          video_breakdown_analysis: baseDay?.video_breakdown_analysis || `Comprehensive video breakdown for ${mInfo.name} Day ${dayInMonth}: In-depth analysis of vocal inflection, speaker interaction, and authentic communicative phrases extracted from reference materials.`,
-                          in_class_exercises: (baseDay?.in_class_exercises && baseDay.in_class_exercises.length > 0)
-                            ? baseDay.in_class_exercises
-                            : (baseDay?.exercise_solutions ? baseDay.exercise_solutions.map((s: any) => s.question) : []),
-                          exercise_solutions: baseDay?.exercise_solutions || [],
-                          homework_tasks: baseDay?.homework_tasks || [
-                            `Daily workbook assignment for ${mInfo.name} Day ${dayInMonth} covering target structures.`,
-                            `Oral dialogue recitation and audio submission.`
-                          ]
-                        });
+                        const dayItem = generateCurriculumDay(
+                          sessionPackage.language || selectedLanguage,
+                          sessionPackage.level || selectedLevel,
+                          sessionPackage.topic || topic,
+                          d,
+                          mInfo.monthNumber,
+                          mInfo.name,
+                          mInfo.shortName,
+                          dayInMonth,
+                          mInfo.daysCount,
+                          totalDays,
+                          rawDay
+                        );
+
+                        allDays.push(dayItem);
                       }
                     });
 

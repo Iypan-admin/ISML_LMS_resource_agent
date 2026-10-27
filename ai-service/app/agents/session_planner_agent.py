@@ -413,30 +413,59 @@ Output ONLY valid JSON. Escape all inner quotes and backslashes properly. No mar
             }
         }
 
-        # Default fallback to French or target language
-        selected_lang_key = language.capitalize() if language.capitalize() in lang_data else "French"
-        cur = lang_data[selected_lang_key]
+        # 12-Month Academic Curriculum Stages for French
+        french_stages = {
+            1: {"title": "Present Indicative: Group 1 (-er) Regular Verbs & Pronoun Elision", "verb": "parler", "matrix": "| Je | -e | parle |\n| Tu | -es | parles |\n| Il/Elle | -e | parle |\n| Nous | -ons | parlons |\n| Vous | -ez | parlez |\n| Ils/Elles | -ent | parlent |", "drill": ("Conjugate 'parler' for 'nous'.", "nous parlons", "Regular -er verbs take '-ons' for nous.")},
+            2: {"title": "Vital Auxiliaries: Être (To Be) & Avoir (To Have)", "verb": "être / avoir", "matrix": "| Je | suis / ai |\n| Tu | es / as |\n| Il/Elle | est / a |\n| Nous | sommes / avons |\n| Vous | êtes / avez |\n| Ils/Elles | sont / ont |", "drill": ("Conjugate 'être' for 'vous'.", "vous êtes", "Irregular 2nd person plural of être is 'êtes'.")},
+            3: {"title": "Second & Third Group Verbs: Finir & Prendre", "verb": "finir / prendre", "matrix": "| Je | finis / prends |\n| Tu | finis / prends |\n| Il/Elle | finit / prend |\n| Nous | finissons / prenons |\n| Vous | finissez / prenez |\n| Ils/Elles | finissent / prennent |", "drill": ("Conjugate 'finir' for 'nous'.", "nous finissons", "2nd group verbs take '-issons' for nous.")},
+            4: {"title": "Food, Commerce & Partitive Articles (du, de la, des)", "verb": "manger / boire", "matrix": "| Je | mange / bois |\n| Tu | manges / bois |\n| Il/Elle | mange / boit |\n| Nous | mangeons / buvons |\n| Vous | mangez / buvez |\n| Ils/Elles | mangent / boivent |", "drill": ("Fill in: 'Je voudrais ___ eau.'", "de l'eau", "Partitive before vowel is 'de l''.")},
+            5: {"title": "Passé Composé with Avoir: Completed Past Narratives", "verb": "avoir + participe passé", "matrix": "| J'ai parlé | nous avons parlé |\n| Tu as parlé | vous avez parlé |\n| Il a parlé | ils ont parlé |", "drill": ("Conjugate 'terminer' in passé composé for 'nous'.", "nous avons terminé", "Auxiliary avoir + terminé.")},
+            6: {"title": "Passé Composé with Être: Motion Verbs & Agreement", "verb": "être + participe passé", "matrix": "| Je suis allé(e) | nous sommes allés |\n| Tu es allé(e) | vous êtes allé(e)s |\n| Il est allé / Elle est allée | ils sont allés / elles sont allées |", "drill": ("Agreement: 'Marie (partir) hier.'", "Marie est partie hier.", "Feminine singular takes '+e'.")},
+            7: {"title": "Travel, Geographical Prepositions & Descriptive Adjectives", "verb": "voyager / visiter", "matrix": "| Ville | à Paris |\n| Pays fém | en France |\n| Pays masc | au Japon |\n| Pays plur | aux États-Unis |", "drill": ("Insert preposition: 'Nous allons ___ Italie.'", "en Italie", "Feminine countries take 'en'.")},
+            8: {"title": "Professional Communication & Corporate Email Etiquette", "verb": "envoyer / recevoir", "matrix": "| Je | reçois / transmets |\n| Nous | recevons / transmettons |\n| Salutation | Veuillez agréer... |", "drill": ("Translate: 'Please find attached the contract.'", "Veuillez trouver ci-joint le contrat.", "Formal professional directive.")},
+            9: {"title": "L'Imparfait: Habitual Past, Background Descriptions & Nostalgia", "verb": "imparfait (-ais, -ais, -ait, -ions, -iez, -aient)", "matrix": "| J'étais | nous étions |\n| Tu étais | vous étiez |\n| Il était | ils étaient |", "drill": ("Conjugate 'prendre' in imparfait for 'nous'.", "nous prenions", "Radical 'pren-' + '-ions'.")},
+            10: {"title": "Le Futur Simple & Hypotheses: Career Goals & Projections", "verb": "futur simple (-ai, -as, -a, -ons, -ez, -ont)", "matrix": "| Je serai | nous serons |\n| J'aurai | nous aurons |\n| Je ferai | nous ferons |", "drill": ("Conjugate 'aller' in futur simple for 'nous'.", "nous irons", "Irregular future root is 'ir-'.")},
+            11: {"title": "Le Conditionnel Présent: Polite Advice, Diplomacy & Modality", "verb": "conditionnel (-ais, -ais, -ait, -ions, -iez, -aient)", "matrix": "| J'aimerais | nous aimerions |\n| Pourriez-vous | voudriez-vous |", "drill": ("Form polite request with 'pouvoir' for 'vous'.", "Pourriez-vous nous aider ?", "Polite conditional request.")},
+            12: {"title": "Master Conversational Synthesis: Executive Negotiation & Subjunctive", "verb": "subjonctif & négociation", "matrix": "| Que je sache | que nous sachions |\n| Que je puisse | que nous puissions |\n| Qu'il soit | qu'ils soient |", "drill": ("Counter-proposal: 'We would agree provided that...'", "Nous serions disposés à accepter sous réserve que...", "Diplomatic negotiation register.")}
+        }
 
         day_wise_lessons = []
         for d_num in range(1, total_days + 1):
-            w_num = ((d_num - 1) // 5) + 1
-            # Pick cyclic vocab items
-            v_start = (d_num - 1) % len(cur["vocab"])
-            day_vocab = [cur["vocab"][v_start], cur["vocab"][(v_start + 1) % len(cur["vocab"])]]
+            m_stage_num = min(12, ((d_num - 1) // 30) + 1)
+            stage = french_stages.get(m_stage_num, french_stages[1])
+            w_num = ((d_num - 1) // 7) + 1
+
+            day_drill_q, day_drill_a, day_drill_exp = stage["drill"]
+
+            study_guide = (
+                f"### Master Study Guide: Month {m_stage_num} • Day {d_num} ({language} {level})\n"
+                f"Certified Academic Curriculum — {stage['title']}\n\n"
+                f"**1. Core Syntactic Formula & Grammar:**\n"
+                f"Target Focus: {stage['title']}. Systematically mastered through structural drills.\n\n"
+                f"**2. Active Conjugation Matrix:**\n"
+                f"{stage['matrix']}\n\n"
+                f"**3. Native Spoken Nuance & Phonetics:**\n"
+                f"Ensure accurate articulation, liaisons, and native conversational rhythm.\n"
+            )
 
             day_wise_lessons.append({
                 "day_number": d_num,
-                "module_week": f"Week {w_num}: Structural Foundations & Applied Immersion",
-                "day_topic": f"Day {d_num}: Comprehensive Lecture & Applied Drills for {topic}",
-                "grammar_rules_detail": f"In-depth 1-Hour Faculty Lecture on {topic}: Syntactic rules, tense agreements, auxiliary verbs, and situational dialogue execution in {language}.",
-                "vocabulary_bank": day_vocab,
-                "classroom_dialogues": cur["dialogues"],
+                "module_week": f"Month {m_stage_num} • Week {w_num}: {stage['title']}",
+                "day_topic": f"Day {d_num}: {stage['title']} — Applied Mastery & Drills",
+                "grammar_rules_detail": f"In-depth 1-Hour Faculty Lecture for Day {d_num}: Comprehensive coverage of {stage['title']} with syntactic formulas, tense agreements, and situational dialogue execution in {language}.",
+                "vocabulary_bank": [
+                    {"word": stage["verb"].split()[0], "meaning": f"Core verb for {stage['title']}", "pronunciation": "IPA", "example_sentence": f"Exemple contextualisé pour le jour {d_num}."}
+                ],
+                "classroom_dialogues": [
+                    f"Professeur: Bienvenue au jour {d_num}. Aujourd'hui, nous maîtrisons {stage['title']}.",
+                    "Étudiant: Parfait professeur, nous appliquons ces structures en contexte professionnel."
+                ],
                 "pedagogical_instructions": "Conduct active choral repetition and error-rectification drills. Discourage translation crutches; anchor retention with direct context.",
-                "study_notes_markdown": cur["study_guide"],
-                "in_class_exercises": [d["question"] for d in cur["drills"]],
-                "exercise_solutions": cur["drills"],
+                "study_notes_markdown": study_guide,
+                "in_class_exercises": [day_drill_q],
+                "exercise_solutions": [{"question": day_drill_q, "answer": day_drill_a, "explanation": day_drill_exp}],
                 "homework_tasks": [
-                    f"Write a 100-word daily journal in {language} applying today's grammar formulas.",
+                    f"Write a 100-word daily journal in {language} applying today's grammar formulas ({stage['title']}).",
                     "Record a 60-second voice note practicing the dialogues with correct pronunciation on the ISML portal."
                 ]
             })
