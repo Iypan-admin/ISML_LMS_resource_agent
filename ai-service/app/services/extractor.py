@@ -3,12 +3,17 @@ import logging
 from typing import Optional, Dict, Any, Tuple
 import httpx
 from bs4 import BeautifulSoup
-from youtube_transcript_api import YouTubeTranscriptApi
-import langdetect
-from langdetect import DetectorFactory
+try:
+    from youtube_transcript_api import YouTubeTranscriptApi
+except ImportError:
+    YouTubeTranscriptApi = None
 
-# Set seed for deterministic language detection
-DetectorFactory.seed = 0
+try:
+    import langdetect
+    from langdetect import DetectorFactory
+    DetectorFactory.seed = 0
+except ImportError:
+    langdetect = None
 
 logger = logging.getLogger(__name__)
 
@@ -59,13 +64,15 @@ class ContentExtractor:
         if kana_count >= 3:
             return ("ja", "Japanese")
 
-        try:
-            detected_code = langdetect.detect(clean_text)
-            detected_name = ContentExtractor.LANG_NAME_LOOKUP.get(detected_code, detected_code.upper())
-            return (detected_code, detected_name)
-        except Exception as e:
-            logger.debug(f"Language detection exception: {e}")
-            return None
+        if langdetect is not None:
+            try:
+                detected_code = langdetect.detect(clean_text)
+                detected_name = ContentExtractor.LANG_NAME_LOOKUP.get(detected_code, detected_code.upper())
+                return (detected_code, detected_name)
+            except Exception as e:
+                logger.debug(f"Language detection exception: {e}")
+                return None
+        return None
 
     @staticmethod
     def validate_single_source_alignment(
@@ -216,6 +223,20 @@ class ContentExtractor:
                     video_title = res.json().get("title", "")
         except Exception:
             pass
+
+        if YouTubeTranscriptApi is None:
+            logger.warning("YouTubeTranscriptApi module is not available in environment.")
+            return {
+                "source_type": "youtube",
+                "video_id": video_id,
+                "video_title": video_title,
+                "text": "",
+                "transcript_language": "",
+                "extracted_language": "",
+                "available_languages": [],
+                "success": False,
+                "error": "youtube-transcript-api library is not installed in the environment."
+            }
 
         transcript_text = ""
         languages_tried = []
