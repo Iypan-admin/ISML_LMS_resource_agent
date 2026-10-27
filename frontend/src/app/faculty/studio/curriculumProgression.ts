@@ -1123,54 +1123,56 @@ export function generateCurriculumDay(
     : theme.focus;
 
   // Derive dynamic daily subtopic ensuring Day 1 to Day N are completely distinct and source-grounded
-  const dailyProgressionPill = `${monthName} Day ${dayInMonth} (Class ${dayNumber}): ${dayGrammarAnchor} — ${milestoneStage} (Part ${((dayNumber - 1) % 4) + 1})`;
+  const isSchool = Boolean(sessionPackage?.institution_type === 'SCHOOL');
+  const unitLabel = isSchool ? `Period ${dayNumber}` : `Session ${dayNumber}`;
+  const dailyProgressionPill = `${unitLabel}: ${dayGrammarAnchor} — ${milestoneStage} (Part ${((dayNumber - 1) % 4) + 1})`;
 
   // Dynamic study guide text with completely unique day-specific linguistic focus, formulas, and paradigms
-  const studyNotes = `### Master Study Guide: ${monthName} Day ${dayInMonth} (Course Day ${dayNumber} of ${totalDays})
+  const studyNotes = `### Master Study Guide: ${unitLabel} (Course Unit ${dayNumber} of ${totalDays})
 Language Track: **${profile.langName}** • Certified CEFR ${level} • ${baseTopic}
 
-**1. Day ${dayNumber} Dedicated Pedagogical Milestone (Source-Grounded):**
-- **Daily Focus Domain**: ${milestoneStage} (Part ${((dayNumber - 1) % 4) + 1})
+**1. ${unitLabel} Dedicated Pedagogical Milestone (Source-Grounded):**
+- **Unit Focus Domain**: ${milestoneStage} (Part ${((dayNumber - 1) % 4) + 1})
 - **Curriculum Anchor**: ${dayGrammarAnchor}
 - **Target Structural Unit**: ${theme.category}
 - **Linguistic Competency**: ${dayObjectiveAnchor}
 
-**2. Day ${dayNumber} Active Syntactic Architecture & Word Order Formula:**
+**2. ${unitLabel} Active Syntactic Architecture & Word Order Formula:**
 \`\`\`text
 ${daySyntacticFormula}
 \`\`\`
 
-**3. Active Paradigm & Conjugation Matrix for Day ${dayNumber}:**
+**3. Active Paradigm & Conjugation Matrix for ${unitLabel}:**
 ${dayParadigmTable}
 
-**4. Day ${dayNumber} Native Phonetic Traps & Auditory Discrimination:**
+**4. ${unitLabel} Native Phonetic Traps & Auditory Discrimination:**
 - **Phonetic Analysis**: ${theme.trap}
-- **Acoustic Focus for Day ${dayNumber}**: Pay close attention to word boundaries, consonant clustering, native pitch cadence, and unprompted speech rhythm for *${dayVocabAnchor}*.
+- **Acoustic Focus for ${unitLabel}**: Pay close attention to word boundaries, consonant clustering, native pitch cadence, and unprompted speech rhythm for *${dayVocabAnchor}*.
 
 **5. Faculty Lesson Blueprint & Active Retention:**
-Today's 1-hour session emphasizes active communicative production. Students must incorporate today's vocabulary anchors (*${dayVocab.map((v: any) => v.word).join(', ')}*) and source concept (*${dayVocabAnchor}*) into spontaneous spoken exchanges.`;
+Today's session emphasizes active communicative production. Students must incorporate today's vocabulary anchors (*${dayVocab.map((v: any) => v.word).join(', ')}*) and source concept (*${dayVocabAnchor}*) into spontaneous spoken exchanges.`;
 
   return {
     day_number: dayNumber,
     month_number: monthNumber,
-    calendar_month_name: monthName,
-    calendar_month_short: monthShort,
-    day_in_month: dayInMonth,
-    month_total_days: monthTotalDays,
-    week_number: weekInMonth,
-    module_week: `${monthName} • Day ${dayInMonth} of ${monthTotalDays} (Course Day ${dayNumber} of ${totalDays})`,
+    calendar_month_name: `Module ${Math.ceil(dayNumber / 20)}`,
+    calendar_month_short: `M${Math.ceil(dayNumber / 20)}`,
+    day_in_month: ((dayNumber - 1) % 20) + 1,
+    month_total_days: totalDays,
+    week_number: Math.ceil(dayNumber / (isSchool ? 5 : 3)),
+    module_week: `${unitLabel} of ${totalDays} Units`,
     day_topic: dailyProgressionPill,
-    grammar_rules_detail: `Senior Faculty Lecture for ${monthName} Day ${dayInMonth} (Class ${dayNumber}): Core Focus: ${dayGrammarAnchor} (${dayObjectiveAnchor}). Systematically builds retention through structured 1-hour applied drills, active auditory discrimination, and contextual discourse.`,
+    grammar_rules_detail: `Senior Faculty Lecture for ${unitLabel}: Core Focus: ${dayGrammarAnchor} (${dayObjectiveAnchor}). Systematically builds retention through structured applied drills, active auditory discrimination, and contextual discourse.`,
     study_notes_markdown: studyNotes,
     vocabulary_bank: dayVocab,
     classroom_dialogues: selectedDialogue,
-    pedagogical_instructions: `Faculty Directive for Day ${dayNumber}: Conduct choral pronunciation on target items (${dayVocab.map((v: any) => v.word).join(', ')}). Rectify syntax errors immediately during active student production.`,
-    video_breakdown_analysis: `Audio/Video Analysis for ${monthName} Day ${dayInMonth} (Day ${dayNumber}): Detailed breakdown of authentic native vocal inflections, pitch accent, liaison mechanics, and communicative context for ${theme.category}.`,
+    pedagogical_instructions: `Faculty Directive for ${unitLabel}: Conduct choral pronunciation on target items (${dayVocab.map((v: any) => v.word).join(', ')}). Rectify syntax errors immediately during active student production.`,
+    video_breakdown_analysis: `Audio/Video Analysis for ${unitLabel}: Detailed breakdown of authentic native vocal inflections, pitch accent, liaison mechanics, and communicative context for ${theme.category}.`,
     in_class_exercises: selectedDrills.map((d: any) => d.question),
     exercise_solutions: selectedDrills,
     homework_tasks: [
-      `Complete written workbook exercises for Day ${dayNumber} applying the target syntactic formula: "${daySyntacticFormula}".`,
-      `Record a 60-second voice note practicing the Day ${dayNumber} live dialogue script with authentic native pronunciation and submit on the ISML portal.`
+      `Complete written workbook exercises for ${unitLabel} applying the target syntactic formula: "${daySyntacticFormula}".`,
+      `Record a 60-second voice note practicing the ${unitLabel} live dialogue script with authentic native pronunciation and submit on the ISML portal.`
     ]
   };
 }

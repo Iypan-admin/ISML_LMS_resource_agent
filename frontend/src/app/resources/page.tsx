@@ -204,71 +204,7 @@ export default function ResourceLibraryPage() {
         </div>
       )}
 
-      {/* Quick Category Source Tabs */}
-      <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-none">
-        {[
-          { label: '🌐 All Resources', value: 'All' },
-          { label: '🏢 Internal Resources', value: 'Internal' },
-          { label: '🤖 AI Generated', value: 'AI Generated' },
-          { label: '⚡ External Resources', value: 'External' },
-        ].map((tab) => {
-          const isActive = filters.sourceType === tab.value;
-          const count = resources.filter(res => {
-            if (filters.search) {
-              const query = filters.search.toLowerCase();
-              const matchTitle = res.title.toLowerCase().includes(query);
-              const matchDesc = res.description.toLowerCase().includes(query);
-              const matchLang = res.academicContext.language.toLowerCase().includes(query);
-              const matchTopic = res.academicContext.topic.toLowerCase().includes(query);
-              if (!matchTitle && !matchDesc && !matchLang && !matchTopic) return false;
-            }
 
-            if (filters.language !== 'All' && res.academicContext.language.toLowerCase() !== filters.language.toLowerCase()) return false;
-
-            if (filters.level !== 'All') {
-              const reqLvl = filters.level.toLowerCase();
-              const itemLvl = (res.academicContext.level || '').toLowerCase();
-              if (itemLvl !== reqLvl && !itemLvl.includes(reqLvl) && !reqLvl.includes(itemLvl)) return false;
-            }
-
-            if (filters.skill !== 'All') {
-              const reqSkl = filters.skill.toLowerCase();
-              const itemSkl = (res.academicContext.skill || '').toLowerCase();
-              if (itemSkl !== reqSkl && !itemSkl.includes(reqSkl) && !reqSkl.includes(itemSkl)) return false;
-            }
-
-            if (filters.resourceType !== 'All' && res.academicContext.resourceType !== filters.resourceType) return false;
-
-            if (filters.status !== 'All') {
-              const normFilter = (filters.status === 'PENDING_REVIEW' || filters.status === 'Pending Review' || filters.status === 'DRAFT' || filters.status === 'Draft') ? 'Published' : filters.status;
-              const resStatus = (res.status === 'PENDING_REVIEW' || res.status === 'Pending Review' || res.status === 'DRAFT' || res.status === 'Draft') ? 'Published' : res.status;
-              if (resStatus.toLowerCase() !== normFilter.toLowerCase()) return false;
-            }
-
-            if (tab.value === 'External') return res.sourceType === 'External';
-            if (tab.value === 'AI Generated') return res.sourceType === 'AI Generated';
-            if (tab.value === 'Internal') return res.sourceType === 'Internal' || res.sourceType === 'Uploaded';
-            return true;
-          }).length;
-
-          return (
-            <button
-              key={tab.value}
-              onClick={() => setFilters(prev => ({ ...prev, sourceType: tab.value }))}
-              className={`px-4 py-2 rounded-2xl text-xs font-bold transition-all cursor-pointer flex items-center gap-2 shrink-0 border ${isActive
-                  ? 'bg-[#0052CC] text-white border-[#0052CC] shadow-xs'
-                  : 'bg-white text-slate-700 hover:bg-slate-100 border-slate-200'
-                }`}
-            >
-              <span>{tab.label}</span>
-              <span className={`px-2 py-0.5 rounded-full text-[10px] font-extrabold ${isActive ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-600'
-                }`}>
-                {count}
-              </span>
-            </button>
-          );
-        })}
-      </div>
 
       {/* Institutional Schedule & Curriculum Filter (Schools vs Colleges Matrix) */}
       <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5 space-y-4">
@@ -561,61 +497,7 @@ export default function ResourceLibraryPage() {
         )}
       </div>
 
-      {/* Filter Control Bar */}
-      <div className="isml-card p-4 space-y-3 bg-white border border-slate-200 rounded-2xl shadow-xs">
-        <div className="flex items-center justify-between">
-          <span className="text-xs font-black text-[#0B2447] flex items-center gap-1.5 uppercase tracking-wider">
-            <Filter className="w-3.5 h-3.5 text-[#0052CC]" /> Additional Filters (Topic, Format, Status)
-          </span>
 
-          <button
-            onClick={resetFilters}
-            className="text-[11px] font-bold text-slate-500 hover:text-[#0052CC] flex items-center gap-1 transition-colors cursor-pointer"
-          >
-            <RotateCcw className="w-3 h-3" /> Reset Filters
-          </button>
-        </div>
-
-        {/* Filters Grid */}
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5">
-          <SearchableSelect
-            label="Language"
-            options={languageOptions}
-            value={filters.language}
-            onChange={val => setFilters(prev => ({ ...prev, language: val, level: 'All' }))}
-          />
-          <SearchableSelect
-            label="CEFR Level"
-            options={levelOptions}
-            value={filters.level}
-            onChange={val => setFilters(prev => ({ ...prev, level: val }))}
-          />
-          <SearchableSelect
-            label="Skill"
-            options={skillOptions}
-            value={filters.skill}
-            onChange={val => setFilters(prev => ({ ...prev, skill: val }))}
-          />
-          <SearchableSelect
-            label="Resource Format"
-            options={typeOptions}
-            value={filters.resourceType}
-            onChange={val => setFilters(prev => ({ ...prev, resourceType: val }))}
-          />
-          <SearchableSelect
-            label="Status"
-            options={statusOptions}
-            value={filters.status}
-            onChange={val => setFilters(prev => ({ ...prev, status: val }))}
-          />
-          <SearchableSelect
-            label="Source Type"
-            options={sourceOptions}
-            value={filters.sourceType}
-            onChange={val => setFilters(prev => ({ ...prev, sourceType: val }))}
-          />
-        </div>
-      </div>
 
       {/* Resource Content Grid or Table */}
       {isLoading ? (

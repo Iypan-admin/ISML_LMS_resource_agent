@@ -22,7 +22,7 @@ export default function Header() {
     <header className="sticky top-0 z-30 bg-white/95 backdrop-blur-md border-b border-slate-200 px-3 py-2 sm:px-4 sm:py-2.5 flex items-center justify-between shadow-2xs font-sans">
       {/* Brand & Global Search */}
       <div className="flex items-center gap-3 flex-1 max-w-xl">
-        <Link href="/dashboard" className="flex items-center gap-2.5 group shrink-0">
+        <Link href="/resources" className="flex items-center gap-2.5 group shrink-0">
           <div className="w-9 h-9 rounded-xl bg-white border border-slate-200 p-1 flex items-center justify-center shadow-xs group-hover:scale-105 transition-transform overflow-hidden">
             <img src="/logo.png" alt="ISML Logo" className="w-full h-full object-contain" />
           </div>

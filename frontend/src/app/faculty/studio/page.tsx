@@ -403,10 +403,10 @@ export default function FacultyStudioPage() {
         <div>
           <div className="flex items-center gap-2 text-cyan-400 font-semibold text-xs tracking-wider uppercase mb-1">
             <Sparkles className="w-4 h-4" />
-            ISML Faculty Curriculum & Teaching Studio
+            ISML Academic Curriculum & Teaching Studio
           </div>
           <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight">
-            Comprehensive Curriculum & Faculty Teaching Studio
+            Academic Studio & Curriculum Hub
           </h1>
           <p className="text-slate-300 text-sm mt-1 max-w-2xl">
             Input syllabus topic or upload media/YouTube links. AI generates the complete day-wise teaching roadmap, textbook study guide, and student practice kits.
@@ -1174,241 +1174,154 @@ export default function FacultyStudioPage() {
                     </div>
                   </div>
 
-                  {/* Comprehensive Real-Calendar Month & Day Navigation Filter Bar */}
+                  {/* Clean Unit / Period & Session Navigation (School Periods vs College Sessions) */}
                   {(() => {
-                    const trackMode = sessionPackage.track_mode;
-
-                    // Authentic Gregorian Calendar Month Definitions
-                    const GREGORIAN_MONTHS = [
-                      { monthIndex: 1, name: 'January', shortName: 'Jan', standardDays: 31 },
-                      { monthIndex: 2, name: 'February', shortName: 'Feb', standardDays: isLeapYear ? 29 : 28 },
-                      { monthIndex: 3, name: 'March', shortName: 'Mar', standardDays: 31 },
-                      { monthIndex: 4, name: 'April', shortName: 'Apr', standardDays: 30 },
-                      { monthIndex: 5, name: 'May', shortName: 'May', standardDays: 31 },
-                      { monthIndex: 6, name: 'June', shortName: 'Jun', standardDays: 30 },
-                      { monthIndex: 7, name: 'July', shortName: 'Jul', standardDays: 31 },
-                      { monthIndex: 8, name: 'August', shortName: 'Aug', standardDays: 31 },
-                      { monthIndex: 9, name: 'September', shortName: 'Sep', standardDays: 30 },
-                      { monthIndex: 10, name: 'October', shortName: 'Oct', standardDays: 31 },
-                      { monthIndex: 11, name: 'November', shortName: 'Nov', standardDays: 30 },
-                      { monthIndex: 12, name: 'December', shortName: 'Dec', standardDays: 31 },
-                    ];
-
-                    // Build Month Metadata accurately based on real calendar days
-                    const activeMonths: Array<{
-                      monthNumber: number;
-                      name: string;
-                      shortName: string;
-                      daysCount: number;
-                      startDay: number;
-                      endDay: number;
-                    }> = [];
-                    let runningDayCount = 0;
+                    const isSchool = sessionPackage.institution_type === 'SCHOOL';
+                    const unitName = isSchool ? 'Period' : 'Session';
+                    const unitsPerBlock = isSchool ? 10 : 10;
 
                     // Compute dynamic targetDays based on institutional schedule or sessionPackage
-                    const targetDays = sessionPackage.target_days_number ||
+                    const totalDays = sessionPackage.target_days_number ||
                       sessionPackage.session_plan.total_curriculum_days ||
                       (sessionPackage.institution_type === 'SCHOOL' && sessionPackage.school_meta?.totalPeriods) ||
                       (sessionPackage.institution_type === 'COLLEGE' && sessionPackage.college_meta?.sessionsRequired) ||
-                      (trackMode === 'CUSTOM' ? (typeof customDays === 'number' && customDays > 0 ? customDays : 5) : 60);
+                      60;
 
-                    // If track is CUSTOM or institution is SCHOOL or COLLEGE with specific sessions count:
-                    if (trackMode === 'CUSTOM' || sessionPackage.institution_type === 'SCHOOL' || sessionPackage.institution_type === 'COLLEGE') {
-                      let remainingDays = targetDays;
-                      let m = 0;
-
-                      while (remainingDays > 0 && m < 12) {
-                        const calMonth = GREGORIAN_MONTHS[m % 12];
-                        const daysInThisMonth = Math.min(calMonth.standardDays, remainingDays);
-                        const startDay = runningDayCount + 1;
-                        const endDay = runningDayCount + daysInThisMonth;
-                        runningDayCount += daysInThisMonth;
-                        remainingDays -= daysInThisMonth;
-
-                        activeMonths.push({
-                          monthNumber: m + 1,
-                          name: calMonth.name,
-                          shortName: calMonth.shortName,
-                          daysCount: daysInThisMonth,
-                          startDay,
-                          endDay,
-                        });
-                        m++;
-                      }
-                    } else {
-                      // Standard / Internship predefined tracks based on full authentic calendar months
-                      let totalMonths = 12;
-                      if (trackMode === 'INTERNSHIP') {
-                        totalMonths = 6; // Jan through Jun
-                      } else if (trackMode === 'SUPER_INTERNSHIP') {
-                        totalMonths = 3; // Jan through Mar
-                      }
-
-                      for (let m = 0; m < totalMonths; m++) {
-                        const calMonth = GREGORIAN_MONTHS[m % 12];
-                        const startDay = runningDayCount + 1;
-                        const endDay = runningDayCount + calMonth.standardDays;
-                        runningDayCount += calMonth.standardDays;
-
-                        activeMonths.push({
-                          monthNumber: m + 1,
-                          name: calMonth.name,
-                          shortName: calMonth.shortName,
-                          daysCount: calMonth.standardDays,
-                          startDay,
-                          endDay,
-                        });
-                      }
-                    }
-
-                    const totalDays = runningDayCount;
-                    const totalMonths = activeMonths.length;
-                    const isShortCourse = totalMonths === 1;
-
-                    // Generate full days array mapped accurately to real calendar months
+                    // Generate full days array mapped directly to sequential curriculum units
                     const rawDays = sessionPackage.session_plan.day_wise_syllabus || [];
                     const allDays: any[] = [];
 
-                    activeMonths.forEach((mInfo) => {
-                      for (let d = mInfo.startDay; d <= mInfo.endDay; d++) {
-                        const dayInMonth = d - mInfo.startDay + 1;
-                        const rawDay = (d <= rawDays.length) ? rawDays[d - 1] : null;
+                    for (let d = 1; d <= totalDays; d++) {
+                      const rawDay = (d <= rawDays.length) ? rawDays[d - 1] : null;
+                      const moduleNum = Math.ceil(d / unitsPerBlock);
+                      const unitInModule = ((d - 1) % unitsPerBlock) + 1;
 
-                        const dayItem = generateCurriculumDay(
-                          sessionPackage.language || selectedLanguage,
-                          sessionPackage.level || selectedLevel,
-                          sessionPackage.topic || topic,
-                          d,
-                          mInfo.monthNumber,
-                          mInfo.name,
-                          mInfo.shortName,
-                          dayInMonth,
-                          mInfo.daysCount,
-                          totalDays,
-                          rawDay,
-                          sessionPackage
-                        );
+                      const dayItem = generateCurriculumDay(
+                        sessionPackage.language || selectedLanguage,
+                        sessionPackage.level || selectedLevel,
+                        sessionPackage.topic || topic,
+                        d,
+                        moduleNum,
+                        `Module ${moduleNum}`,
+                        `M${moduleNum}`,
+                        unitInModule,
+                        unitsPerBlock,
+                        totalDays,
+                        rawDay,
+                        sessionPackage
+                      );
+                      allDays.push(dayItem);
+                    }
 
-                        allDays.push(dayItem);
-                      }
-                    });
+                    // Build Module Blocks (e.g. Module 1: Periods 1-10, Module 2: Periods 11-20...)
+                    const totalModules = Math.ceil(totalDays / unitsPerBlock);
+                    const modulesList: Array<{
+                      moduleNumber: number;
+                      name: string;
+                      startUnit: number;
+                      endUnit: number;
+                      unitsCount: number;
+                    }> = [];
 
-                    // Current Selected Month info
-                    const currentMonthInfo = activeMonths.find(m => m.monthNumber === selectedMonthFilter) || activeMonths[0];
+                    for (let m = 1; m <= totalModules; m++) {
+                      const startUnit = (m - 1) * unitsPerBlock + 1;
+                      const endUnit = Math.min(m * unitsPerBlock, totalDays);
+                      modulesList.push({
+                        moduleNumber: m,
+                        name: `Module ${m}`,
+                        startUnit,
+                        endUnit,
+                        unitsCount: endUnit - startUnit + 1
+                      });
+                    }
 
-                    // Filtered days strictly matching the selected calendar month
-                    const filteredDays = allDays.filter(d => d.month_number === currentMonthInfo.monthNumber);
+                    // Active selected module filter
+                    const currentModuleInfo = modulesList.find(m => m.moduleNumber === selectedMonthFilter) || modulesList[0] || {
+                      moduleNumber: 1,
+                      name: 'Module 1',
+                      startUnit: 1,
+                      endUnit: Math.min(unitsPerBlock, totalDays),
+                      unitsCount: Math.min(unitsPerBlock, totalDays)
+                    };
 
+                    // Filtered units strictly matching the selected module
+                    const filteredDays = allDays.filter(d => d.day_number >= currentModuleInfo.startUnit && d.day_number <= currentModuleInfo.endUnit);
                     const activeDay = allDays.find(d => d.day_number === activeDayDetail) || filteredDays[0] || allDays[0];
 
                     return (
                       <div className="space-y-6">
-                        {/* 1. Real Calendar Month Filter Bar */}
-                        {!isShortCourse ? (
-                          <div className="bg-slate-900 rounded-2xl p-4 text-white shadow-md">
-                            <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
-                              <div className="flex flex-wrap items-center gap-2">
-                                <span className="text-xs font-bold uppercase tracking-wider text-cyan-400 flex items-center gap-2">
-                                  <span>📅 Real Calendar Month Navigation ({totalMonths} Months • {totalDays} Total Days)</span>
-                                </span>
-                                <span className="bg-cyan-950 text-cyan-300 text-[10px] font-bold px-2.5 py-0.5 rounded border border-cyan-800">
-                                  Viewing: {currentMonthInfo.name} ({currentMonthInfo.daysCount} Days • Days {currentMonthInfo.startDay}–{currentMonthInfo.endDay})
-                                </span>
-                              </div>
-
-                              {/* Interactive Leap Year Toggle Button */}
-                              <div className="flex items-center gap-2">
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    setIsLeapYear(!isLeapYear);
-                                  }}
-                                  className={`px-3 py-1 rounded-xl text-xs font-bold transition-all border flex items-center gap-1.5 ${
-                                    isLeapYear
-                                      ? 'bg-amber-400 text-slate-950 border-amber-300 shadow-md font-extrabold'
-                                      : 'bg-slate-800 text-slate-300 border-slate-700 hover:bg-slate-700'
-                                  }`}
-                                  title="Click to toggle Leap Year (Feb: 29 days vs 28 days)"
-                                >
-                                  <span>{isLeapYear ? '⭐ Leap Year (Feb: 29d • 366d Total)' : '📅 Standard Year (Feb: 28d • 365d Total)'}</span>
-                                </button>
-                              </div>
-                            </div>
-
-                            {/* 12-Month Calendar Pill Grid */}
-                            <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-12 gap-1.5">
-                              {activeMonths.map(mInfo => (
-                                <button
-                                  key={mInfo.monthNumber}
-                                  type="button"
-                                  onClick={() => {
-                                    setSelectedMonthFilter(mInfo.monthNumber);
-                                    setActiveDayDetail(mInfo.startDay);
-                                  }}
-                                  className={`py-2 px-1 text-center rounded-xl font-bold text-xs transition-all ${
-                                    selectedMonthFilter === mInfo.monthNumber
-                                      ? 'bg-blue-600 text-white shadow-lg ring-2 ring-blue-400'
-                                      : 'bg-slate-800/80 text-slate-300 hover:bg-slate-700'
-                                  }`}
-                                >
-                                  <span className="block text-[10px] uppercase text-slate-400 font-semibold">{mInfo.shortName}</span>
-                                  <span className="text-sm font-black">{mInfo.monthNumber}</span>
-                                  <span className={`block text-[9px] font-bold ${selectedMonthFilter === mInfo.monthNumber ? 'text-amber-300' : 'text-cyan-300'}`}>
-                                    {mInfo.daysCount}d
-                                  </span>
-                                </button>
-                              ))}
-                            </div>
-                          </div>
-                        ) : (
-                          <div className="bg-emerald-950 rounded-2xl p-4 text-white shadow-md border border-emerald-800">
-                            <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
-                              <span className="text-xs font-bold uppercase tracking-wider text-emerald-400 flex items-center gap-2">
-                                <span>⚡ Focused Sprint Curriculum: {totalDays} Dedicated Days</span>
+                        {/* 1. Curriculum Module Navigation Bar */}
+                        <div className="bg-gradient-to-r from-[#0B2447] to-[#1E3A8A] rounded-2xl p-4 text-white shadow-md">
+                          <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <span className="text-xs font-bold uppercase tracking-wider text-cyan-300 flex items-center gap-2">
+                                <span>📚 {isSchool ? '🏫 School Curriculum Period Roadmap' : '🎓 College Immersion Session Roadmap'}</span>
                               </span>
-                              <span className="text-xs text-emerald-300">
-                                Topic: <strong>{sessionPackage.topic}</strong>
+                              <span className="bg-cyan-950 text-cyan-200 text-[11px] font-bold px-2.5 py-0.5 rounded border border-cyan-800">
+                                {totalDays} Total {unitName}s • {totalModules} Core Modules
                               </span>
                             </div>
-                          </div>
-                        )}
 
-                        {/* 2. Days Selector Strip for Selected Calendar Month */}
+                            <span className="text-xs text-amber-300 font-bold">
+                              Viewing: {currentModuleInfo.name} ({unitName}s {currentModuleInfo.startUnit}–{currentModuleInfo.endUnit})
+                            </span>
+                          </div>
+
+                          {/* Module Pill Grid */}
+                          <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-10 gap-2">
+                            {modulesList.map(mInfo => (
+                              <button
+                                key={mInfo.moduleNumber}
+                                type="button"
+                                onClick={() => {
+                                  setSelectedMonthFilter(mInfo.moduleNumber);
+                                  setActiveDayDetail(mInfo.startUnit);
+                                }}
+                                className={`py-2 px-1 text-center rounded-xl font-bold text-xs transition-all cursor-pointer ${
+                                  currentModuleInfo.moduleNumber === mInfo.moduleNumber
+                                    ? 'bg-blue-600 text-white shadow-lg ring-2 ring-blue-300 font-black'
+                                    : 'bg-white/10 text-slate-200 hover:bg-white/20'
+                                }`}
+                              >
+                                <span className="block text-[10px] uppercase text-cyan-200">{mInfo.name}</span>
+                                <span className="text-xs font-black">{unitName} {mInfo.startUnit}–{mInfo.endUnit}</span>
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+
+                        {/* 2. Unit Selector Strip for Current Module */}
                         <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm">
                           <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
                             <h4 className="text-xs font-bold uppercase tracking-wider text-slate-800 flex items-center gap-2">
                               <span>
-                                {isShortCourse 
-                                  ? `All ${totalDays} Daily Classes:` 
-                                  : `Month ${currentMonthInfo.monthNumber}: ${currentMonthInfo.name} (${currentMonthInfo.daysCount} Calendar Days • Course Days ${currentMonthInfo.startDay} to ${currentMonthInfo.endDay}):`}
+                                {currentModuleInfo.name} ({unitName}s {currentModuleInfo.startUnit} to {currentModuleInfo.endUnit}):
                               </span>
-                              {!isShortCourse && (
-                                <span className="text-[10px] bg-blue-100 text-blue-800 font-bold px-2 py-0.5 rounded border border-blue-200">
-                                  {currentMonthInfo.daysCount} Days in {currentMonthInfo.name}
-                                </span>
-                              )}
+                              <span className="text-[10px] bg-blue-100 text-blue-800 font-bold px-2 py-0.5 rounded border border-blue-200">
+                                {currentModuleInfo.unitsCount} {unitName}s
+                              </span>
                             </h4>
                             <span className="text-[11px] text-blue-600 font-semibold">
-                              Click any day to view 1-hour teaching content & 10+ page master study doc
+                              Click any {unitName.toLowerCase()} to inspect teaching blueprint & study guide
                             </span>
                           </div>
 
-                          <div className="grid grid-cols-4 sm:grid-cols-6 md:grid-cols-8 lg:grid-cols-11 gap-1.5">
+                          <div className="grid grid-cols-4 sm:grid-cols-6 md:grid-cols-8 lg:grid-cols-10 gap-1.5">
                             {filteredDays.map(d => (
                               <button
                                 key={d.day_number}
                                 type="button"
                                 onClick={() => setActiveDayDetail(d.day_number)}
-                                className={`p-2 rounded-xl text-center border transition-all ${
+                                className={`p-2.5 rounded-xl text-center border transition-all cursor-pointer ${
                                   activeDayDetail === d.day_number
                                     ? 'bg-blue-600 border-blue-600 text-white font-extrabold shadow-md scale-[1.02]'
                                     : 'bg-slate-50 border-slate-200 text-slate-700 hover:bg-blue-50'
                                 }`}
                               >
-                                <span className="block text-[9px] uppercase font-bold tracking-tight opacity-80">
-                                  {d.calendar_month_short} {d.day_in_month}
+                                <span className="block text-[10px] uppercase font-bold tracking-tight opacity-80">
+                                  {unitName}
                                 </span>
-                                <span className="text-xs font-black">Day {d.day_number}</span>
+                                <span className="text-sm font-black">{d.day_number}</span>
                               </button>
                             ))}
                           </div>
@@ -1419,12 +1332,12 @@ export default function FacultyStudioPage() {
                           {/* Active Day Header Bar */}
                           <div className="bg-gradient-to-r from-blue-900 to-indigo-900 p-5 text-white flex flex-wrap items-center justify-between gap-3">
                             <div className="flex items-center gap-3">
-                              <span className="bg-amber-400 text-blue-950 font-black text-sm px-3.5 py-1 rounded-xl shadow">
-                                DAY {activeDay.day_number}
+                              <span className="bg-amber-400 text-blue-950 font-black text-sm px-3.5 py-1 rounded-xl shadow uppercase">
+                                {unitName} {activeDay.day_number}
                               </span>
                               <div>
                                 <span className="text-xs font-semibold text-cyan-300 block">
-                                  {activeDay.calendar_month_name} • Day {activeDay.day_in_month} of {activeDay.month_total_days} (Course Day {activeDay.day_number} of {totalDays}) • 1-Hour Comprehensive Class
+                                  {isSchool ? `School Period ${activeDay.day_number} of ${totalDays}` : `College Session ${activeDay.day_number} of ${totalDays}`} • Comprehensive Curriculum Unit
                                 </span>
                                 <h3 className="text-base font-bold text-white mt-0.5">
                                   {activeDay.day_topic}
@@ -1438,7 +1351,7 @@ export default function FacultyStudioPage() {
                                 type="button"
                                 onClick={() => handleDownloadDayDocx(activeDay)}
                                 disabled={downloadingDocx}
-                                className="px-3.5 py-1.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold rounded-xl text-xs shadow-md transition-all flex items-center gap-1.5 border border-emerald-400/40 disabled:opacity-50"
+                                className="px-3.5 py-1.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold rounded-xl text-xs shadow-md transition-all flex items-center gap-1.5 border border-emerald-400/40 disabled:opacity-50 cursor-pointer"
                               >
                                 {downloadingDocx ? (
                                   <>
@@ -1448,7 +1361,7 @@ export default function FacultyStudioPage() {
                                 ) : (
                                   <>
                                     <Download className="w-3.5 h-3.5" />
-                                    <span>Download Day {activeDay.day_number} ({activeDay.calendar_month_short} {activeDay.day_in_month}) Master DOCX (10+ Pages)</span>
+                                    <span>Download {unitName} {activeDay.day_number} Master DOCX (10+ Pages)</span>
                                   </>
                                 )}
                               </button>
@@ -1493,7 +1406,7 @@ export default function FacultyStudioPage() {
                             {/* Grammar Lecture Detail */}
                             <div className="bg-slate-50 p-4 rounded-xl border border-slate-200">
                               <span className="font-bold text-blue-900 uppercase tracking-wider block mb-1">
-                                📖 1-Hour Faculty Lecture & Structural Grammar Blueprint:
+                                📖 {unitName} {activeDay.day_number} ({sessionPackage.school_meta?.periodDurationMinutes || sessionPackage.college_meta?.sessionMinutes || 60} Mins) Teaching Blueprint & Structural Grammar:
                               </span>
                               <p className="text-slate-800 leading-relaxed font-sans text-xs">
                                 {activeDay.grammar_rules_detail}
@@ -1504,7 +1417,7 @@ export default function FacultyStudioPage() {
                             {activeDay.vocabulary_bank && activeDay.vocabulary_bank.length > 0 && (
                               <div>
                                 <span className="font-bold text-slate-700 uppercase tracking-wider block mb-2">
-                                  🗂️ Day {activeDay.day_number} Vocabulary Bank & Phonetics:
+                                  🗂️ {unitName} {activeDay.day_number} Target Vocabulary & Phonetics:
                                 </span>
                                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                                   {activeDay.vocabulary_bank.map((v: any, vIdx: number) => (
@@ -1545,7 +1458,7 @@ export default function FacultyStudioPage() {
                             {activeDay.pedagogical_instructions && (
                               <div className="bg-amber-500/10 border-l-4 border-amber-500 p-3.5 rounded-r-xl text-amber-900">
                                 <span className="font-bold uppercase tracking-wider text-[11px] block">
-                                  💡 Faculty Pedagogical Advice:
+                                  💡 Pedagogical Advice for {unitName} {activeDay.day_number}:
                                 </span>
                                 <p className="text-xs italic mt-0.5 font-medium">
                                   {activeDay.pedagogical_instructions}
@@ -1565,10 +1478,10 @@ export default function FacultyStudioPage() {
                                       </div>
                                       <div>
                                         <span className="font-extrabold text-cyan-400 text-xs tracking-wider uppercase block">
-                                          Day {activeDay.day_number} In-Depth Study Guide & Linguistic Theory
+                                          {unitName} {activeDay.day_number} In-Depth Study Guide & Linguistic Theory
                                         </span>
                                         <span className="text-[11px] text-slate-400">
-                                          Certified CEFR Level Material for {sessionPackage.language} ({sessionPackage.level})
+                                          Certified Level Material for {sessionPackage.language} ({sessionPackage.level}) • {isSchool ? `${sessionPackage.school_meta?.courseDurationHours || 100} Total Course Hours` : `${sessionPackage.college_meta?.sessionsRequired || 80} Academic Sessions`}
                                         </span>
                                       </div>
                                     </div>

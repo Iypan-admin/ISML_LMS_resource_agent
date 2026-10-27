@@ -305,16 +305,14 @@ export function ResourceProvider({ children }: { children: React.ReactNode }) {
         if (resStatus.toLowerCase() !== normFilter.toLowerCase()) return false;
       }
 
-      if (filters.sourceType !== 'All') {
-        const isExt = res.sourceType === 'External';
-        const isAI = res.sourceType === 'AI Generated';
-        const isInt = res.sourceType === 'Internal' || res.sourceType === 'Uploaded';
+      // Exclude External and AI Generated resources per user instruction
+      if (res.sourceType === 'External' || res.sourceType === 'AI Generated') {
+        return false;
+      }
 
-        if (filters.sourceType === 'External') {
-          if (!isExt) return false;
-        } else if (filters.sourceType === 'AI Generated') {
-          if (!isAI) return false;
-        } else if (filters.sourceType === 'Internal') {
+      if (filters.sourceType !== 'All') {
+        const isInt = res.sourceType === 'Internal' || res.sourceType === 'Uploaded';
+        if (filters.sourceType === 'Internal') {
           if (!isInt) return false;
         } else if (res.sourceType !== filters.sourceType) {
           return false;

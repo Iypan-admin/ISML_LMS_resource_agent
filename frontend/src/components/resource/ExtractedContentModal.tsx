@@ -4,29 +4,25 @@ import React, { useState } from 'react';
 import { QuizQuestion } from '@/types/discovery';
 import { 
   ArrowLeft, 
-  BookOpen, 
-  MessageSquare, 
-  List, 
-  FileText, 
-  HelpCircle, 
+  FileSpreadsheet,
+  Download,
   Copy, 
   Check, 
   ExternalLink, 
   PlusCircle, 
   CheckCircle2, 
-  Volume2, 
-  Video, 
-  Sparkles, 
-  ChevronRight,
-  ChevronLeft,
-  CheckSquare,
-  Award,
   Search,
   Eye,
   EyeOff,
+  BookOpen,
+  MessageSquare,
+  List,
+  HelpCircle,
+  CheckSquare,
+  Sparkles,
+  Table,
   Layers,
-  Lightbulb,
-  AlertTriangle
+  ChevronRight
 } from 'lucide-react';
 
 export interface ExtractedPayload {
@@ -55,6 +51,8 @@ interface ExtractedContentModalProps {
   isSaved?: boolean;
 }
 
+type ExcelSheetTab = 'overview' | 'vocab' | 'dialogue' | 'grammar' | 'exercises';
+
 export default function ExtractedContentModal({
   isOpen,
   onClose,
@@ -70,11 +68,11 @@ export default function ExtractedContentModal({
   onSaveToQueue,
   isSaved = false,
 }: ExtractedContentModalProps) {
-  const [activeSection, setActiveSection] = useState<number | 'all'>('all');
+  const [activeSheet, setActiveSheet] = useState<ExcelSheetTab>('overview');
   const [showTranslations, setShowTranslations] = useState<boolean>(true);
   const [vocabSearch, setVocabSearch] = useState<string>('');
   const [selectedAnswers, setSelectedAnswers] = useState<Record<string, string>>({});
-  const [showDrillAnswers, setShowDrillAnswers] = useState<boolean>(false);
+  const [showSolutions, setShowSolutions] = useState<boolean>(false);
   const [isCopied, setIsCopied] = useState<boolean>(false);
 
   if (!isOpen) return null;
@@ -88,765 +86,522 @@ export default function ExtractedContentModal({
     (item.partOfSpeech && item.partOfSpeech.toLowerCase().includes(vocabSearch.toLowerCase()))
   );
 
-  // Extract YouTube Embed URL if available
-  const getYouTubeEmbedUrl = (url: string) => {
-    if (!url) return null;
-    const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|\&v=)([^#\&\?]*).*/;
-    const match = url.match(regExp);
-    return (match && match[2].length === 11) ? `https://www.youtube.com/embed/${match[2]}` : null;
-  };
+  const sheets: Array<{ id: ExcelSheetTab; label: string; count?: number; icon: React.ComponentType<{ className?: string }> }> = [
+    { id: 'overview', label: 'Sheet 1: Overview & Metadata', icon: BookOpen },
+    { id: 'vocab', label: 'Sheet 2: Vocabulary Matrix', count: extractedContent.vocabularyList?.length || 0, icon: List },
+    { id: 'dialogue', label: 'Sheet 3: Situational Dialogue', count: extractedContent.dialogueScript?.length || 0, icon: MessageSquare },
+    { id: 'grammar', label: 'Sheet 4: Grammar Architecture', icon: HelpCircle },
+    { id: 'exercises', label: 'Sheet 5: Practice Drills & Keys', count: questions.length, icon: CheckSquare },
+  ];
 
-  const youtubeEmbedUrl = getYouTubeEmbedUrl(sourceUrl);
+  // Export structured CSV of active sheet or full workbook
+  const handleExportCSV = () => {
+    let csv = `RESOURCE: ${title}\nLANGUAGE: ${language}\nLEVEL: ${level}\nSKILL: ${skill}\nSOURCE: ${sourceName}\n\n`;
 
-  const handleCopyFullMasterclass = () => {
-    let text = `====================================================\n`;
-    text += `📘 ACADEMIC RESOURCE STUDY GUIDE\n`;
-    text += `TITLE: ${title}\n`;
-    text += `TARGET LANGUAGE: ${language} | LEVEL: ${level} | SKILL: ${skill}\n`;
-    text += `TOPIC: ${topicClean}\n`;
-    text += `SOURCE: ${sourceName} (${sourceUrl})\n`;
-    text += `====================================================\n\n`;
-
-    // Section 1: Overview
-    text += `--- SECTION 1: OVERVIEW & LEARNING OBJECTIVES ---\n`;
-    if (extractedContent.overview) {
-      text += `${extractedContent.overview}\n\n`;
-    }
-    text += `Core Competencies Target:\n`;
-    text += `1. High-frequency vocabulary in ${topicClean}\n`;
-    text += `2. Contextual expression for ${skill} at ${level} level\n`;
-    text += `3. Grammar syntax rules for ${language}\n\n`;
-
-    // Section 2: Passage & Dialogue
-    text += `--- SECTION 2: READING PASSAGE & SITUATIONAL DIALOGUE ---\n`;
-    if (extractedContent.body) {
-      text += `Reading Passage:\n${extractedContent.body}\n\n`;
-    }
-    if (extractedContent.dialogueScript && extractedContent.dialogueScript.length > 0) {
-      text += `Situational Dialogue Script:\n`;
-      extractedContent.dialogueScript.forEach(line => {
-        text += `${line.speaker}: ${line.text}\n`;
-        if (line.translation) text += `   (English: ${line.translation})\n`;
+    if (activeSheet === 'vocab') {
+      csv += `"Index","Target Word (${language})","Part of Speech","English Meaning","Example Sentence"\n`;
+      (extractedContent.vocabularyList || []).forEach((v, i) => {
+        csv += `"${i + 1}","${v.word.replace(/"/g, '""')}","${(v.partOfSpeech || '').replace(/"/g, '""')}","${v.translation.replace(/"/g, '""')}","${(v.example || '').replace(/"/g, '""')}"\n`;
       });
-      text += `\n`;
-    }
-
-    // Section 3: Vocabulary
-    text += `--- SECTION 3: TARGET VOCABULARY BANK ---\n`;
-    if (extractedContent.vocabularyList && extractedContent.vocabularyList.length > 0) {
-      extractedContent.vocabularyList.forEach((item, idx) => {
-        text += `${idx + 1}. ${item.word} [${item.partOfSpeech || 'word'}] = ${item.translation}\n`;
-        if (item.example) text += `   Example: ${item.example}\n`;
+    } else if (activeSheet === 'dialogue') {
+      csv += `"Turn","Speaker","Native Script (${language})","English Translation"\n`;
+      (extractedContent.dialogueScript || []).forEach((d, i) => {
+        csv += `"${i + 1}","${d.speaker.replace(/"/g, '""')}","${d.text.replace(/"/g, '""')}","${(d.translation || '').replace(/"/g, '""')}"\n`;
       });
-      text += `\n`;
-    }
-
-    // Section 4: Grammar
-    text += `--- SECTION 4: GRAMMAR ARCHITECTURE ---\n`;
-    if (extractedContent.grammarNotes) {
-      text += `${extractedContent.grammarNotes}\n\n`;
-    }
-
-    // Section 5: Practice Drills
-    text += `--- SECTION 5: PRACTICE DRILLS & EVALUATION ---\n`;
-    if (questions && questions.length > 0) {
-      questions.forEach((q, idx) => {
-        text += `Q${idx + 1}: ${q.question}\n`;
-        q.options.forEach((opt, oIdx) => {
-          text += `   [${String.fromCharCode(65 + oIdx)}] ${opt}\n`;
-        });
-        text += `✓ Correct Answer: ${q.answer}\n`;
-        if (q.explanation) text += `💡 Explanation: ${q.explanation}\n`;
-        text += `\n`;
+    } else if (activeSheet === 'exercises') {
+      csv += `"Question #","Question","Option A","Option B","Option C","Option D","Answer","Explanation"\n`;
+      questions.forEach((q, i) => {
+        csv += `"${i + 1}","${q.question.replace(/"/g, '""')}","${(q.options[0] || '').replace(/"/g, '""')}","${(q.options[1] || '').replace(/"/g, '""')}","${(q.options[2] || '').replace(/"/g, '""')}","${(q.options[3] || '').replace(/"/g, '""')}","${q.answer.replace(/"/g, '""')}","${(q.explanation || '').replace(/"/g, '""')}"\n`;
       });
     } else {
-      text += `Self-Assessment Checkpoints:\n`;
-      text += `[ ] 1. I can explain the main concepts of '${topicClean}' in ${language}.\n`;
-      text += `[ ] 2. I can use key vocabulary words accurately in ${skill}.\n`;
-      text += `[ ] 3. I understand the syntactic rules outlined for CEFR ${level}.\n`;
+      csv += `"Property","Value"\n`;
+      csv += `"Title","${title.replace(/"/g, '""')}"\n`;
+      csv += `"Topic","${topicClean.replace(/"/g, '""')}"\n`;
+      csv += `"Language","${language}"\n`;
+      csv += `"Level","${level}"\n`;
+      csv += `"Overview","${(extractedContent.overview || extractedContent.body || '').replace(/"/g, '""')}"\n`;
     }
 
-    text += `====================================================\n`;
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.setAttribute('download', `${title.slice(0, 30).replace(/[^a-z0-9]/gi, '_')}_${activeSheet}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  const handleCopyClipboard = () => {
+    let text = `====================================================\n`;
+    text += `📊 ISML SPREADSHEET MASTER MATRIX: ${title}\n`;
+    text += `Language: ${language} | Level: ${level} | Skill: ${skill} | Topic: ${topicClean}\n`;
+    text += `Source: ${sourceName} (${sourceUrl})\n`;
+    text += `====================================================\n\n`;
+
+    text += `[SHEET 1: OVERVIEW]\n${extractedContent.overview || extractedContent.body || 'No overview'}\n\n`;
+
+    if (extractedContent.vocabularyList?.length) {
+      text += `[SHEET 2: VOCABULARY MATRIX]\n`;
+      extractedContent.vocabularyList.forEach((v, i) => {
+        text += `${i + 1}\t${v.word}\t${v.partOfSpeech || ''}\t${v.translation}\t${v.example || ''}\n`;
+      });
+      text += `\n`;
+    }
+
+    if (extractedContent.dialogueScript?.length) {
+      text += `[SHEET 3: DIALOGUE MATRIX]\n`;
+      extractedContent.dialogueScript.forEach((d, i) => {
+        text += `Turn ${i + 1}\t${d.speaker}\t${d.text}\t${d.translation || ''}\n`;
+      });
+      text += `\n`;
+    }
+
+    if (extractedContent.grammarNotes) {
+      text += `[SHEET 4: GRAMMAR]\n${extractedContent.grammarNotes}\n\n`;
+    }
 
     navigator.clipboard.writeText(text);
     setIsCopied(true);
-    setTimeout(() => setIsCopied(false), 2500);
-  };
-
-  const sectionsList = [
-    { num: 'all' as const, label: 'Full Study Guide', icon: Layers },
-    { num: 2, label: 'Reading & Dialogue', icon: MessageSquare },
-    { num: 3, label: 'Vocabulary Bank', icon: List },
-    { num: 4, label: 'Grammar Rules', icon: HelpCircle },
-    { num: 5, label: 'Practice Drills', icon: CheckSquare },
-    { num: 1, label: 'Overview & Objectives', icon: BookOpen },
-  ];
-
-  const handleSelectOption = (qId: string, opt: string) => {
-    setSelectedAnswers(prev => ({ ...prev, [qId]: opt }));
+    setTimeout(() => setIsCopied(false), 2000);
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-slate-50 overflow-y-auto flex flex-col font-sans animate-fade-in">
+    <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex flex-col font-sans animate-fade-in p-2 sm:p-4 md:p-6 overflow-hidden">
       
-      {/* FULLSCREEN APP THEME HEADER BAR */}
-      <div className="sticky top-0 z-30 bg-[#0B2447] text-white shadow-lg border-b border-[#19376D]">
+      {/* EXCEL WORKBOOK WINDOW FRAME */}
+      <div className="flex-1 bg-white rounded-2xl shadow-2xl border border-slate-300 flex flex-col overflow-hidden max-w-7xl w-full mx-auto">
         
-        {/* Top Bar Navigation & Controls */}
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 py-3 sm:py-4 flex items-center justify-between gap-3">
+        {/* EXCEL TITLE BAR */}
+        <div className="bg-[#107C41] text-white px-4 py-3 flex items-center justify-between shrink-0 shadow-sm">
           <div className="flex items-center gap-3 min-w-0">
             <button
               onClick={onClose}
-              className="p-2.5 rounded-xl bg-white/10 hover:bg-white/20 text-white transition-all flex items-center gap-2 text-xs font-extrabold cursor-pointer shrink-0"
-              aria-label="Back to discovery"
+              className="p-1.5 rounded-lg bg-black/20 hover:bg-black/40 text-white transition-all flex items-center gap-1.5 text-xs font-bold shrink-0 cursor-pointer"
+              title="Close and return"
             >
-              <ArrowLeft className="w-4 h-4 text-cyan-300" />
-              <span className="hidden sm:inline">Back to Discovery</span>
+              <ArrowLeft className="w-4 h-4" />
+              <span className="hidden sm:inline">Close Sheet</span>
             </button>
 
-            <div className="h-6 w-px bg-white/20 hidden sm:block" />
+            <div className="h-5 w-px bg-white/20 hidden sm:block" />
 
-            <div className="min-w-0 space-y-0.5">
-              <div className="flex items-center gap-2 flex-wrap">
-                <span className="px-2.5 py-0.5 rounded-full bg-blue-500/20 text-blue-200 border border-blue-400/30 text-[11px] font-extrabold">
-                  {language}
-                </span>
-                <span className="px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-200 border border-emerald-400/30 text-[11px] font-extrabold">
-                  {level}
-                </span>
-                <span className="px-2.5 py-0.5 rounded-full bg-purple-500/20 text-purple-200 border border-purple-400/30 text-[11px] font-extrabold hidden sm:inline-block">
-                  {skill}
-                </span>
-              </div>
-              <h1 className="text-sm sm:text-base font-black text-white truncate max-w-xl">
-                {title}
-              </h1>
+            <div className="flex items-center gap-2 min-w-0">
+              <FileSpreadsheet className="w-5 h-5 text-emerald-100 shrink-0" />
+              <span className="font-extrabold text-xs sm:text-sm truncate">
+                {title} — Curriculum Workbook
+              </span>
+              <span className="hidden md:inline-flex px-2 py-0.5 rounded text-[10px] font-black uppercase bg-emerald-800 text-emerald-100">
+                {language} • {level}
+              </span>
             </div>
           </div>
 
-          {/* Action Buttons */}
+          {/* Quick Actions */}
           <div className="flex items-center gap-2 shrink-0">
             <button
-              onClick={handleCopyFullMasterclass}
-              className="px-3.5 py-2 rounded-xl bg-[#0052CC] hover:bg-blue-600 text-white font-extrabold text-xs transition-all flex items-center gap-1.5 shadow-sm cursor-pointer"
+              onClick={handleExportCSV}
+              className="px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-white text-xs font-extrabold flex items-center gap-1.5 transition-all cursor-pointer"
+              title="Export Current Sheet as CSV"
             >
-              {isCopied ? (
-                <>
-                  <Check className="w-4 h-4 text-emerald-300" />
-                  <span className="hidden sm:inline">Copied!</span>
-                </>
-              ) : (
-                <>
-                  <Copy className="w-4 h-4" />
-                  <span className="hidden sm:inline">Copy Guide</span>
-                </>
-              )}
+              <Download className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">Export CSV</span>
+            </button>
+
+            <button
+              onClick={handleCopyClipboard}
+              className="px-3 py-1.5 rounded-lg bg-emerald-800 hover:bg-emerald-900 text-white text-xs font-extrabold flex items-center gap-1.5 transition-all cursor-pointer"
+            >
+              {isCopied ? <Check className="w-3.5 h-3.5 text-emerald-300" /> : <Copy className="w-3.5 h-3.5" />}
+              <span className="hidden sm:inline">{isCopied ? 'Copied Matrix' : 'Copy All'}</span>
             </button>
 
             {onSaveToQueue && (
               <button
                 onClick={onSaveToQueue}
-                className={`px-3.5 py-2 rounded-xl text-xs font-extrabold flex items-center gap-1.5 transition-all cursor-pointer ${
+                className={`px-3 py-1.5 rounded-lg text-xs font-extrabold flex items-center gap-1.5 transition-all cursor-pointer ${
                   isSaved 
-                    ? 'bg-emerald-500/20 text-emerald-200 border border-emerald-400/30' 
-                    : 'bg-white/10 hover:bg-white/20 text-white border border-white/20'
+                    ? 'bg-emerald-200 text-emerald-900 font-black' 
+                    : 'bg-white text-[#107C41] hover:bg-emerald-50'
                 }`}
               >
-                {isSaved ? (
-                  <>
-                    <CheckCircle2 className="w-4 h-4 text-emerald-400" />
-                    <span className="hidden sm:inline">Saved to Library</span>
-                  </>
-                ) : (
-                  <>
-                    <PlusCircle className="w-4 h-4" />
-                    <span className="hidden sm:inline">Save to Library</span>
-                  </>
-                )}
+                <PlusCircle className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">{isSaved ? 'In Library' : 'Save'}</span>
               </button>
             )}
           </div>
         </div>
 
-        {/* Mobile & Desktop Scrollable Tab Navigation */}
-        <div className="bg-[#19376D] border-t border-[#0B2447]">
-          <div className="max-w-7xl mx-auto px-2 sm:px-6 py-2 flex items-center gap-1.5 overflow-x-auto no-scrollbar scrollbar-none text-xs font-bold">
-            {sectionsList.map(s => {
-              const Icon = s.icon;
-              const isActive = activeSection === s.num;
+        {/* EXCEL FORMULA BAR */}
+        <div className="bg-slate-100 border-b border-slate-200 px-4 py-2 flex items-center gap-3 text-xs shrink-0">
+          <div className="font-mono font-black text-slate-500 bg-white px-2.5 py-1 rounded border border-slate-300 shadow-2xs">
+            fx
+          </div>
+          <div className="font-mono text-slate-700 truncate flex-1 bg-white px-3 py-1 rounded border border-slate-300 shadow-2xs text-[11px]">
+            =CURRICULUM_MATRIX(Language="{language}", Level="{level}", Skill="{skill}", Topic="{topicClean}")
+          </div>
+          <div className="text-[11px] font-bold text-slate-500 hidden sm:block">
+            Source: <strong className="text-slate-800">{sourceName}</strong>
+          </div>
+        </div>
+
+        {/* WORKBOOK CONTENT SHEET */}
+        <div className="flex-1 overflow-auto bg-slate-50 p-4 sm:p-6">
+          
+          {/* SHEET 1: OVERVIEW & METADATA */}
+          {activeSheet === 'overview' && (
+            <div className="space-y-4 max-w-5xl mx-auto">
+              <div className="bg-white border border-slate-300 rounded-xl overflow-hidden shadow-xs">
+                <div className="bg-slate-100 border-b border-slate-300 px-4 py-2.5 flex items-center justify-between">
+                  <span className="text-xs font-black text-slate-700 uppercase tracking-wider flex items-center gap-2">
+                    <Table className="w-4 h-4 text-emerald-600" /> Sheet 1: Resource Metadata & Learning Scope
+                  </span>
+                  <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
+                    Validated Entry
+                  </span>
+                </div>
+
+                <table className="w-full text-xs text-left border-collapse">
+                  <tbody className="divide-y divide-slate-200 font-sans">
+                    <tr className="hover:bg-slate-50">
+                      <td className="w-1/4 p-3 font-bold bg-slate-50/80 text-slate-600 border-r border-slate-200">Resource Name</td>
+                      <td className="w-3/4 p-3 font-black text-slate-900">{title}</td>
+                    </tr>
+                    <tr className="hover:bg-slate-50">
+                      <td className="p-3 font-bold bg-slate-50/80 text-slate-600 border-r border-slate-200">Target Language & Level</td>
+                      <td className="p-3">
+                        <span className="px-2 py-0.5 rounded bg-blue-100 text-blue-900 font-black mr-2">{language}</span>
+                        <span className="px-2 py-0.5 rounded bg-emerald-100 text-emerald-900 font-black">{level}</span>
+                      </td>
+                    </tr>
+                    <tr className="hover:bg-slate-50">
+                      <td className="p-3 font-bold bg-slate-50/80 text-slate-600 border-r border-slate-200">Curriculum Skill & Topic</td>
+                      <td className="p-3 font-bold text-slate-800">{skill} • {topicClean}</td>
+                    </tr>
+                    <tr className="hover:bg-slate-50">
+                      <td className="p-3 font-bold bg-slate-50/80 text-slate-600 border-r border-slate-200">Origin Source Provider</td>
+                      <td className="p-3 text-slate-700 font-medium">
+                        {sourceName} {sourceUrl && (
+                          <a href={sourceUrl} target="_blank" rel="noopener noreferrer" className="ml-2 text-blue-600 hover:underline inline-flex items-center gap-1 font-bold">
+                            Open Link <ExternalLink className="w-3 h-3" />
+                          </a>
+                        )}
+                      </td>
+                    </tr>
+                    <tr className="hover:bg-slate-50">
+                      <td className="p-3 font-bold bg-slate-50/80 text-slate-600 border-r border-slate-200 align-top">Core Learning Overview</td>
+                      <td className="p-3 text-slate-800 leading-relaxed font-normal whitespace-pre-line">
+                        {extractedContent.overview || extractedContent.body || `Comprehensive instructional content for ${topicClean} at ${level} proficiency.`}
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Learning Objectives Grid */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div className="bg-white p-4 rounded-xl border border-slate-300 shadow-2xs space-y-1">
+                  <span className="text-[10px] font-black uppercase text-blue-600 block">Objective 01</span>
+                  <h4 className="text-xs font-black text-slate-900">Vocabulary Acquisition</h4>
+                  <p className="text-[11px] text-slate-600">Master {extractedContent.vocabularyList?.length || 10}+ essential words for {topicClean}.</p>
+                </div>
+                <div className="bg-white p-4 rounded-xl border border-slate-300 shadow-2xs space-y-1">
+                  <span className="text-[10px] font-black uppercase text-emerald-600 block">Objective 02</span>
+                  <h4 className="text-xs font-black text-slate-900">Situational Fluency</h4>
+                  <p className="text-[11px] text-slate-600">Practice dialogue turns with correct pronunciation and intonation.</p>
+                </div>
+                <div className="bg-white p-4 rounded-xl border border-slate-300 shadow-2xs space-y-1">
+                  <span className="text-[10px] font-black uppercase text-purple-600 block">Objective 03</span>
+                  <h4 className="text-xs font-black text-slate-900">Syntax Accuracy</h4>
+                  <p className="text-[11px] text-slate-600">Apply grammatical structures expected at {level} CEFR/JLPT benchmark.</p>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* SHEET 2: VOCABULARY MATRIX */}
+          {activeSheet === 'vocab' && (
+            <div className="space-y-3">
+              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 bg-white p-3 rounded-xl border border-slate-300">
+                <div className="flex items-center gap-2">
+                  <Search className="w-4 h-4 text-slate-400" />
+                  <input
+                    type="text"
+                    placeholder="Search word, translation, or part of speech..."
+                    value={vocabSearch}
+                    onChange={(e) => setVocabSearch(e.target.value)}
+                    className="text-xs font-medium bg-transparent outline-none w-64 text-slate-800"
+                  />
+                </div>
+                <span className="text-[11px] font-extrabold text-slate-500">
+                  Showing {filteredVocab.length} of {extractedContent.vocabularyList?.length || 0} vocabulary entries
+                </span>
+              </div>
+
+              {filteredVocab.length > 0 ? (
+                <div className="bg-white border border-slate-300 rounded-xl overflow-hidden shadow-xs">
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-xs text-left border-collapse table-auto">
+                      <thead>
+                        <tr className="bg-slate-100 text-slate-700 font-black text-[11px] uppercase tracking-wider border-b border-slate-300">
+                          <th className="p-3 w-12 text-center border-r border-slate-200">#</th>
+                          <th className="p-3 w-1/4 border-r border-slate-200">Word ({language})</th>
+                          <th className="p-3 w-28 border-r border-slate-200">Part of Speech</th>
+                          <th className="p-3 w-1/4 border-r border-slate-200">English Meaning</th>
+                          <th className="p-3">Example Usage Sentence</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-200 font-sans">
+                        {filteredVocab.map((item, i) => (
+                          <tr key={i} className="hover:bg-emerald-50/50 transition-colors">
+                            <td className="p-3 text-center font-bold text-slate-400 border-r border-slate-200 bg-slate-50/50">
+                              {i + 1}
+                            </td>
+                            <td className="p-3 font-black text-slate-900 text-sm border-r border-slate-200">
+                              {item.word}
+                            </td>
+                            <td className="p-3 text-slate-600 font-semibold border-r border-slate-200">
+                              <span className="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-[10px]">
+                                {item.partOfSpeech || 'Word'}
+                              </span>
+                            </td>
+                            <td className="p-3 font-bold text-emerald-800 border-r border-slate-200">
+                              {item.translation}
+                            </td>
+                            <td className="p-3 text-slate-600 italic">
+                              {item.example || '—'}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              ) : (
+                <div className="bg-white p-8 rounded-xl border border-slate-300 text-center text-xs text-slate-500">
+                  No vocabulary rows match your filter.
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* SHEET 3: SITUATIONAL DIALOGUE */}
+          {activeSheet === 'dialogue' && (
+            <div className="space-y-3">
+              <div className="flex items-center justify-between bg-white p-3 rounded-xl border border-slate-300">
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-black text-slate-800">
+                    Dialogue Matrix ({extractedContent.dialogueScript?.length || 0} Turns)
+                  </span>
+                </div>
+                <button
+                  onClick={() => setShowTranslations(!showTranslations)}
+                  className="px-3 py-1 rounded-lg border border-slate-300 hover:bg-slate-100 text-slate-700 font-bold text-xs flex items-center gap-1.5 transition-all cursor-pointer"
+                >
+                  {showTranslations ? <EyeOff className="w-3.5 h-3.5 text-slate-500" /> : <Eye className="w-3.5 h-3.5 text-emerald-600" />}
+                  <span>{showTranslations ? 'Hide Translations' : 'Show Translations'}</span>
+                </button>
+              </div>
+
+              {extractedContent.dialogueScript && extractedContent.dialogueScript.length > 0 ? (
+                <div className="bg-white border border-slate-300 rounded-xl overflow-hidden shadow-xs">
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-xs text-left border-collapse table-auto">
+                      <thead>
+                        <tr className="bg-slate-100 text-slate-700 font-black text-[11px] uppercase tracking-wider border-b border-slate-300">
+                          <th className="p-3 w-16 text-center border-r border-slate-200">Turn #</th>
+                          <th className="p-3 w-36 border-r border-slate-200">Speaker</th>
+                          <th className="p-3 border-r border-slate-200">Native Script ({language})</th>
+                          {showTranslations && <th className="p-3 w-1/3">English Translation</th>}
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-200 font-sans">
+                        {extractedContent.dialogueScript.map((line, i) => (
+                          <tr key={i} className="hover:bg-blue-50/50 transition-colors">
+                            <td className="p-3 text-center font-bold text-slate-400 border-r border-slate-200 bg-slate-50/50">
+                              {i + 1}
+                            </td>
+                            <td className="p-3 font-extrabold text-blue-900 border-r border-slate-200">
+                              <span className="inline-block w-6 h-6 rounded-full bg-blue-100 text-blue-800 text-[10px] text-center leading-6 font-black mr-2">
+                                {line.speaker.charAt(0)}
+                              </span>
+                              {line.speaker}
+                            </td>
+                            <td className="p-3 font-bold text-slate-900 text-sm border-r border-slate-200 leading-relaxed">
+                              {line.text}
+                            </td>
+                            {showTranslations && (
+                              <td className="p-3 text-slate-600 italic bg-slate-50/30">
+                                {line.translation || '—'}
+                              </td>
+                            )}
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              ) : (
+                <div className="bg-white p-8 rounded-xl border border-slate-300 text-center text-xs text-slate-500">
+                  No dialogue script rows found in this resource module.
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* SHEET 4: GRAMMAR ARCHITECTURE */}
+          {activeSheet === 'grammar' && (
+            <div className="space-y-4 max-w-5xl mx-auto">
+              <div className="bg-white border border-slate-300 rounded-xl overflow-hidden shadow-xs">
+                <div className="bg-amber-100/60 border-b border-amber-300/60 px-4 py-2.5">
+                  <h3 className="text-xs font-black text-amber-950 uppercase tracking-wider flex items-center gap-2">
+                    <HelpCircle className="w-4 h-4 text-amber-700" /> Syntactic Formulas & Usage Guidelines
+                  </h3>
+                </div>
+                <div className="p-5 font-mono text-xs text-slate-800 leading-relaxed whitespace-pre-line bg-amber-50/30">
+                  {extractedContent.grammarNotes || `Standard grammatical architecture for ${language} at ${level} level.`}
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="bg-white p-4 rounded-xl border border-slate-300 shadow-2xs space-y-2">
+                  <h4 className="text-xs font-black text-emerald-800 flex items-center gap-1.5 uppercase">
+                    <Sparkles className="w-3.5 h-3.5 text-emerald-600" /> Core Rule Summary
+                  </h4>
+                  <p className="text-xs text-slate-600 leading-relaxed">
+                    Always maintain proper verb conjugation and agreement rules tailored for {level} in {language}.
+                  </p>
+                </div>
+                <div className="bg-white p-4 rounded-xl border border-slate-300 shadow-2xs space-y-2">
+                  <h4 className="text-xs font-black text-rose-800 flex items-center gap-1.5 uppercase">
+                    ⚠️ Syntactic Trap Avoidance
+                  </h4>
+                  <p className="text-xs text-slate-600 leading-relaxed">
+                    Do not translate word-for-word from English; respect natural word-order sequences in {language}.
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* SHEET 5: PRACTICE DRILLS & KEYS */}
+          {activeSheet === 'exercises' && (
+            <div className="space-y-3">
+              <div className="flex items-center justify-between bg-white p-3 rounded-xl border border-slate-300">
+                <span className="text-xs font-black text-slate-800">
+                  Practice Questions & Evaluation Key ({questions.length} Questions)
+                </span>
+                <button
+                  onClick={() => setShowSolutions(!showSolutions)}
+                  className="px-3 py-1 rounded-lg border border-slate-300 hover:bg-slate-100 text-emerald-700 font-extrabold text-xs transition-all cursor-pointer"
+                >
+                  {showSolutions ? 'Hide Answer Key' : 'Reveal Answer Key'}
+                </button>
+              </div>
+
+              {questions.length > 0 ? (
+                <div className="bg-white border border-slate-300 rounded-xl overflow-hidden shadow-xs">
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-xs text-left border-collapse table-auto">
+                      <thead>
+                        <tr className="bg-slate-100 text-slate-700 font-black text-[11px] uppercase tracking-wider border-b border-slate-300">
+                          <th className="p-3 w-14 text-center border-r border-slate-200">Q #</th>
+                          <th className="p-3 w-1/3 border-r border-slate-200">Question Prompt</th>
+                          <th className="p-3 border-r border-slate-200">Multiple Choice Options</th>
+                          {showSolutions && <th className="p-3 w-1/4">Answer & Explanation</th>}
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-200 font-sans">
+                        {questions.map((q, i) => (
+                          <tr key={q.id || i} className="hover:bg-emerald-50/40 transition-colors">
+                            <td className="p-3 text-center font-bold text-slate-400 border-r border-slate-200 bg-slate-50/50">
+                              Q{i + 1}
+                            </td>
+                            <td className="p-3 font-bold text-slate-900 border-r border-slate-200 leading-relaxed">
+                              {q.question}
+                            </td>
+                            <td className="p-3 border-r border-slate-200">
+                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
+                                {q.options.map((opt, oIdx) => {
+                                  const isSel = selectedAnswers[q.id] === opt;
+                                  const isCorrect = q.answer === opt;
+                                  return (
+                                    <button
+                                      key={oIdx}
+                                      onClick={() => setSelectedAnswers(prev => ({ ...prev, [q.id]: opt }))}
+                                      className={`p-1.5 rounded text-[11px] text-left border transition-all ${
+                                        showSolutions && isCorrect
+                                          ? 'bg-emerald-600 text-white font-bold border-emerald-600'
+                                          : isSel
+                                          ? 'bg-blue-600 text-white font-bold border-blue-600'
+                                          : 'bg-slate-50 hover:bg-slate-100 border-slate-200 text-slate-700'
+                                      }`}
+                                    >
+                                      <span className="font-mono mr-1.5 opacity-70">[{String.fromCharCode(65 + oIdx)}]</span>
+                                      {opt}
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                            </td>
+                            {showSolutions && (
+                              <td className="p-3 text-slate-700 bg-emerald-50/50 font-medium space-y-1">
+                                <span className="text-emerald-800 font-black block">✓ Correct: {q.answer}</span>
+                                {q.explanation && <p className="text-[11px] text-slate-600">{q.explanation}</p>}
+                              </td>
+                            )}
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              ) : (
+                <div className="bg-white p-8 rounded-xl border border-slate-300 text-center text-xs text-slate-500">
+                  No practice questions recorded for this module.
+                </div>
+              )}
+            </div>
+          )}
+
+        </div>
+
+        {/* EXCEL BOTTOM SHEET TABS BAR */}
+        <div className="bg-slate-200 border-t border-slate-300 px-3 py-1.5 flex items-center justify-between gap-2 overflow-x-auto shrink-0 select-none">
+          <div className="flex items-center gap-1">
+            {sheets.map((sheet) => {
+              const Icon = sheet.icon;
+              const isActive = activeSheet === sheet.id;
               return (
                 <button
-                  key={String(s.num)}
-                  onClick={() => setActiveSection(s.num)}
-                  className={`px-4 py-2 rounded-xl transition-all flex items-center gap-2 whitespace-nowrap cursor-pointer ${
+                  key={sheet.id}
+                  onClick={() => setActiveSheet(sheet.id)}
+                  className={`px-3.5 py-1.5 text-xs font-black transition-all flex items-center gap-2 border-t-2 rounded-t-md cursor-pointer ${
                     isActive
-                      ? 'bg-[#0052CC] text-white font-extrabold shadow-md border border-blue-400/40'
-                      : 'text-blue-100/80 hover:text-white hover:bg-white/10 border border-transparent'
+                      ? 'bg-white text-[#107C41] border-[#107C41] shadow-2xs'
+                      : 'bg-slate-300/80 hover:bg-slate-100 text-slate-600 border-transparent'
                   }`}
                 >
-                  <Icon className={`w-3.5 h-3.5 ${isActive ? 'text-white' : 'text-blue-300'}`} />
-                  <span>{s.label}</span>
+                  <Icon className={`w-3.5 h-3.5 ${isActive ? 'text-[#107C41]' : 'text-slate-500'}`} />
+                  <span>{sheet.label}</span>
+                  {typeof sheet.count === 'number' && sheet.count > 0 && (
+                    <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-mono ${
+                      isActive ? 'bg-emerald-100 text-emerald-900' : 'bg-slate-400/40 text-slate-700'
+                    }`}>
+                      {sheet.count}
+                    </span>
+                  )}
                 </button>
               );
             })}
           </div>
+
+          <div className="text-[11px] font-bold text-slate-500 hidden sm:block">
+            ISML Academic Spreadsheet Engine
+          </div>
         </div>
 
       </div>
-
-      {/* MAIN CONTENT AREA */}
-      <div className="flex-1 max-w-7xl w-full mx-auto p-4 sm:p-6 lg:p-8 space-y-8">
-        
-        {/* Source & Context Information Bar */}
-        <div className="p-4 sm:p-5 rounded-2xl bg-white border border-slate-200 shadow-xs flex items-center justify-between gap-4 flex-wrap text-xs font-semibold">
-          <div className="flex items-center gap-2 text-slate-600 flex-wrap">
-            <span className="px-2.5 py-1 rounded-lg bg-slate-100 text-slate-800 font-bold">
-              Topic: <strong>{topicClean}</strong>
-            </span>
-            <span>•</span>
-            <span>Source: <strong className="text-slate-900">{sourceName}</strong></span>
-          </div>
-
-          <a 
-            href={sourceUrl} 
-            target="_blank" 
-            rel="noopener noreferrer" 
-            className="text-[#0052CC] hover:underline flex items-center gap-1 font-bold"
-          >
-            Open Source Link <ExternalLink className="w-3.5 h-3.5" />
-          </a>
-        </div>
-
-        {/* ================= SECTION 2: READING & DIALOGUE ================= */}
-        {(activeSection === 2 || activeSection === 'all') && (
-          <div className="space-y-6 animate-fade-in">
-            <div className="flex items-center justify-between border-b border-slate-200 pb-3 flex-wrap gap-2">
-              <h2 className="text-base sm:text-lg font-black text-[#0B2447] flex items-center gap-2.5">
-                <MessageSquare className="w-5 h-5 text-cyan-600" /> Reading Passage & Dialogue
-              </h2>
-
-              {extractedContent.dialogueScript && extractedContent.dialogueScript.length > 0 && (
-                <button
-                  onClick={() => setShowTranslations(!showTranslations)}
-                  className="px-3 py-1.5 rounded-xl border border-slate-300 hover:bg-slate-200 text-slate-700 font-bold text-xs transition-all flex items-center gap-1.5 cursor-pointer"
-                >
-                  {showTranslations ? <EyeOff className="w-3.5 h-3.5 text-slate-500" /> : <Eye className="w-3.5 h-3.5 text-[#0052CC]" />}
-                  {showTranslations ? 'Hide English Translations' : 'Show English Translations'}
-                </button>
-              )}
-            </div>
-
-            {/* Embedded YouTube Video Player */}
-            {youtubeEmbedUrl && (
-              <div className="space-y-2">
-                <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
-                  <Video className="w-4 h-4 text-red-600" /> Embedded Lesson Player
-                </h3>
-                <div className="aspect-video w-full max-w-4xl rounded-3xl overflow-hidden shadow-lg border border-slate-200 bg-black">
-                  <iframe
-                    src={youtubeEmbedUrl}
-                    title={title}
-                    className="w-full h-full border-0"
-                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                    allowFullScreen
-                  />
-                </div>
-              </div>
-            )}
-
-            {/* Core Reading Passage */}
-            {extractedContent.body && (
-              <div className="space-y-2">
-                <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
-                  <FileText className="w-4 h-4 text-[#0052CC]" /> Core Reading Passage ({language})
-                </h3>
-                <div className="p-6 sm:p-8 rounded-3xl bg-white border border-slate-200 text-sm sm:text-base text-slate-800 leading-relaxed font-serif shadow-xs whitespace-pre-line border-l-4 border-l-[#0052CC]">
-                  {extractedContent.body}
-                </div>
-              </div>
-            )}
-
-            {/* Dialogue Script */}
-            {extractedContent.dialogueScript && extractedContent.dialogueScript.length > 0 && (
-              <div className="space-y-4">
-                <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
-                  <Volume2 className="w-4 h-4 text-cyan-600" /> Situational Dialogue Script
-                </h3>
-
-                <div className="space-y-3">
-                  {extractedContent.dialogueScript.map((line, idx) => (
-                    <div 
-                      key={idx} 
-                      className={`p-4 sm:p-5 rounded-2xl border transition-all ${
-                        idx % 2 === 0 ? 'bg-blue-50/70 border-blue-200' : 'bg-white border-slate-200'
-                      }`}
-                    >
-                      <div className="flex items-center justify-between mb-2">
-                        <span className="text-xs font-extrabold text-[#0B2447] flex items-center gap-2">
-                          <span className="w-6 h-6 rounded-full bg-[#0052CC] text-white flex items-center justify-center font-bold text-[10px]">
-                            {line.speaker.charAt(0)}
-                          </span>
-                          {line.speaker}
-                        </span>
-                        <span className="text-[10px] text-slate-400 font-semibold uppercase">
-                          Turn {idx + 1}
-                        </span>
-                      </div>
-
-                      <p className="text-sm sm:text-base font-bold text-slate-900 leading-snug pl-8">
-                        {line.text}
-                      </p>
-
-                      {showTranslations && line.translation && (
-                        <div className="mt-2.5 pl-8">
-                          <p className="text-xs text-slate-600 italic bg-white/90 p-3 rounded-xl border border-slate-200 font-sans">
-                            🇬🇧 Translation: {line.translation}
-                          </p>
-                        </div>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* ================= SECTION 1: OVERVIEW & OBJECTIVES ================= */}
-        {(activeSection === 1 || activeSection === 'all') && (
-          <div className="space-y-6 animate-fade-in">
-            <div className="flex items-center justify-between border-b border-slate-200 pb-3">
-              <h2 className="text-base sm:text-lg font-black text-[#0B2447] flex items-center gap-2.5">
-                <BookOpen className="w-5 h-5 text-[#0052CC]" /> Overview & Learning Objectives
-              </h2>
-              <span className="px-3 py-1 rounded-lg bg-blue-100 text-[#0052CC] font-bold text-xs">
-                Syllabus Overview
-              </span>
-            </div>
-
-            {/* Overview Banner Card */}
-            <div className="p-6 sm:p-8 rounded-3xl bg-gradient-to-br from-[#0B2447] to-[#19376D] text-white shadow-lg space-y-4">
-              <div className="flex items-center gap-2 text-xs font-bold text-cyan-300 uppercase tracking-wider">
-                <Sparkles className="w-4 h-4 text-amber-300" /> Lesson Core Summary
-              </div>
-              <p className="text-sm sm:text-base font-medium leading-relaxed text-slate-100">
-                {extractedContent.overview || extractedContent.body || `This study guide provides a structured breakdown of '${topicClean}' tailored for ${language} learners at the ${level} level.`}
-              </p>
-            </div>
-
-            {/* Learning Outcomes & Study Plan */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-              <div className="p-6 rounded-2xl bg-white border border-slate-200 shadow-xs space-y-4">
-                <h3 className="text-xs font-extrabold text-slate-500 uppercase tracking-wider flex items-center gap-2">
-                  <Award className="w-4 h-4 text-emerald-600" /> Target Competencies
-                </h3>
-                <ul className="space-y-3 text-xs sm:text-sm text-slate-700 font-medium">
-                  <li className="flex items-start gap-2.5">
-                    <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0 mt-0.5" />
-                    <span>Master core vocabulary for <strong>{topicClean}</strong></span>
-                  </li>
-                  <li className="flex items-start gap-2.5">
-                    <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0 mt-0.5" />
-                    <span>Develop contextual fluency in <strong>{skill}</strong></span>
-                  </li>
-                  <li className="flex items-start gap-2.5">
-                    <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0 mt-0.5" />
-                    <span>Understand syntax and word order for <strong>{level}</strong> level</span>
-                  </li>
-                  <li className="flex items-start gap-2.5">
-                    <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0 mt-0.5" />
-                    <span>Apply appropriate registers in <strong>{language}</strong></span>
-                  </li>
-                </ul>
-              </div>
-
-              <div className="p-6 rounded-2xl bg-blue-50/70 border border-blue-200/80 space-y-4">
-                <h3 className="text-xs font-extrabold text-[#0052CC] uppercase tracking-wider flex items-center gap-2">
-                  <Lightbulb className="w-4 h-4 text-amber-500" /> Cultural Register & Usage Context
-                </h3>
-                <ul className="space-y-3 text-xs sm:text-sm text-slate-700 font-medium">
-                  <li className="flex items-start gap-2.5">
-                    <span className="w-5 h-5 rounded-full bg-[#0052CC]/10 text-[#0052CC] font-bold text-xs flex items-center justify-center shrink-0 mt-0.5">1</span>
-                    <span><strong>Formal vs. Informal Registers:</strong> Social distance rules & pronoun selection in <strong>{language}</strong> for {level}.</span>
-                  </li>
-                  <li className="flex items-start gap-2.5">
-                    <span className="w-5 h-5 rounded-full bg-[#0052CC]/10 text-[#0052CC] font-bold text-xs flex items-center justify-center shrink-0 mt-0.5">2</span>
-                    <span><strong>Contextual Application:</strong> Authentic oral & written expression for <strong>{topicClean}</strong>.</span>
-                  </li>
-                  <li className="flex items-start gap-2.5">
-                    <span className="w-5 h-5 rounded-full bg-[#0052CC]/10 text-[#0052CC] font-bold text-xs flex items-center justify-center shrink-0 mt-0.5">3</span>
-                    <span><strong>Curriculum Material:</strong> Full study content ready for tutor distribution & student learning.</span>
-                  </li>
-                </ul>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* ================= SECTION 2: READING & DIALOGUE ================= */}
-        {(activeSection === 2 || activeSection === 'all') && (
-          <div className="space-y-6 animate-fade-in">
-            <div className="flex items-center justify-between border-b border-slate-200 pb-3 flex-wrap gap-2">
-              <h2 className="text-base sm:text-lg font-black text-[#0B2447] flex items-center gap-2.5">
-                <MessageSquare className="w-5 h-5 text-cyan-600" /> Reading Passage & Dialogue
-              </h2>
-
-              {extractedContent.dialogueScript && extractedContent.dialogueScript.length > 0 && (
-                <button
-                  onClick={() => setShowTranslations(!showTranslations)}
-                  className="px-3 py-1.5 rounded-xl border border-slate-300 hover:bg-slate-200 text-slate-700 font-bold text-xs transition-all flex items-center gap-1.5 cursor-pointer"
-                >
-                  {showTranslations ? <EyeOff className="w-3.5 h-3.5 text-slate-500" /> : <Eye className="w-3.5 h-3.5 text-[#0052CC]" />}
-                  {showTranslations ? 'Hide English Translations' : 'Show English Translations'}
-                </button>
-              )}
-            </div>
-
-            {/* Embedded YouTube Video Player */}
-            {youtubeEmbedUrl && (
-              <div className="space-y-2">
-                <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
-                  <Video className="w-4 h-4 text-red-600" /> Embedded Lesson Player
-                </h3>
-                <div className="aspect-video w-full max-w-4xl rounded-3xl overflow-hidden shadow-lg border border-slate-200 bg-black">
-                  <iframe
-                    src={youtubeEmbedUrl}
-                    title={title}
-                    className="w-full h-full border-0"
-                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                    allowFullScreen
-                  />
-                </div>
-              </div>
-            )}
-
-            {/* Core Reading Passage */}
-            {extractedContent.body && (
-              <div className="space-y-2">
-                <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
-                  <FileText className="w-4 h-4 text-[#0052CC]" /> Core Reading Passage ({language})
-                </h3>
-                <div className="p-6 sm:p-8 rounded-3xl bg-white border border-slate-200 text-sm sm:text-base text-slate-800 leading-relaxed font-serif shadow-xs whitespace-pre-line border-l-4 border-l-[#0052CC]">
-                  {extractedContent.body}
-                </div>
-              </div>
-            )}
-
-            {/* Dialogue Script */}
-            {extractedContent.dialogueScript && extractedContent.dialogueScript.length > 0 && (
-              <div className="space-y-4">
-                <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
-                  <Volume2 className="w-4 h-4 text-cyan-600" /> Situational Dialogue Script
-                </h3>
-
-                <div className="space-y-3">
-                  {extractedContent.dialogueScript.map((line, idx) => (
-                    <div 
-                      key={idx} 
-                      className={`p-4 sm:p-5 rounded-2xl border transition-all ${
-                        idx % 2 === 0 ? 'bg-blue-50/70 border-blue-200' : 'bg-white border-slate-200'
-                      }`}
-                    >
-                      <div className="flex items-center justify-between mb-2">
-                        <span className="text-xs font-extrabold text-[#0B2447] flex items-center gap-2">
-                          <span className="w-6 h-6 rounded-full bg-[#0052CC] text-white flex items-center justify-center font-bold text-[10px]">
-                            {line.speaker.charAt(0)}
-                          </span>
-                          {line.speaker}
-                        </span>
-                        <span className="text-[10px] text-slate-400 font-semibold uppercase">
-                          Turn {idx + 1}
-                        </span>
-                      </div>
-
-                      <p className="text-sm sm:text-base font-bold text-slate-900 leading-snug pl-8">
-                        {line.text}
-                      </p>
-
-                      {showTranslations && line.translation && (
-                        <div className="mt-2.5 pl-8">
-                          <p className="text-xs text-slate-600 italic bg-white/90 p-3 rounded-xl border border-slate-200 font-sans">
-                            🇬🇧 Translation: {line.translation}
-                          </p>
-                        </div>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* ================= SECTION 3: VOCABULARY BANK ================= */}
-        {(activeSection === 3 || activeSection === 'all') && (
-          <div className="space-y-6 animate-fade-in">
-            <div className="flex items-center justify-between border-b border-slate-200 pb-3 flex-wrap gap-2">
-              <h2 className="text-base sm:text-lg font-black text-[#0B2447] flex items-center gap-2.5">
-                <List className="w-5 h-5 text-purple-600" /> Target Vocabulary Bank
-              </h2>
-              <span className="px-3 py-1 rounded-lg bg-purple-100 text-purple-900 font-bold text-xs">
-                {extractedContent.vocabularyList?.length || 0} Key Terms
-              </span>
-            </div>
-
-            {/* Vocab Filter Search Bar */}
-            <div className="relative max-w-lg">
-              <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
-              <input
-                type="text"
-                placeholder="Search vocabulary by word, part of speech, or meaning..."
-                value={vocabSearch}
-                onChange={(e) => setVocabSearch(e.target.value)}
-                className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-300 bg-white text-xs font-medium focus:outline-none focus:ring-2 focus:ring-[#0052CC] focus:border-transparent"
-              />
-            </div>
-
-            {/* Responsive Table for Desktop & Cards for Mobile */}
-            {filteredVocab.length > 0 ? (
-              <div>
-                {/* Desktop View */}
-                <div className="hidden md:block overflow-x-auto border border-slate-200 rounded-3xl bg-white shadow-xs">
-                  <table className="w-full text-left border-collapse text-xs">
-                    <thead>
-                      <tr className="bg-slate-100 text-slate-700 font-extrabold border-b border-slate-200 uppercase tracking-wider">
-                        <th className="p-4">#</th>
-                        <th className="p-4">Target Word ({language})</th>
-                        <th className="p-4">Part of Speech</th>
-                        <th className="p-4">English Meaning</th>
-                        <th className="p-4">Example Usage</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-100 font-medium">
-                      {filteredVocab.map((item, i) => (
-                        <tr key={i} className="hover:bg-blue-50/40 transition-colors">
-                          <td className="p-4 text-slate-400 font-bold">{i + 1}</td>
-                          <td className="p-4 font-extrabold text-[#0B2447] text-sm">{item.word}</td>
-                          <td className="p-4 text-slate-500 font-semibold">
-                            <span className="px-2.5 py-1 rounded-lg bg-slate-100 border border-slate-200 text-[10px]">
-                              {item.partOfSpeech || 'N/A'}
-                            </span>
-                          </td>
-                          <td className="p-4 text-[#0052CC] font-bold">{item.translation}</td>
-                          <td className="p-4 text-slate-600 italic font-serif">{item.example || '-'}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-
-                {/* Mobile Card List View */}
-                <div className="grid grid-cols-1 gap-3 md:hidden">
-                  {filteredVocab.map((item, i) => (
-                    <div key={i} className="p-4 rounded-2xl bg-white border border-slate-200 shadow-xs space-y-2">
-                      <div className="flex items-center justify-between">
-                        <span className="text-sm font-extrabold text-[#0B2447]">{item.word}</span>
-                        <span className="px-2 py-0.5 rounded bg-slate-100 text-slate-600 text-[10px] font-bold">
-                          {item.partOfSpeech || 'word'}
-                        </span>
-                      </div>
-                      <p className="text-xs text-[#0052CC] font-bold">🇬🇧 {item.translation}</p>
-                      {item.example && (
-                        <p className="text-xs text-slate-500 italic font-serif bg-slate-50 p-2 rounded-lg">
-                          "{item.example}"
-                        </p>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              </div>
-            ) : (
-              <div className="p-8 text-center bg-white rounded-2xl border border-slate-200 text-xs text-slate-500">
-                No vocabulary terms found matching "{vocabSearch}".
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* ================= SECTION 4: GRAMMAR RULES ================= */}
-        {(activeSection === 4 || activeSection === 'all') && (
-          <div className="space-y-6 animate-fade-in">
-            <div className="flex items-center justify-between border-b border-slate-200 pb-3">
-              <h2 className="text-base sm:text-lg font-black text-[#0B2447] flex items-center gap-2.5">
-                <HelpCircle className="w-5 h-5 text-amber-600" /> Grammar Architecture & Rules
-              </h2>
-              <span className="px-3 py-1 rounded-lg bg-amber-100 text-amber-900 font-bold text-xs">
-                Syntax Notes
-              </span>
-            </div>
-
-            {/* Grammar Notes Content */}
-            {extractedContent.grammarNotes ? (
-              <div className="p-6 sm:p-8 rounded-3xl bg-amber-50/80 border border-amber-200 text-xs sm:text-sm text-slate-800 leading-relaxed font-medium whitespace-pre-line space-y-4 shadow-xs">
-                {extractedContent.grammarNotes}
-              </div>
-            ) : (
-              <div className="p-6 rounded-2xl bg-white border border-slate-200 text-xs text-slate-600">
-                Grammar rules for <strong>{topicClean}</strong> focus on syntax structure, word order, and verb conjugations at the {level} level.
-              </div>
-            )}
-
-            {/* Grammar Tips Grid */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-              <div className="p-6 rounded-2xl bg-emerald-50 border border-emerald-200 space-y-2">
-                <h3 className="text-xs font-extrabold text-emerald-800 uppercase tracking-wider flex items-center gap-1.5">
-                  <Lightbulb className="w-4 h-4 text-emerald-600" /> Pro Grammar Tip
-                </h3>
-                <p className="text-xs sm:text-sm text-emerald-900 leading-relaxed font-medium">
-                  When applying <strong>{topicClean}</strong>, focus on correct auxiliary verb positioning and natural word rhythm in {language}.
-                </p>
-              </div>
-
-              <div className="p-6 rounded-2xl bg-rose-50 border border-rose-200 space-y-2">
-                <h3 className="text-xs font-extrabold text-rose-800 uppercase tracking-wider flex items-center gap-1.5">
-                  <AlertTriangle className="w-4 h-4 text-rose-600" /> Common Pitfall to Avoid
-                </h3>
-                <p className="text-xs sm:text-sm text-rose-900 leading-relaxed font-medium">
-                  Do not translate word-for-word from native language; adhere strictly to target syntactic structure for level {level}.
-                </p>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* ================= SECTION 5: PRACTICE DRILLS ================= */}
-        {(activeSection === 5 || activeSection === 'all') && (
-          <div className="space-y-6 animate-fade-in">
-            <div className="flex items-center justify-between border-b border-slate-200 pb-3 flex-wrap gap-2">
-              <h2 className="text-base sm:text-lg font-black text-[#0B2447] flex items-center gap-2.5">
-                <CheckSquare className="w-5 h-5 text-emerald-600" /> Practice Drills & Assessment
-              </h2>
-              <span className="px-3 py-1 rounded-lg bg-emerald-100 text-emerald-900 font-bold text-xs">
-                Interactive Check
-              </span>
-            </div>
-
-            {questions && questions.length > 0 ? (
-              <div className="space-y-4">
-                <div className="flex items-center justify-between">
-                  <h3 className="text-xs font-extrabold text-slate-500 uppercase tracking-wider">
-                    Assessment Questions ({questions.length} Items)
-                  </h3>
-                  <button
-                    onClick={() => setShowDrillAnswers(!showDrillAnswers)}
-                    className="text-xs font-bold text-[#0052CC] hover:underline flex items-center gap-1"
-                  >
-                    {showDrillAnswers ? 'Hide Solutions' : 'Reveal Solutions'}
-                  </button>
-                </div>
-
-                {questions.map((q, qIdx) => (
-                  <div key={q.id || qIdx} className="p-5 sm:p-6 rounded-3xl bg-white border border-slate-200 shadow-xs space-y-4">
-                    <div className="flex items-start gap-3">
-                      <span className="w-8 h-8 rounded-xl bg-[#0052CC]/10 text-[#0052CC] font-extrabold text-xs flex items-center justify-center shrink-0">
-                        Q{qIdx + 1}
-                      </span>
-                      <h4 className="text-sm sm:text-base font-extrabold text-[#0B2447] leading-snug">
-                        {q.question}
-                      </h4>
-                    </div>
-
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pl-0 sm:pl-11">
-                      {q.options.map((opt, oIdx) => {
-                        const isSelected = selectedAnswers[q.id] === opt;
-                        const isCorrect = q.answer === opt;
-
-                        let btnStyle = "border-slate-200 bg-slate-50 text-slate-700 hover:bg-slate-100";
-                        if (showDrillAnswers) {
-                          if (isCorrect) btnStyle = "border-emerald-500 bg-emerald-500 text-white font-bold";
-                          else if (isSelected && !isCorrect) btnStyle = "border-rose-500 bg-rose-500 text-white font-bold";
-                        } else if (isSelected) {
-                          btnStyle = "border-[#0052CC] bg-[#0052CC] text-white font-bold";
-                        }
-
-                        return (
-                          <button
-                            key={oIdx}
-                            onClick={() => handleSelectOption(q.id, opt)}
-                            className={`p-3.5 rounded-xl border text-xs text-left font-medium transition-all flex items-center gap-2.5 cursor-pointer ${btnStyle}`}
-                          >
-                            <span className="w-5 h-5 rounded-lg bg-white/20 text-xs font-bold flex items-center justify-center shrink-0">
-                              {String.fromCharCode(65 + oIdx)}
-                            </span>
-                            <span>{opt}</span>
-                          </button>
-                        );
-                      })}
-                    </div>
-
-                    {showDrillAnswers && (
-                      <div className="sm:ml-11 p-4 rounded-xl bg-blue-50 border border-blue-200 text-xs text-slate-700 space-y-1">
-                        <p className="font-bold text-[#0052CC]">✓ Answer: {q.answer}</p>
-                        {q.explanation && <p className="text-slate-600">{q.explanation}</p>}
-                      </div>
-                    )}
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-                <div className="p-6 rounded-3xl bg-white border border-slate-200 space-y-3">
-                  <span className="px-3 py-1 rounded-full bg-blue-100 text-[#0052CC] font-bold text-xs">
-                    Oral Practice Prompt
-                  </span>
-                  <h3 className="text-sm font-extrabold text-slate-800">Speaking & Dialogue Practice</h3>
-                  <p className="text-xs sm:text-sm text-slate-600 leading-relaxed font-medium">
-                    Read the dialogue in Section 2 out loud 3 times. Focus on pronunciation, pitch accent, and rhythm in {language}.
-                  </p>
-                </div>
-
-                <div className="p-6 rounded-3xl bg-white border border-slate-200 space-y-3">
-                  <span className="px-3 py-1 rounded-full bg-purple-100 text-purple-900 font-bold text-xs">
-                    Writing Prompt
-                  </span>
-                  <h3 className="text-sm font-extrabold text-slate-800">Sentence Construction</h3>
-                  <p className="text-xs sm:text-sm text-slate-600 leading-relaxed font-medium">
-                    Construct 3 original sentences using target vocabulary from Section 3 tailored to <strong>{topicClean}</strong>.
-                  </p>
-                </div>
-              </div>
-            )}
-          </div>
-        )}
-
-      </div>
-
-      {/* FOOTER NAVIGATION CONTROL BAR */}
-      <div className="sticky bottom-0 z-30 bg-white border-t border-slate-200 p-4 sm:px-8 shadow-lg">
-        <div className="max-w-7xl mx-auto flex items-center justify-between gap-3 flex-wrap">
-          
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => setActiveSection(prev => (typeof prev === 'number' && prev > 1 ? (prev - 1) : 1))}
-              disabled={activeSection === 1 || activeSection === 'all'}
-              className="px-4 py-2.5 rounded-xl bg-slate-100 border border-slate-300 hover:bg-slate-200 disabled:opacity-40 text-slate-700 font-extrabold text-xs flex items-center gap-1.5 transition-all cursor-pointer"
-            >
-              <ChevronLeft className="w-4 h-4" /> Previous
-            </button>
-
-            <span className="text-xs font-extrabold text-slate-600 px-2">
-              {activeSection === 'all' ? 'All Sections' : `Section ${activeSection} of 5`}
-            </span>
-
-            <button
-              onClick={() => setActiveSection(prev => (typeof prev === 'number' && prev < 5 ? (prev + 1) : 5))}
-              disabled={activeSection === 5 || activeSection === 'all'}
-              className="px-4 py-2.5 rounded-xl bg-slate-100 border border-slate-300 hover:bg-slate-200 disabled:opacity-40 text-slate-700 font-extrabold text-xs flex items-center gap-1.5 transition-all cursor-pointer"
-            >
-              Next <ChevronRight className="w-4 h-4" />
-            </button>
-          </div>
-
-          <button
-            onClick={onClose}
-            className="px-6 py-2.5 rounded-xl bg-[#0052CC] hover:bg-blue-700 text-white font-extrabold text-xs transition-all shadow-sm cursor-pointer"
-          >
-            Done Reading
-          </button>
-
-        </div>
-      </div>
-
     </div>
   );
 }

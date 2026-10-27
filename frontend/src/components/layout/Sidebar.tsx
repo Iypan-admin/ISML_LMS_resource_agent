@@ -19,26 +19,19 @@ const navSections = [
   {
     title: 'MAIN MENU',
     items: [
-      { name: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
       { name: 'Resource Library', href: '/resources', icon: Library }
     ]
   },
   {
     title: 'AI & CONTENT TOOLS',
     items: [
-      { name: 'Faculty Studio (Plan & PPT)', href: '/faculty/studio', icon: Sparkles, badge: 'NEW' },
-      // { name: 'Find Resources', href: '/resources/find', icon: Search, badge: 'AI' },
-      // { name: 'Generate Resource', href: '/resources/generate', icon: Sparkles, badge: 'AI' },
-      // { name: 'Internal Resource AI', href: '/resources/internal-ai', icon: Globe, badge: 'AI' },
+      { name: 'Academic Studio', href: '/faculty/studio', icon: Sparkles, badge: 'NEW' },
       { name: 'Add Resource', href: '/resources/add', icon: PlusCircle }
     ]
   }
 ];
 
 const isRouteActive = (pathname: string, href: string): boolean => {
-  if (href === '/dashboard') {
-    return pathname === '/dashboard';
-  }
   if (href === '/resources') {
     if (pathname === '/resources') return true;
     if (pathname.startsWith('/resources/')) {
@@ -59,7 +52,7 @@ export default function Sidebar() {
     <aside className="hidden lg:flex flex-col w-72 bg-[#0B2447] text-white border-r border-[#1E3A8A] h-screen sticky top-0 z-40 transition-all duration-300 shadow-xl overflow-hidden shrink-0 font-sans">
       {/* Platform Branding Header */}
       <div className="px-4 py-3 bg-[#071730] border-b border-[#1E3A8A] flex items-center justify-between">
-        <Link href="/dashboard" className="flex items-center gap-2.5 overflow-hidden group">
+        <Link href="/resources" className="flex items-center gap-2.5 overflow-hidden group">
           <div className="w-9 h-9 rounded-xl bg-white p-1 shrink-0 shadow-md group-hover:scale-105 transition-transform overflow-hidden flex items-center justify-center">
             <img src="/logo.png" alt="ISML Logo" className="w-full h-full object-contain" />
           </div>
@@ -151,7 +144,7 @@ export default function Sidebar() {
                   Cancel
                 </button>
                 <button
-                  onClick={() => router.push('/dashboard')}
+                  onClick={() => router.push('/resources')}
                   className="flex-1 py-1.5 bg-rose-600 hover:bg-rose-700 text-white text-[11px] font-bold rounded-lg shadow-sm transition-colors cursor-pointer flex items-center justify-center gap-1"
                 >
                   <LogOut className="w-3.5 h-3.5" />
