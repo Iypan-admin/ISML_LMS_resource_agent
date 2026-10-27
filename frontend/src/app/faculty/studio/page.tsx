@@ -18,11 +18,30 @@ import {
   Copy,
   Check,
   Download,
-  FileText
+  FileText,
+  School,
+  GraduationCap
 } from 'lucide-react';
 import { generateCurriculumDay } from './curriculumProgression';
+import {
+  InstitutionType,
+  SchoolCategoryKey,
+  CollegeTrackKey,
+  SCHOOL_CATEGORIES,
+  SCHOOL_LEVEL_SCHEDULES,
+  COLLEGE_TRACKS,
+  COLLEGE_LEVEL_SCHEDULES,
+  getSchoolSchedule,
+  getCollegeSchedule
+} from './institutionalSchedules';
 
 export default function FacultyStudioPage() {
+  // Institutional Stream Switcher: SCHOOL vs COLLEGE
+  const [institutionType, setInstitutionType] = useState<InstitutionType>('SCHOOL');
+  const [schoolCategory, setSchoolCategory] = useState<SchoolCategoryKey>('CAT_1');
+  const [schoolLevel, setSchoolLevel] = useState<string>('A1.1');
+  const [collegeTrack, setCollegeTrack] = useState<CollegeTrackKey>('STANDARD');
+
   const [selectedLanguage, setSelectedLanguage] = useState<'Spanish' | 'German' | 'French' | 'Japanese' | 'Korean'>('Spanish');
   const [selectedLevel, setSelectedLevel] = useState('A1');
   const [selectedTrack, setSelectedTrack] = useState<'STANDARD' | 'INTERNSHIP' | 'SUPER_INTERNSHIP' | 'CUSTOM'>('CUSTOM');
@@ -174,14 +193,47 @@ export default function FacultyStudioPage() {
     const validUrls = sourceUrls.map(u => u.trim()).filter(Boolean);
     const formData = new FormData();
     formData.append('language', selectedLanguage);
-    formData.append('level', selectedLevel);
-    formData.append('track_mode', selectedTrack);
-    if (selectedTrack === 'CUSTOM' && customDays) {
-      const calculatedDays = customDaysMode === 'MONTHLY' 
-        ? Number(customDays) * monthlyMonths 
-        : Number(customDays);
-      formData.append('custom_days', calculatedDays.toString());
+
+    // Dynamic level and duration resolution based on institutionType
+    let effectiveLevel: string = selectedLevel;
+    let effectiveTrackMode: string = selectedTrack;
+    let targetDaysNumber: number = 60;
+
+    if (institutionType === 'SCHOOL') {
+      effectiveLevel = schoolLevel;
+      effectiveTrackMode = 'CUSTOM';
+      const schoolSched = getSchoolSchedule(schoolLevel, schoolCategory);
+      targetDaysNumber = schoolSched.totalPeriods;
+      formData.append('institution_type', 'SCHOOL');
+      formData.append('school_category', schoolCategory);
+      formData.append('school_level', schoolLevel);
+      formData.append('period_duration_minutes', schoolSched.periodDurationMinutes.toString());
+      formData.append('periods_per_week', schoolSched.periodsPerWeek.toString());
+      formData.append('total_periods', schoolSched.totalPeriods.toString());
+      formData.append('assessments_count', schoolSched.assessmentsCount.toString());
+      formData.append('human_speaking_mins_per_2wk', schoolSched.humanPracticeMinutesPer2Weeks.toString());
+      formData.append('ai_speaking_daily_practice', schoolSched.aiPracticePerDay.toString());
+      formData.append('custom_days', targetDaysNumber.toString());
+    } else {
+      // COLLEGE
+      const colSched = getCollegeSchedule(selectedLanguage, selectedLevel, collegeTrack);
+      targetDaysNumber = colSched.sessionsRequired;
+      effectiveTrackMode = collegeTrack;
+      formData.append('institution_type', 'COLLEGE');
+      formData.append('college_track', collegeTrack);
+      formData.append('college_level', colSched.level);
+      formData.append('session_duration_minutes', colSched.sessionMinutes.toString());
+      formData.append('sessions_per_week', colSched.sessionsPerWeek.toString());
+      formData.append('total_sessions', colSched.sessionsRequired.toString());
+      formData.append('months_required', colSched.monthsRequired.toString());
+      formData.append('assessments_count', colSched.assessmentsCount.toString());
+      formData.append('human_speaking_mins_per_week', colSched.humanPracticeMinutesPerWeek.toString());
+      formData.append('ai_speaking_daily_practice', colSched.aiPracticePerDay.toString());
+      formData.append('custom_days', targetDaysNumber.toString());
     }
+
+    formData.append('level', effectiveLevel);
+    formData.append('track_mode', effectiveTrackMode);
     formData.append('topic', topic);
     formData.append('skip_unreachable', skipUnreachable ? 'true' : 'false');
     validUrls.forEach(url => {
@@ -228,6 +280,20 @@ export default function FacultyStudioPage() {
       }
 
       const data = await res.json();
+      
+      // Inject institutional metadata into package for live UI display
+      data.institution_type = institutionType;
+      data.target_days_number = targetDaysNumber;
+      if (institutionType === 'SCHOOL') {
+        const sc = getSchoolSchedule(schoolLevel, schoolCategory);
+        data.school_meta = sc;
+        data.track_duration_label = `School Matrix: ${sc.categoryLabel} • ${sc.totalPeriods} Periods (${sc.periodsPerWeek} / wk)`;
+      } else {
+        const cc = getCollegeSchedule(selectedLanguage, selectedLevel, collegeTrack);
+        data.college_meta = cc;
+        data.track_duration_label = `College Track: ${cc.trackLabel} • ${cc.sessionsRequired} Sessions (${cc.monthsRequired} Months)`;
+      }
+
       setSessionPackage(data);
 
       // Save to Backend Database (NestJS / Prisma)
@@ -240,10 +306,15 @@ export default function FacultyStudioPage() {
             title: data.session_plan.session_title,
             language: data.language,
             level: data.level,
-            trackMode: selectedTrack,
+            trackMode: institutionType === 'SCHOOL' ? 'STANDARD' : (collegeTrack === 'INTENSIVE' ? 'INTERNSHIP' : collegeTrack === 'SUPER_INTENSIVE' ? 'SUPER_INTERNSHIP' : 'STANDARD'),
             topic: data.topic,
             sourceUrl: validUrls.join(', ') || undefined,
-            sessionPlanJson: data.session_plan,
+            sessionPlanJson: {
+              ...data.session_plan,
+              institution_type: institutionType,
+              school_meta: institutionType === 'SCHOOL' ? getSchoolSchedule(schoolLevel, schoolCategory) : undefined,
+              college_meta: institutionType === 'COLLEGE' ? getCollegeSchedule(selectedLanguage, selectedLevel, collegeTrack) : undefined,
+            },
             teacherMaterialsJson: data.teacher_materials,
             studentLsrwJson: data.student_lsrw,
             pptxFilePath: data.teacher_materials.pptx_download_url,
@@ -471,10 +542,46 @@ export default function FacultyStudioPage() {
             </h2>
 
             <form onSubmit={handleGenerate} className="space-y-4">
-              {/* Language Selection - Strictly 5 Languages */}
+              {/* Institutional Stream Switcher: SCHOOL vs COLLEGE */}
+              <div>
+                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5 flex items-center justify-between">
+                  <span>Educational Institution Stream</span>
+                  <span className="text-[10px] text-blue-600 font-bold bg-blue-50 px-2 py-0.5 rounded">
+                    {institutionType === 'SCHOOL' ? 'K-12 School Matrix' : 'College / Higher Ed Matrix'}
+                  </span>
+                </label>
+                <div className="grid grid-cols-2 gap-2 p-1 bg-slate-100 rounded-xl border border-slate-200">
+                  <button
+                    type="button"
+                    onClick={() => setInstitutionType('SCHOOL')}
+                    className={`py-2.5 px-3 rounded-lg text-xs font-extrabold flex items-center justify-center gap-2 transition-all ${
+                      institutionType === 'SCHOOL'
+                        ? 'bg-blue-600 text-white shadow-md'
+                        : 'text-slate-700 hover:bg-slate-200'
+                    }`}
+                  >
+                    <School className="w-4 h-4" />
+                    <span>Schools</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setInstitutionType('COLLEGE')}
+                    className={`py-2.5 px-3 rounded-lg text-xs font-extrabold flex items-center justify-center gap-2 transition-all ${
+                      institutionType === 'COLLEGE'
+                        ? 'bg-indigo-600 text-white shadow-md'
+                        : 'text-slate-700 hover:bg-slate-200'
+                    }`}
+                  >
+                    <GraduationCap className="w-4 h-4" />
+                    <span>Colleges</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Language Selection */}
               <div>
                 <label className="block text-xs font-bold text-slate-600 uppercase tracking-wider mb-1.5">
-                  Language (5 Core Languages)
+                  Language ({institutionType === 'SCHOOL' ? '4 Core School Languages' : 'Core Languages & JLPT Japanese'})
                 </label>
                 <select
                   value={selectedLanguage}
@@ -484,177 +591,239 @@ export default function FacultyStudioPage() {
                   <option value="Spanish">Spanish (Español) 🇪🇸</option>
                   <option value="German">German (Deutsch) 🇩🇪</option>
                   <option value="French">French (Français) 🇫🇷</option>
-                  <option value="Japanese">Japanese (日本語) 🇯🇵</option>
                   <option value="Korean">Korean (한국어) 🇰🇷</option>
+                  {institutionType === 'COLLEGE' && (
+                    <option value="Japanese">Japanese (日本語 • JLPT) 🇯🇵</option>
+                  )}
                 </select>
               </div>
 
-              {/* Dynamic Target Level Selection based on selected language */}
-              <div>
-                <div className="flex items-center justify-between mb-1.5">
-                  <label className="block text-xs font-bold text-slate-600 uppercase tracking-wider">
-                    Target Proficiency Level
-                  </label>
-                  <span className="text-[11px] font-semibold text-blue-600 bg-blue-50 px-2 py-0.5 rounded">
-                    {LANGUAGE_LEVEL_MAP[selectedLanguage]?.framework}
-                  </span>
-                </div>
-
-                <div className="flex flex-wrap gap-1.5">
-                  {LANGUAGE_LEVEL_MAP[selectedLanguage]?.levels.map((lvl) => (
-                    <button
-                      key={lvl}
-                      type="button"
-                      onClick={() => setSelectedLevel(lvl)}
-                      className={`flex-1 min-w-[50px] py-2 text-xs font-bold rounded-lg transition-all ${selectedLevel === lvl
-                          ? 'bg-blue-600 text-white shadow-md ring-2 ring-blue-500/20'
-                          : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
-                        }`}
-                    >
-                      {lvl}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {/* Course Track Mode Selection (Standard 12m, Internship 6-8m, Super 3-5m) */}
-              <div>
-                <label className="block text-xs font-bold text-slate-600 uppercase tracking-wider mb-1.5">
-                  Course Track / Duration
-                </label>
-                <div className="space-y-2">
-                  {(Object.keys(TRACK_CONFIGS) as Array<keyof typeof TRACK_CONFIGS>).map((trackKey) => {
-                    const cfg = TRACK_CONFIGS[trackKey];
-                    const isSelected = selectedTrack === trackKey;
-                    return (
-                      <button
-                        key={trackKey}
-                        type="button"
-                        onClick={() => setSelectedTrack(trackKey)}
-                        className={`w-full text-left p-3 rounded-xl border transition-all ${isSelected
-                            ? 'bg-blue-50/70 border-blue-600 ring-2 ring-blue-500/20 shadow-sm'
-                            : 'bg-slate-50 border-slate-200 hover:bg-slate-100'
-                          }`}
-                      >
-                        <div className="flex items-center justify-between">
-                          <span className={`text-xs font-bold ${isSelected ? 'text-blue-900' : 'text-slate-800'}`}>
-                            {cfg.name}
-                          </span>
-                          <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full border ${cfg.badge}`}>
-                            {cfg.duration}
-                          </span>
-                        </div>
-                        <p className="text-[11px] text-slate-500 mt-1 line-clamp-1">
-                          {cfg.description}
-                        </p>
-                      </button>
-                    );
-                  })}
-                </div>
-
-                {/* Custom Days Input & Mode Selection */}
-                {selectedTrack === 'CUSTOM' && (
-                  <div className="mt-3 p-3.5 bg-emerald-50/70 border border-emerald-300 rounded-xl space-y-3">
-                    {/* Mode Selector: Total N Days vs Monthly Repetitive */}
-                    <div>
-                      <label className="text-[11px] font-bold uppercase tracking-wider text-emerald-900 block mb-1.5">
-                        Duration Strategy:
+              {/* ----------------- SCHOOL SPECIFIC CONFIGURATION ----------------- */}
+              {institutionType === 'SCHOOL' && (
+                <div className="space-y-4 p-3.5 bg-sky-50/70 border border-sky-200 rounded-2xl">
+                  {/* Category Selection (Cat 1 to Cat 6) */}
+                  <div>
+                    <div className="flex items-center justify-between mb-1.5">
+                      <label className="text-xs font-extrabold text-sky-950 uppercase tracking-wider">
+                        School Period Category
                       </label>
-                      <div className="grid grid-cols-2 gap-1.5 bg-white p-1 rounded-xl border border-emerald-200">
-                        <button
-                          type="button"
-                          onClick={() => setCustomDaysMode('TOTAL')}
-                          className={`py-1.5 px-2 rounded-lg text-xs font-bold transition-all text-center ${
-                            customDaysMode === 'TOTAL'
-                              ? 'bg-emerald-600 text-white shadow-sm'
-                              : 'text-slate-600 hover:bg-slate-100'
-                          }`}
-                        >
-                          Only {customDays || 'N'} Days Total
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setCustomDaysMode('MONTHLY')}
-                          className={`py-1.5 px-2 rounded-lg text-xs font-bold transition-all text-center ${
-                            customDaysMode === 'MONTHLY'
-                              ? 'bg-emerald-600 text-white shadow-sm'
-                              : 'text-slate-600 hover:bg-slate-100'
-                          }`}
-                        >
-                          {customDays || 'N'} Days / Month
-                        </button>
-                      </div>
-                    </div>
-
-                    <div className="flex items-center justify-between">
-                      <label className="text-xs font-bold text-emerald-950">
-                        {customDaysMode === 'TOTAL' ? 'Total Course Days:' : 'Days per Month:'}
-                      </label>
-                      <span className="text-[11px] font-bold text-emerald-800 bg-emerald-100 px-2 py-0.5 rounded border border-emerald-200">
-                        {customDaysMode === 'TOTAL' 
-                          ? `${customDays || 0} Total Classes` 
-                          : `${Number(customDays || 0) * monthlyMonths} Total Classes (${customDays || 0}d × ${monthlyMonths}m)`}
+                      <span className="text-[10px] font-bold text-sky-700 bg-sky-100 px-2 py-0.5 rounded border border-sky-300">
+                        {SCHOOL_CATEGORIES[schoolCategory].durationMinutes} Mins / Period
                       </span>
                     </div>
 
-                    <div className="flex items-center gap-2">
-                      <input
-                        type="number"
-                        min="1"
-                        max="365"
-                        value={customDays}
-                        onChange={(e) => {
-                          const val = e.target.value === '' ? '' : parseInt(e.target.value, 10);
-                          setCustomDays(val);
-                        }}
-                        placeholder="e.g. 5"
-                        className="w-24 px-3 py-1.5 bg-white border border-emerald-300 rounded-lg text-sm font-bold text-emerald-950 focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                      />
-                      <span className="text-xs text-emerald-800 font-medium">
-                        {customDaysMode === 'TOTAL' 
-                          ? 'Days (Exact curriculum scope)' 
-                          : `Days each month for ${monthlyMonths} months`}
-                      </span>
-                    </div>
-
-                    {/* Months selector if Monthly mode is chosen */}
-                    {customDaysMode === 'MONTHLY' && (
-                      <div className="pt-1 flex items-center gap-2">
-                        <span className="text-xs font-bold text-emerald-900">Total Months:</span>
-                        <select
-                          value={monthlyMonths}
-                          onChange={(e) => setMonthlyMonths(Number(e.target.value))}
-                          className="px-2 py-1 bg-white border border-emerald-300 rounded-lg text-xs font-bold text-emerald-950 focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                        >
-                          <option value={1}>1 Month</option>
-                          <option value={3}>3 Months</option>
-                          <option value={6}>6 Months</option>
-                          <option value={12}>12 Months</option>
-                        </select>
-                      </div>
-                    )}
-
-                    {/* Quick Selection Presets */}
-                    <div className="flex flex-wrap gap-1.5 pt-1">
-                      <span className="text-[10px] uppercase font-bold text-emerald-700 self-center mr-1">Quick:</span>
-                      {[5, 10, 15, 20, 30].map((preset) => (
-                        <button
-                          key={preset}
-                          type="button"
-                          onClick={() => setCustomDays(preset)}
-                          className={`px-2 py-1 text-xs font-bold rounded-md transition-all ${
-                            customDays === preset
-                              ? 'bg-emerald-600 text-white shadow-sm ring-1 ring-emerald-400'
-                              : 'bg-white text-emerald-800 border border-emerald-200 hover:bg-emerald-100'
-                          }`}
-                        >
-                          {preset}d
-                        </button>
-                      ))}
+                    <div className="grid grid-cols-3 gap-1.5">
+                      {(Object.keys(SCHOOL_CATEGORIES) as SchoolCategoryKey[]).map((catKey) => {
+                        const catMeta = SCHOOL_CATEGORIES[catKey];
+                        const isCatSelected = schoolCategory === catKey;
+                        return (
+                          <button
+                            key={catKey}
+                            type="button"
+                            onClick={() => setSchoolCategory(catKey)}
+                            className={`p-2 rounded-xl text-center border text-xs font-bold transition-all ${
+                              isCatSelected
+                                ? 'bg-sky-600 text-white border-sky-600 shadow-sm'
+                                : 'bg-white text-slate-700 border-sky-200 hover:bg-sky-100'
+                            }`}
+                          >
+                            <span className="block text-[11px] font-black">{catMeta.key.replace('_', ' ')}</span>
+                            <span className="text-[9px] opacity-90">{catMeta.durationMinutes}m/period</span>
+                          </button>
+                        );
+                      })}
                     </div>
                   </div>
-                )}
-              </div>
+
+                  {/* School Sub-Levels (A1.1 to B1.4) */}
+                  <div>
+                    <label className="text-xs font-extrabold text-sky-950 uppercase tracking-wider block mb-1.5">
+                      Target School Grade Level (A1.1 – B1.4)
+                    </label>
+                    <div className="grid grid-cols-3 gap-1.5">
+                      {SCHOOL_LEVEL_SCHEDULES.map((sched) => {
+                        const isLvlSelected = schoolLevel === sched.level;
+                        return (
+                          <button
+                            key={sched.level}
+                            type="button"
+                            onClick={() => setSchoolLevel(sched.level)}
+                            className={`py-1.5 px-2 rounded-lg text-xs font-bold transition-all text-center border ${
+                              isLvlSelected
+                                ? 'bg-blue-700 text-white border-blue-700 shadow-sm'
+                                : 'bg-white text-slate-700 border-sky-200 hover:bg-sky-100'
+                            }`}
+                          >
+                            <span>{sched.level}</span>
+                            <span className="block text-[9px] opacity-80">{sched.courseDurationHours}h</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {/* School Dynamic Metric Summary Badge */}
+                  {(() => {
+                    const activeSchool = getSchoolSchedule(schoolLevel, schoolCategory);
+                    return (
+                      <div className="bg-white border border-sky-200 rounded-xl p-3 shadow-xs space-y-2">
+                        <div className="flex items-center justify-between border-b border-sky-100 pb-2">
+                          <span className="text-[11px] font-extrabold uppercase text-sky-900">
+                            🏫 School Curriculum Metrics
+                          </span>
+                          <span className="text-[11px] font-black text-blue-700 bg-blue-50 px-2 py-0.5 rounded border border-blue-200">
+                            {activeSchool.totalPeriods} Total Periods
+                          </span>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-2 text-xs">
+                          <div className="bg-sky-50 p-2 rounded-lg">
+                            <span className="text-[10px] text-sky-700 block font-semibold">Periods / Week:</span>
+                            <strong className="text-sky-950 text-sm">{activeSchool.periodsPerWeek} Periods</strong>
+                          </div>
+                          <div className="bg-sky-50 p-2 rounded-lg">
+                            <span className="text-[10px] text-sky-700 block font-semibold">Teaching Hours:</span>
+                            <strong className="text-sky-950 text-sm">{activeSchool.courseDurationHours} Hours</strong>
+                          </div>
+                          <div className="bg-sky-50 p-2 rounded-lg">
+                            <span className="text-[10px] text-sky-700 block font-semibold">Assessments:</span>
+                            <strong className="text-sky-950 text-sm">{activeSchool.assessmentsCount} Tests</strong>
+                          </div>
+                          <div className="bg-sky-50 p-2 rounded-lg">
+                            <span className="text-[10px] text-sky-700 block font-semibold">Human Speaking:</span>
+                            <strong className="text-sky-950 text-sm">{activeSchool.humanPracticeMinutesPer2Weeks}m / 2 wks</strong>
+                          </div>
+                        </div>
+
+                        <div className="text-[11px] text-sky-900 bg-sky-100/70 px-2.5 py-1.5 rounded-lg flex items-center justify-between">
+                          <span>🤖 AI Daily Practice:</span>
+                          <strong className="text-sky-950">{activeSchool.aiPracticePerDay} times / day</strong>
+                        </div>
+                      </div>
+                    );
+                  })()}
+                </div>
+              )}
+
+              {/* ----------------- COLLEGE SPECIFIC CONFIGURATION ----------------- */}
+              {institutionType === 'COLLEGE' && (
+                <div className="space-y-4 p-3.5 bg-indigo-50/70 border border-indigo-200 rounded-2xl">
+                  {/* Track Selection (Standard, Intensive, Super-Intensive) */}
+                  <div>
+                    <label className="text-xs font-extrabold text-indigo-950 uppercase tracking-wider block mb-1.5">
+                      College Track Immersion
+                    </label>
+                    <div className="grid grid-cols-3 gap-1.5">
+                      {(Object.keys(COLLEGE_TRACKS) as CollegeTrackKey[]).map((tKey) => {
+                        const tMeta = COLLEGE_TRACKS[tKey];
+                        const isTSelected = collegeTrack === tKey;
+                        return (
+                          <button
+                            key={tKey}
+                            type="button"
+                            onClick={() => setCollegeTrack(tKey)}
+                            className={`p-2 rounded-xl text-center border text-xs font-bold transition-all ${
+                              isTSelected
+                                ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm'
+                                : 'bg-white text-slate-700 border-indigo-200 hover:bg-indigo-100'
+                            }`}
+                          >
+                            <span className="block text-[11px] font-black">{tKey.replace('_', ' ')}</span>
+                            <span className="text-[9px] opacity-90">{tMeta.sessionMinutes}m/session</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {/* College Levels */}
+                  <div>
+                    <div className="flex items-center justify-between mb-1.5">
+                      <label className="text-xs font-extrabold text-indigo-950 uppercase tracking-wider">
+                        College Target Level
+                      </label>
+                      <span className="text-[10px] font-bold text-indigo-700 bg-indigo-100 px-2 py-0.5 rounded">
+                        {selectedLanguage === 'Japanese' ? 'JLPT Levels' : 'CEFR College Matrix'}
+                      </span>
+                    </div>
+
+                    <div className="flex flex-wrap gap-1.5">
+                      {selectedLanguage === 'Japanese' ? (
+                        ['N5', 'N4', 'N3', 'N2'].map((lvl) => (
+                          <button
+                            key={lvl}
+                            type="button"
+                            onClick={() => setSelectedLevel(lvl)}
+                            className={`flex-1 py-1.5 px-2 rounded-lg text-xs font-bold border transition-all ${
+                              selectedLevel === lvl
+                                ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm'
+                                : 'bg-white text-slate-700 border-indigo-200 hover:bg-indigo-100'
+                            }`}
+                          >
+                            {lvl}
+                          </button>
+                        ))
+                      ) : (
+                        ['A1', 'A2', 'B1', 'B2'].map((lvl) => (
+                          <button
+                            key={lvl}
+                            type="button"
+                            onClick={() => setSelectedLevel(lvl)}
+                            className={`flex-1 py-1.5 px-2 rounded-lg text-xs font-bold border transition-all ${
+                              selectedLevel === lvl
+                                ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm'
+                                : 'bg-white text-slate-700 border-indigo-200 hover:bg-indigo-100'
+                            }`}
+                          >
+                            {lvl}
+                          </button>
+                        ))
+                      )}
+                    </div>
+                  </div>
+
+                  {/* College Dynamic Metric Summary Badge */}
+                  {(() => {
+                    const activeCollege = getCollegeSchedule(selectedLanguage, selectedLevel, collegeTrack);
+                    return (
+                      <div className="bg-white border border-indigo-200 rounded-xl p-3 shadow-xs space-y-2">
+                        <div className="flex items-center justify-between border-b border-indigo-100 pb-2">
+                          <span className="text-[11px] font-extrabold uppercase text-indigo-900">
+                            🎓 College Curriculum Metrics
+                          </span>
+                          <span className="text-[11px] font-black text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded border border-indigo-200">
+                            {activeCollege.sessionsRequired} Sessions • {activeCollege.monthsRequired} Months
+                          </span>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-2 text-xs">
+                          <div className="bg-indigo-50 p-2 rounded-lg">
+                            <span className="text-[10px] text-indigo-700 block font-semibold">Weekly Cadence:</span>
+                            <strong className="text-indigo-950 text-sm">{activeCollege.sessionsPerWeek} Sessions/wk</strong>
+                          </div>
+                          <div className="bg-indigo-50 p-2 rounded-lg">
+                            <span className="text-[10px] text-indigo-700 block font-semibold">Session Length:</span>
+                            <strong className="text-indigo-950 text-sm">{activeCollege.sessionMinutes} Mins/session</strong>
+                          </div>
+                          <div className="bg-indigo-50 p-2 rounded-lg">
+                            <span className="text-[10px] text-indigo-700 block font-semibold">Assessments:</span>
+                            <strong className="text-indigo-950 text-sm">{activeCollege.assessmentsCount} Tests</strong>
+                          </div>
+                          <div className="bg-indigo-50 p-2 rounded-lg">
+                            <span className="text-[10px] text-indigo-700 block font-semibold">Human Speaking:</span>
+                            <strong className="text-indigo-950 text-sm">{activeCollege.humanPracticeMinutesPerWeek}m / week</strong>
+                          </div>
+                        </div>
+
+                        <div className="text-[11px] text-indigo-900 bg-indigo-100/70 px-2.5 py-1.5 rounded-lg flex items-center justify-between">
+                          <span>🤖 AI Daily Speaking Practice:</span>
+                          <strong className="text-indigo-950">{activeCollege.aiPracticePerDay} times / day</strong>
+                        </div>
+                      </div>
+                    );
+                  })()}
+                </div>
+              )}
 
               {/* Topic / Concept Input */}
               <div>
@@ -912,17 +1081,65 @@ export default function FacultyStudioPage() {
                     <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
                       <div className="flex items-center gap-2">
                         <span className="bg-amber-400 text-blue-950 font-extrabold text-xs px-2.5 py-0.5 rounded-full">
-                          Faculty Curriculum Blueprint
+                          {sessionPackage.institution_type === 'SCHOOL' ? '🏫 School Curriculum Blueprint' : '🎓 College Curriculum Blueprint'}
                         </span>
                         <span className="text-xs text-blue-200">
-                          Total Scope: <strong className="text-white">{sessionPackage.session_plan.total_curriculum_days || 60} Structured Days</strong>
+                          Total Scope:{' '}
+                          <strong className="text-white">
+                            {sessionPackage.target_days_number || sessionPackage.session_plan.total_curriculum_days || 60}{' '}
+                            {sessionPackage.institution_type === 'SCHOOL' ? 'Periods' : 'Sessions'}
+                          </strong>
                         </span>
                       </div>
                       <span className="text-[11px] font-semibold bg-white/10 px-2.5 py-0.5 rounded border border-white/20">
-                        Track: {sessionPackage.track_duration_label}
+                        {sessionPackage.track_duration_label}
                       </span>
                     </div>
-                    <p className="text-xs text-blue-100 leading-relaxed">
+
+                    {/* Quick Institutional Metrics Ribbon */}
+                    {sessionPackage.institution_type === 'SCHOOL' && sessionPackage.school_meta && (
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs bg-white/10 rounded-lg p-2.5 my-2 border border-white/10">
+                        <div>
+                          <span className="text-blue-200 block text-[10px] uppercase font-semibold">Period Duration:</span>
+                          <strong className="text-amber-300 font-bold">{sessionPackage.school_meta.periodDurationMinutes} mins / period</strong>
+                        </div>
+                        <div>
+                          <span className="text-blue-200 block text-[10px] uppercase font-semibold">Weekly Cadence:</span>
+                          <strong className="text-amber-300 font-bold">{sessionPackage.school_meta.periodsPerWeek} periods / week</strong>
+                        </div>
+                        <div>
+                          <span className="text-blue-200 block text-[10px] uppercase font-semibold">Assessments:</span>
+                          <strong className="text-amber-300 font-bold">{sessionPackage.school_meta.assessmentsCount} tests</strong>
+                        </div>
+                        <div>
+                          <span className="text-blue-200 block text-[10px] uppercase font-semibold">Human Speaking:</span>
+                          <strong className="text-amber-300 font-bold">{sessionPackage.school_meta.humanPracticeMinutesPer2Weeks}m / 2 wks</strong>
+                        </div>
+                      </div>
+                    )}
+
+                    {sessionPackage.institution_type === 'COLLEGE' && sessionPackage.college_meta && (
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs bg-white/10 rounded-lg p-2.5 my-2 border border-white/10">
+                        <div>
+                          <span className="text-blue-200 block text-[10px] uppercase font-semibold">Session Length:</span>
+                          <strong className="text-amber-300 font-bold">{sessionPackage.college_meta.sessionMinutes} mins / session</strong>
+                        </div>
+                        <div>
+                          <span className="text-blue-200 block text-[10px] uppercase font-semibold">Weekly Cadence:</span>
+                          <strong className="text-amber-300 font-bold">{sessionPackage.college_meta.sessionsPerWeek} sessions / week</strong>
+                        </div>
+                        <div>
+                          <span className="text-blue-200 block text-[10px] uppercase font-semibold">Course Completion:</span>
+                          <strong className="text-amber-300 font-bold">{sessionPackage.college_meta.monthsRequired} Months</strong>
+                        </div>
+                        <div>
+                          <span className="text-blue-200 block text-[10px] uppercase font-semibold">Human Speaking:</span>
+                          <strong className="text-amber-300 font-bold">{sessionPackage.college_meta.humanPracticeMinutesPerWeek}m / week</strong>
+                        </div>
+                      </div>
+                    )}
+
+                    <p className="text-xs text-blue-100 leading-relaxed mt-2">
                       {sessionPackage.session_plan.curriculum_overview_summary}
                     </p>
                   </div>
@@ -988,9 +1205,15 @@ export default function FacultyStudioPage() {
                     }> = [];
                     let runningDayCount = 0;
 
-                    if (trackMode === 'CUSTOM') {
-                      // Custom Focus Track: strictly respect requested custom days (e.g. 5 days = 5 days total, not 30/31!)
-                      const targetDays = sessionPackage.session_plan.total_curriculum_days || (typeof customDays === 'number' && customDays > 0 ? customDays : 5);
+                    // Compute dynamic targetDays based on institutional schedule or sessionPackage
+                    const targetDays = sessionPackage.target_days_number ||
+                      sessionPackage.session_plan.total_curriculum_days ||
+                      (sessionPackage.institution_type === 'SCHOOL' && sessionPackage.school_meta?.totalPeriods) ||
+                      (sessionPackage.institution_type === 'COLLEGE' && sessionPackage.college_meta?.sessionsRequired) ||
+                      (trackMode === 'CUSTOM' ? (typeof customDays === 'number' && customDays > 0 ? customDays : 5) : 60);
+
+                    // If track is CUSTOM or institution is SCHOOL or COLLEGE with specific sessions count:
+                    if (trackMode === 'CUSTOM' || sessionPackage.institution_type === 'SCHOOL' || sessionPackage.institution_type === 'COLLEGE') {
                       let remainingDays = targetDays;
                       let m = 0;
 

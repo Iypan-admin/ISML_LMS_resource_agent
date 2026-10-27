@@ -1090,6 +1090,30 @@ export function generateCurriculumDay(
     ? analyzedGrammar[(dayNumber - 1) % analyzedGrammar.length]
     : theme.category;
 
+  // Extract day-specific vocabulary and exercises
+  const vIndex1 = (dayNumber - 1) % theme.words.length;
+  const vIndex2 = (dayNumber * 2 - 1) % theme.words.length;
+  const vIndex3 = (dayNumber * 3 - 1) % theme.words.length;
+
+  const rawDayWords = [
+    theme.words[vIndex1],
+    theme.words[vIndex2],
+    theme.words[vIndex3]
+  ].filter(Boolean);
+
+  const dayVocab = rawDayWords.map((w: any, idx: number) => ({
+    word: w.word,
+    meaning: w.meaning,
+    pronunciation: w.pronunciation,
+    example_sentence: w.example || `Example usage in class for Day ${dayNumber}`
+  }));
+
+  const selectedDrills = theme.drills.slice(0, 3).map((d: any, idx: number) => ({
+    question: `[Day ${dayNumber} Drill ${idx + 1}] ${d.q}`,
+    answer: d.a,
+    explanation: d.exp
+  }));
+
   const dayVocabAnchor = (analyzedVocab.length > 0)
     ? analyzedVocab[(dayNumber - 1) % analyzedVocab.length]
     : theme.words[vIndex1]?.word || baseTopic;
@@ -1124,7 +1148,7 @@ ${dayParadigmTable}
 - **Acoustic Focus for Day ${dayNumber}**: Pay close attention to word boundaries, consonant clustering, native pitch cadence, and unprompted speech rhythm for *${dayVocabAnchor}*.
 
 **5. Faculty Lesson Blueprint & Active Retention:**
-Today's 1-hour session emphasizes active communicative production. Students must incorporate today's vocabulary anchors (*${dayVocab.map(v => v.word).join(', ')}*) and source concept (*${dayVocabAnchor}*) into spontaneous spoken exchanges.`;
+Today's 1-hour session emphasizes active communicative production. Students must incorporate today's vocabulary anchors (*${dayVocab.map((v: any) => v.word).join(', ')}*) and source concept (*${dayVocabAnchor}*) into spontaneous spoken exchanges.`;
 
   return {
     day_number: dayNumber,
@@ -1140,9 +1164,9 @@ Today's 1-hour session emphasizes active communicative production. Students must
     study_notes_markdown: studyNotes,
     vocabulary_bank: dayVocab,
     classroom_dialogues: selectedDialogue,
-    pedagogical_instructions: `Faculty Directive for Day ${dayNumber}: Conduct choral pronunciation on target items (${dayVocab.map(v => v.word).join(', ')}). Rectify syntax errors immediately during active student production.`,
+    pedagogical_instructions: `Faculty Directive for Day ${dayNumber}: Conduct choral pronunciation on target items (${dayVocab.map((v: any) => v.word).join(', ')}). Rectify syntax errors immediately during active student production.`,
     video_breakdown_analysis: `Audio/Video Analysis for ${monthName} Day ${dayInMonth} (Day ${dayNumber}): Detailed breakdown of authentic native vocal inflections, pitch accent, liaison mechanics, and communicative context for ${theme.category}.`,
-    in_class_exercises: selectedDrills.map(d => d.question),
+    in_class_exercises: selectedDrills.map((d: any) => d.question),
     exercise_solutions: selectedDrills,
     homework_tasks: [
       `Complete written workbook exercises for Day ${dayNumber} applying the target syntactic formula: "${daySyntacticFormula}".`,
