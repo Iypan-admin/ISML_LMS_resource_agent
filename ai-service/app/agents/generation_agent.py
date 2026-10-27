@@ -11,7 +11,7 @@ from app.models.generation import (
     GeneratedDialogueLine,
     GeneratedExercise,
 )
-from app.prompts.academic_prompts import SYSTEM_GENERATION_PROMPT
+from app.prompts.academic_prompts import SYSTEM_GENERATION_PROMPT, build_resource_prompt
 
 logger = logging.getLogger(__name__)
 
@@ -94,18 +94,14 @@ class GenerationAgent:
         target_aud = req.target_audience or f"Learners of {lang}"
         add_reqs = raw_prompt
 
-        prompt_text = SYSTEM_GENERATION_PROMPT.format(
-            language=lang,
-            course=course,
+        prompt_text = build_resource_prompt(
+            lang=lang,
             level=level,
-            category=category,
-            skill=skill,
             topic=topic,
-            learning_objective=learning_obj,
+            skill=skill,
             resource_type=resource_type,
-            difficulty=difficulty,
-            target_audience=target_aud,
-            additional_requirements=add_reqs,
+            instructions=raw_prompt,
+            explanation_language=intent.get("explanation_language", "English"),
         )
 
         generated_md = None

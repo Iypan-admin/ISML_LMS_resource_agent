@@ -814,27 +814,21 @@ export default function GenerateResourcePage() {
     }
 
     if (!rawGeneratedText) {
-      rawGeneratedText = `# ${activeLang} ${activeLvl} Masterclass: ${textToSend}
+      rawGeneratedText = `# ${activeLang} ${activeLvl}: ${textToSend}
 
 ## 📖 Lesson Overview & Learning Objectives
-This comprehensive study handbook provides structured academic instruction for **${activeLang} (${activeLvl})** focusing on **${activeSkl}**.
+This learning material provides structured academic instruction for **${activeLang} (${activeLvl})** focusing on **${activeSkl || 'Core Communication'}**.
+*Topic*: ${textToSend}
 
-## 💬 Situational Dialogue Script
-- **Speaker A**: Hallo! Wie geht es dir heute? (Hello! How are you today?)
-- **Speaker B**: Danke gut! Ich lerne gerade Deutsch für mein Studium. (Fine thanks! I am currently learning German for my studies.)
+## 🔑 Key Vocabulary & Core Concepts
+- Focus on practical, level-appropriate ${activeLang} terminology related to "${textToSend}".
+- Emphasize authentic pronunciation and grammatical accuracy for ${activeLvl} proficiency.
 
-## 🔑 Essential Vocabulary Bank
-- **das Studium** (*noun, neuter*) = University studies
-- **lernen** (*verb, regular*) = To learn / study
-- **die Sprache** (*noun, feminine*) = Language
+## 📝 Practice Exercises & Discussion
+1. Explain how to apply the core concepts of **${textToSend}** in everyday ${activeLang} conversation.
+2. Formulate 3 original sentences in ${activeLang} demonstrating correct syntax for this topic.
 
-## 💡 Grammar Rules & Usage
-1. Verb position in main clauses is strictly in **position 2**.
-2. Nouns are always capitalized in German.
-
-## 📝 Practice Exercises & Q&A
-**Q1**: What is the correct position of the conjugated verb in a main clause?
-- **Answer**: Position 2.`;
+*(Note: AI service is currently processing offline; please verify connection to http://localhost:8000 for live Gemini generation)*`;
     }
 
     const cleanedText = cleanAiResponseText(rawGeneratedText);

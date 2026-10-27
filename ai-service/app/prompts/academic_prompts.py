@@ -283,6 +283,107 @@ Output ONLY valid JSON. No markdown fences, no preamble."""
     return prompt
 
 
+def build_resource_prompt(
+    lang: str,
+    level: str,
+    topic: str,
+    skill: str,
+    resource_type: str,
+    instructions: str,
+    explanation_language: str = "English",
+    reference_content: str = "",
+) -> str:
+    """Builds a dynamic, source-driven generation prompt tailored to user intent,
+    linguistic domain, target CEFR level, and provided reference evidence."""
+
+    raw_lower = (instructions or topic or "").lower()
+
+    # Determine dynamic format directives based on intent analysis
+    format_directives = []
+    if any(k in raw_lower for k in ["translate", "translation"]):
+        format_directives.append(
+            "- TASK: DIRECT TRANSLATION\n"
+            "- Provide the accurate translation in the target language immediately.\n"
+            "- Include pronunciation guide and 1-2 practical notes."
+        )
+    elif any(k in raw_lower for k in ["correct", "error", "rectify"]):
+        format_directives.append(
+            "- TASK: SENTENCE CORRECTION & GRAMMATICAL AUDIT\n"
+            "- State the original sentence and the corrected version clearly in bold.\n"
+            "- Explain the grammatical rule and why the correction was necessary."
+        )
+    elif any(k in raw_lower for k in ["ques", "q&a", "question", "quiz"]):
+        format_directives.append(
+            "- TASK: INTERACTIVE Q&A / QUIZ PRACTICE\n"
+            "- Provide numbered, student-friendly practice questions with verified answers and explanations.\n"
+            "- Ensure questions strictly test the target language and topic."
+        )
+    elif any(k in raw_lower for k in ["vocab", "word", "vocabulary"]):
+        format_directives.append(
+            "- TASK: VOCABULARY BANK\n"
+            "- Provide a structured vocabulary list with: Target Word, Part of Speech, Meaning/Translation, and Contextual Example Sentence."
+        )
+    elif any(k in raw_lower for k in ["dialogue", "conversation", "speaking", "roleplay"]):
+        format_directives.append(
+            "- TASK: SITUATIONAL DIALOGUE SCRIPT\n"
+            "- Provide a natural, level-appropriate spoken dialogue with Speaker roles and line-by-line translations.\n"
+            "- Include essential speaking phrases and phonetic hints."
+        )
+    elif any(k in raw_lower for k in ["reading", "comprehension", "passage", "story"]):
+        format_directives.append(
+            "- TASK: READING COMPREHENSION PASSAGE\n"
+            "- Provide an authentic, level-appropriate reading passage in the target language.\n"
+            "- Follow with a vocabulary glossary and 3-5 comprehension check questions."
+        )
+    else:
+        format_directives.append(
+            "- TASK: COMPREHENSIVE STUDY GUIDE\n"
+            "- Provide complete, structured lesson notes: Syntactic formula/grammar rule, vocabulary matrix, conversational dialogue, and practice exercises."
+        )
+
+    # Explanation language directive
+    lang_directive = f"Target Language: {lang} (Level: {level})"
+    if explanation_language and explanation_language.lower() != "english":
+        lang_directive += f"\nExplanation Language: {explanation_language} (Explain concepts using {explanation_language}, keeping target language terms in {lang})"
+
+    # Reference evidence directive
+    reference_block = ""
+    if reference_content and len(reference_content.strip()) > 20:
+        reference_block = f"""
+================================================================================
+SOURCE REFERENCE EVIDENCE (Strict Grounding):
+================================================================================
+The user provided the following reference materials. All facts, vocabulary, and concepts MUST be derived directly from this source evidence:
+\"\"\"
+{reference_content[:4000]}
+\"\"\"
+Do NOT invent ungrounded external claims. Ground all instructional material in the reference evidence above.
+"""
+
+    return f"""You are an expert language pedagogue and dynamic academic content generator.
+
+CRITICAL POLICY:
+1. USER INTENT SOVEREIGNTY: The user's explicit request is your highest authority.
+2. TARGET LANGUAGE AUTHENTICITY: Generate content strictly for {lang} ({level}). Never contaminate with German or other language templates unless {lang} is German.
+3. ZERO HALLUCINATION: Ground all vocabulary, rules, and exercises in authentic linguistic facts and any provided source evidence.
+4. NO META COMMENTARY: Do not say 'Here is your lesson' or mention AI. Output the study material directly in Markdown.
+
+{lang_directive}
+Topic: {topic}
+Skill Focus: {skill}
+Resource Classification: {resource_type}
+Raw User Request: {instructions or topic}
+
+================================================================================
+GENERATION DIRECTIVES:
+================================================================================
+{chr(10).join(format_directives)}
+{reference_block}
+
+Generate student-friendly, pedagogically rigorous Markdown material ready for classroom study.
+"""
+
+
 # =============================================================================
 # LEGACY SYSTEM GENERATION PROMPT (kept for non-session resource generation)
 # =============================================================================
