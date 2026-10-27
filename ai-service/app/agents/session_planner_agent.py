@@ -66,10 +66,10 @@ class SessionPlannerAgent:
         """Generates: 1. Deep Day-wise Master Curriculum 2. Teacher PPT Deck 3. Student LSRW Practice Kit with Evaluation Rubrics."""
 
         track_labels = {
-            "STANDARD": ("Standard Course (12 Months • 30 Days/Mo)", 360, "Comprehensive multi-month mastery from fundamentals to business fluency (30 days/month)"),
-            "INTERNSHIP": ("Internship Program (6 Months • 30 Days/Mo)", 180, "Workplace & corporate professional communication and situational mastery (30 days/month)"),
-            "SUPER_INTERNSHIP": ("Super Internship Fast-Track (3 Months • 30 Days/Mo)", 90, "High-intensity accelerated fluency with daily high-yield grammar & drills (30 days/month)"),
-            "CUSTOM": ("Custom Topic Sprint", 30, "Targeted 30-day block course mastery focused directly on key concepts"),
+            "STANDARD": ("Standard Course (12 Calendar Months • 365 Days)", 365, "Comprehensive 12-calendar-month academic curriculum from January to December (365 calendar days)"),
+            "INTERNSHIP": ("Internship Program (6 Calendar Months • 181 Days)", 181, "Semester-length corporate professional communication from January to June (181 calendar days)"),
+            "SUPER_INTERNSHIP": ("Super Internship Fast-Track (3 Calendar Months • 90 Days)", 90, "Intensive quarterly curriculum from January to March (90 calendar days)"),
+            "CUSTOM": ("Custom Calendar Track", 30, "Targeted calendar block course mastery focused directly on key concepts"),
         }
         track_info = track_labels.get(track_mode.upper(), track_labels["SUPER_INTERNSHIP"])
         track_label, total_days, track_intensity = track_info
@@ -259,7 +259,7 @@ Output ONLY valid JSON. Escape all inner quotes and backslashes properly. No mar
         if total_days_override and total_days_override > 0:
             total_days = total_days_override
         else:
-            total_days = 60 if "SUPER" in track_mode else (120 if "INTERN" in track_mode else 240)
+            total_days = 90 if "SUPER" in track_mode else (181 if "INTERN" in track_mode else 365)
 
         # Language-specific linguistic data for authentic grounding
         lang_data = {

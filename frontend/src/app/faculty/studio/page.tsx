@@ -92,6 +92,7 @@ export default function FacultyStudioPage() {
   const [selectedMonthFilter, setSelectedMonthFilter] = useState<number>(1);
   const [selectedWeekFilter, setSelectedWeekFilter] = useState<number | 'ALL'>('ALL');
   const [activeDayDetail, setActiveDayDetail] = useState<number>(1);
+  const [isLeapYear, setIsLeapYear] = useState<boolean>(false);
 
   // Language Specific Proficiency Levels
   // Japanese: JLPT N5 -> N1
@@ -133,27 +134,27 @@ export default function FacultyStudioPage() {
   const TRACK_CONFIGS = {
     STANDARD: {
       name: 'Standard Level',
-      duration: '12 Months (360 Days • 30d/mo)',
+      duration: isLeapYear ? '12 Calendar Months (366 Days • Leap Year)' : '12 Calendar Months (365 Days • Jan–Dec)',
       badge: 'bg-blue-100 text-blue-800 border-blue-200',
-      description: 'Comprehensive foundational mastery with deep grammar & vocabulary drills across 12 full 30-day months.'
+      description: 'Comprehensive 12-month calendar academic curriculum matching real calendar days (Jan: 31d, Feb: 28/29d, Mar: 31d, Apr: 30d, etc.).'
     },
     INTERNSHIP: {
       name: 'Internship',
-      duration: '6 Months (180 Days • 30d/mo)',
+      duration: isLeapYear ? '6 Calendar Months (182 Days • Leap Year)' : '6 Calendar Months (181 Days • Jan–Jun)',
       badge: 'bg-purple-100 text-purple-800 border-purple-200',
-      description: 'Career & industry-oriented practical communication across 6 full 30-day months.'
+      description: '6-month career curriculum aligned with authentic calendar months (Jan: 31d, Feb: 28/29d, Mar: 31d, Apr: 30d, May: 31d, Jun: 30d).'
     },
     SUPER_INTERNSHIP: {
       name: 'Super Internship',
-      duration: '3 Months (90 Days • 30d/mo)',
+      duration: isLeapYear ? '3 Calendar Months (91 Days • Leap Year)' : '3 Calendar Months (90 Days • Jan–Mar)',
       badge: 'bg-amber-100 text-amber-800 border-amber-200',
-      description: 'High-speed accelerated immersion across 3 full 30-day months (90 days total).'
+      description: '3-month accelerated immersion across authentic calendar months (Jan: 31d, Feb: 28/29d, Mar: 31d).'
     },
     CUSTOM: {
       name: 'Custom Duration Sprint',
-      duration: 'Custom Days (e.g. 30 Days)',
+      duration: 'Custom Calendar Days',
       badge: 'bg-emerald-100 text-emerald-800 border-emerald-200',
-      description: 'Targeted short-course or customized syllabus engineered for any selected number of days.'
+      description: 'Targeted short-course or customized syllabus engineered for any selected number of calendar days.'
     }
   };
 
@@ -955,117 +956,171 @@ export default function FacultyStudioPage() {
                     </div>
                   </div>
 
-                  {/* Comprehensive Month & Week Navigation Filter Bar */}
+                  {/* Comprehensive Real-Calendar Month & Day Navigation Filter Bar */}
                   {(() => {
                     const trackMode = sessionPackage.track_mode;
-                    const DAYS_PER_MONTH = 30; // Strictly 30 days per month as requested
 
-                    // Calculate total months and total days
-                    let totalMonths = 1;
-                    let totalDays = sessionPackage.session_plan.total_curriculum_days || 30;
+                    // Authentic Gregorian Calendar Month Definitions
+                    const GREGORIAN_MONTHS = [
+                      { monthIndex: 1, name: 'January', shortName: 'Jan', standardDays: 31 },
+                      { monthIndex: 2, name: 'February', shortName: 'Feb', standardDays: isLeapYear ? 29 : 28 },
+                      { monthIndex: 3, name: 'March', shortName: 'Mar', standardDays: 31 },
+                      { monthIndex: 4, name: 'April', shortName: 'Apr', standardDays: 30 },
+                      { monthIndex: 5, name: 'May', shortName: 'May', standardDays: 31 },
+                      { monthIndex: 6, name: 'June', shortName: 'Jun', standardDays: 30 },
+                      { monthIndex: 7, name: 'July', shortName: 'Jul', standardDays: 31 },
+                      { monthIndex: 8, name: 'August', shortName: 'Aug', standardDays: 31 },
+                      { monthIndex: 9, name: 'September', shortName: 'Sep', standardDays: 30 },
+                      { monthIndex: 10, name: 'October', shortName: 'Oct', standardDays: 31 },
+                      { monthIndex: 11, name: 'November', shortName: 'Nov', standardDays: 30 },
+                      { monthIndex: 12, name: 'December', shortName: 'Dec', standardDays: 31 },
+                    ];
 
+                    // Determine total months based on course track mode
+                    let totalMonths = 12;
                     if (trackMode === 'STANDARD') {
-                      totalMonths = 12;
-                      totalDays = 12 * DAYS_PER_MONTH; // 360 days
+                      totalMonths = 12; // Jan through Dec
                     } else if (trackMode === 'INTERNSHIP') {
-                      totalMonths = 6;
-                      totalDays = 6 * DAYS_PER_MONTH; // 180 days
+                      totalMonths = 6; // Jan through Jun
                     } else if (trackMode === 'SUPER_INTERNSHIP') {
-                      totalMonths = 3;
-                      totalDays = 3 * DAYS_PER_MONTH; // 90 days
+                      totalMonths = 3; // Jan through Mar
                     } else if (trackMode === 'CUSTOM') {
-                      // Custom sprint: if days > 30, split by 30 days per month
-                      totalDays = sessionPackage.session_plan.total_curriculum_days || 30;
-                      totalMonths = Math.max(1, Math.ceil(totalDays / DAYS_PER_MONTH));
+                      const curDays = sessionPackage.session_plan.total_curriculum_days || 30;
+                      if (curDays <= 31) totalMonths = 1;
+                      else if (curDays <= 59) totalMonths = 2;
+                      else if (curDays <= 90) totalMonths = 3;
+                      else if (curDays <= 181) totalMonths = 6;
+                      else totalMonths = 12;
                     } else {
-                      totalMonths = Math.max(1, Math.ceil(totalDays / DAYS_PER_MONTH));
+                      totalMonths = 12;
                     }
 
+                    // Build Month Metadata with accurate start day and end day based on real calendar days
+                    const activeMonths = [];
+                    let runningDayCount = 0;
+                    for (let m = 0; m < totalMonths; m++) {
+                      const calMonth = GREGORIAN_MONTHS[m % 12];
+                      const startDay = runningDayCount + 1;
+                      const endDay = runningDayCount + calMonth.standardDays;
+                      runningDayCount += calMonth.standardDays;
+
+                      activeMonths.push({
+                        monthNumber: m + 1,
+                        name: calMonth.name,
+                        shortName: calMonth.shortName,
+                        daysCount: calMonth.standardDays,
+                        startDay,
+                        endDay,
+                      });
+                    }
+
+                    const totalDays = runningDayCount;
                     const isShortCourse = totalMonths === 1;
-                    const daysPerMonth = DAYS_PER_MONTH;
-                    const totalWeeks = Math.max(1, Math.ceil(totalDays / 5));
 
-                    // Generate full days array with strictly 30 days per month
+                    // Generate full days array mapped accurately to real calendar months
                     const rawDays = sessionPackage.session_plan.day_wise_syllabus || [];
-                    const allDays = Array.from({ length: totalDays }, (_, idx) => {
-                      const dayNum = idx + 1;
-                      const monthNum = Math.ceil(dayNum / DAYS_PER_MONTH);
-                      const dayInMonth = ((dayNum - 1) % DAYS_PER_MONTH) + 1;
-                      const weekNum = Math.ceil(dayNum / 5); // 5 class days per week
-                      const dayInWeek = ((dayNum - 1) % 5) + 1;
+                    const allDays: any[] = [];
 
-                      // Strictly dynamic from generated package without hardcoded static templates
-                      const rawDay = (dayNum <= rawDays.length) ? rawDays[dayNum - 1] : null;
-                      const baseDay = rawDay || ((rawDays.length > 0) ? rawDays[(dayNum - 1) % rawDays.length] : null);
+                    activeMonths.forEach((mInfo) => {
+                      for (let d = mInfo.startDay; d <= mInfo.endDay; d++) {
+                        const dayInMonth = d - mInfo.startDay + 1;
+                        const weekInMonth = Math.ceil(dayInMonth / 7);
+                        const rawDay = (d <= rawDays.length) ? rawDays[d - 1] : null;
+                        const baseDay = rawDay || ((rawDays.length > 0) ? rawDays[(d - 1) % rawDays.length] : null);
 
-                      return {
-                        day_number: dayNum,
-                        month_number: monthNum,
-                        week_number: weekNum,
-                        day_in_week: dayInWeek,
-                        module_week: isShortCourse ? `Sprint Week ${weekNum}` : `Month ${monthNum} • Week ${weekNum}`,
-                        day_topic: baseDay?.day_topic || `Day ${dayNum}: ${sessionPackage.topic} — Applied Mastery & Drills`,
-                        grammar_rules_detail: baseDay?.grammar_rules_detail || `Faculty Lecture on ${sessionPackage.topic}: Syntactic rules, formulas, and contrastive examples derived directly from reference material.`,
-                        study_notes_markdown: baseDay?.study_notes_markdown || `### Master Study Guide: Day ${dayNum} - ${sessionPackage.topic}\n\n**1. Syntactic Architecture & Word Order:**\nSyntactic formulas directly derived from the reference material.\n\n**2. Core Linguistic Paradigm:**\nComplete breakdown grounded in the lesson context.`,
-                        vocabulary_bank: baseDay?.vocabulary_bank || [],
-                        classroom_dialogues: baseDay?.classroom_dialogues || [],
-                        pedagogical_instructions: baseDay?.pedagogical_instructions || `Senior Faculty Advice: Emphasize practical communicative competence grounded strictly in the reference material.`,
-                        video_breakdown_analysis: baseDay?.video_breakdown_analysis || `Comprehensive video breakdown for Day ${dayNum}: In-depth analysis of vocal inflection, speaker interaction, and authentic communicative phrases extracted from reference materials.`,
-                        in_class_exercises: (baseDay?.in_class_exercises && baseDay.in_class_exercises.length > 0)
-                          ? baseDay.in_class_exercises
-                          : (baseDay?.exercise_solutions ? baseDay.exercise_solutions.map((s: any) => s.question) : []),
-                        exercise_solutions: baseDay?.exercise_solutions || [],
-                        homework_tasks: baseDay?.homework_tasks || [
-                          `Daily workbook assignment for Day ${dayNum} covering target structures.`,
-                          `Oral dialogue recitation and audio submission.`
-                        ]
-                      };
+                        allDays.push({
+                          day_number: d,
+                          month_number: mInfo.monthNumber,
+                          calendar_month_name: mInfo.name,
+                          calendar_month_short: mInfo.shortName,
+                          day_in_month: dayInMonth,
+                          month_total_days: mInfo.daysCount,
+                          week_number: weekInMonth,
+                          module_week: isShortCourse 
+                            ? `Sprint Day ${d}` 
+                            : `${mInfo.name} • Day ${dayInMonth} of ${mInfo.daysCount} (Course Day ${d})`,
+                          day_topic: baseDay?.day_topic || `${mInfo.name} Day ${dayInMonth}: ${sessionPackage.topic} — Applied Mastery & Drills`,
+                          grammar_rules_detail: baseDay?.grammar_rules_detail || `Faculty Lecture on ${sessionPackage.topic}: Syntactic rules, formulas, and contrastive examples derived directly from reference material.`,
+                          study_notes_markdown: baseDay?.study_notes_markdown || `### Master Study Guide: ${mInfo.name} Day ${dayInMonth} (Course Day ${d}) - ${sessionPackage.topic}\n\n**1. Syntactic Architecture & Word Order:**\nSyntactic formulas directly derived from the reference material.\n\n**2. Core Linguistic Paradigm:**\nComplete breakdown grounded in the lesson context.`,
+                          vocabulary_bank: baseDay?.vocabulary_bank || [],
+                          classroom_dialogues: baseDay?.classroom_dialogues || [],
+                          pedagogical_instructions: baseDay?.pedagogical_instructions || `Senior Faculty Advice: Emphasize practical communicative competence grounded strictly in the reference material.`,
+                          video_breakdown_analysis: baseDay?.video_breakdown_analysis || `Comprehensive video breakdown for ${mInfo.name} Day ${dayInMonth}: In-depth analysis of vocal inflection, speaker interaction, and authentic communicative phrases extracted from reference materials.`,
+                          in_class_exercises: (baseDay?.in_class_exercises && baseDay.in_class_exercises.length > 0)
+                            ? baseDay.in_class_exercises
+                            : (baseDay?.exercise_solutions ? baseDay.exercise_solutions.map((s: any) => s.question) : []),
+                          exercise_solutions: baseDay?.exercise_solutions || [],
+                          homework_tasks: baseDay?.homework_tasks || [
+                            `Daily workbook assignment for ${mInfo.name} Day ${dayInMonth} covering target structures.`,
+                            `Oral dialogue recitation and audio submission.`
+                          ]
+                        });
+                      }
                     });
 
-                    // Filtered days based on Month & Week
-                    const filteredDays = allDays.filter(d => {
-                      if (!isShortCourse && d.month_number !== selectedMonthFilter) return false;
-                      if (selectedWeekFilter !== 'ALL' && d.week_number !== selectedWeekFilter) return false;
-                      return true;
-                    });
+                    // Current Selected Month info
+                    const currentMonthInfo = activeMonths.find(m => m.monthNumber === selectedMonthFilter) || activeMonths[0];
+
+                    // Filtered days strictly matching the selected calendar month
+                    const filteredDays = allDays.filter(d => d.month_number === currentMonthInfo.monthNumber);
 
                     const activeDay = allDays.find(d => d.day_number === activeDayDetail) || filteredDays[0] || allDays[0];
 
                     return (
                       <div className="space-y-6">
-                        {/* 1. Month / Sprint Filter Bar */}
+                        {/* 1. Real Calendar Month Filter Bar */}
                         {!isShortCourse ? (
                           <div className="bg-slate-900 rounded-2xl p-4 text-white shadow-md">
-                            <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
-                              <span className="text-xs font-bold uppercase tracking-wider text-cyan-400 flex items-center gap-2">
-                                <span>📅 1. Select Month Filter (1 to {totalMonths} Months)</span>
-                                <span className="bg-cyan-950 text-cyan-300 text-[10px] px-2 py-0.5 rounded border border-cyan-800">
-                                  {totalDays} Total Daily Classes (1 Hr / Class)
+                            <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
+                              <div className="flex flex-wrap items-center gap-2">
+                                <span className="text-xs font-bold uppercase tracking-wider text-cyan-400 flex items-center gap-2">
+                                  <span>📅 Real Calendar Month Navigation ({totalMonths} Months • {totalDays} Total Days)</span>
                                 </span>
-                              </span>
-                              <span className="text-xs text-slate-300">
-                                Showing Month {selectedMonthFilter} of {totalMonths}
-                              </span>
-                            </div>
+                                <span className="bg-cyan-950 text-cyan-300 text-[10px] font-bold px-2.5 py-0.5 rounded border border-cyan-800">
+                                  Viewing: {currentMonthInfo.name} ({currentMonthInfo.daysCount} Days • Days {currentMonthInfo.startDay}–{currentMonthInfo.endDay})
+                                </span>
+                              </div>
 
-                            <div className="grid grid-cols-4 sm:grid-cols-6 lg:grid-cols-12 gap-1.5">
-                              {Array.from({ length: totalMonths }, (_, i) => i + 1).map(mNum => (
+                              {/* Interactive Leap Year Toggle Button */}
+                              <div className="flex items-center gap-2">
                                 <button
-                                  key={mNum}
                                   type="button"
                                   onClick={() => {
-                                    setSelectedMonthFilter(mNum);
-                                    setSelectedWeekFilter('ALL');
-                                    const firstDayInMonth = (mNum - 1) * daysPerMonth + 1;
-                                    setActiveDayDetail(firstDayInMonth);
+                                    setIsLeapYear(!isLeapYear);
                                   }}
-                                  className={`py-2 px-1 text-center rounded-xl font-bold text-xs transition-all ${selectedMonthFilter === mNum
+                                  className={`px-3 py-1 rounded-xl text-xs font-bold transition-all border flex items-center gap-1.5 ${
+                                    isLeapYear
+                                      ? 'bg-amber-400 text-slate-950 border-amber-300 shadow-md font-extrabold'
+                                      : 'bg-slate-800 text-slate-300 border-slate-700 hover:bg-slate-700'
+                                  }`}
+                                  title="Click to toggle Leap Year (Feb: 29 days vs 28 days)"
+                                >
+                                  <span>{isLeapYear ? '⭐ Leap Year (Feb: 29d • 366d Total)' : '📅 Standard Year (Feb: 28d • 365d Total)'}</span>
+                                </button>
+                              </div>
+                            </div>
+
+                            {/* 12-Month Calendar Pill Grid */}
+                            <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-12 gap-1.5">
+                              {activeMonths.map(mInfo => (
+                                <button
+                                  key={mInfo.monthNumber}
+                                  type="button"
+                                  onClick={() => {
+                                    setSelectedMonthFilter(mInfo.monthNumber);
+                                    setActiveDayDetail(mInfo.startDay);
+                                  }}
+                                  className={`py-2 px-1 text-center rounded-xl font-bold text-xs transition-all ${
+                                    selectedMonthFilter === mInfo.monthNumber
                                       ? 'bg-blue-600 text-white shadow-lg ring-2 ring-blue-400'
                                       : 'bg-slate-800/80 text-slate-300 hover:bg-slate-700'
-                                    }`}
+                                  }`}
                                 >
-                                  <span className="block text-[10px] text-slate-400 uppercase">Month</span>
-                                  <span className="text-sm">{mNum}</span>
+                                  <span className="block text-[10px] uppercase text-slate-400 font-semibold">{mInfo.shortName}</span>
+                                  <span className="text-sm font-black">{mInfo.monthNumber}</span>
+                                  <span className={`block text-[9px] font-bold ${selectedMonthFilter === mInfo.monthNumber ? 'text-amber-300' : 'text-cyan-300'}`}>
+                                    {mInfo.daysCount}d
+                                  </span>
                                 </button>
                               ))}
                             </div>
@@ -1075,81 +1130,50 @@ export default function FacultyStudioPage() {
                             <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
                               <span className="text-xs font-bold uppercase tracking-wider text-emerald-400 flex items-center gap-2">
                                 <span>⚡ Focused Sprint Curriculum: {totalDays} Dedicated Days</span>
-                                <span className="bg-emerald-900 text-emerald-200 text-[10px] px-2.5 py-0.5 rounded-full border border-emerald-700">
-                                  {totalWeeks} {totalWeeks === 1 ? 'Week' : 'Weeks'} Intensive Roadmap
-                                </span>
                               </span>
                               <span className="text-xs text-emerald-300">
                                 Topic: <strong>{sessionPackage.topic}</strong>
                               </span>
                             </div>
-
-                            {/* Weeks Filter for Short Sprint */}
-                            <div className="flex flex-wrap gap-2">
-                              <button
-                                type="button"
-                                onClick={() => setSelectedWeekFilter('ALL')}
-                                className={`px-3 py-1.5 rounded-xl font-bold text-xs transition-all ${
-                                  selectedWeekFilter === 'ALL'
-                                    ? 'bg-emerald-500 text-slate-950 shadow-md font-extrabold'
-                                    : 'bg-emerald-900/80 text-emerald-200 hover:bg-emerald-800'
-                                }`}
-                              >
-                                All {totalDays} Days
-                              </button>
-                              {Array.from({ length: totalWeeks }, (_, wIdx) => wIdx + 1).map((wNum) => (
-                                <button
-                                  key={wNum}
-                                  type="button"
-                                  onClick={() => setSelectedWeekFilter(wNum)}
-                                  className={`px-3 py-1.5 rounded-xl font-bold text-xs transition-all ${
-                                    selectedWeekFilter === wNum
-                                      ? 'bg-emerald-500 text-slate-950 shadow-md font-extrabold'
-                                      : 'bg-emerald-900/80 text-emerald-200 hover:bg-emerald-800'
-                                  }`}
-                                >
-                                  Week {wNum} (Days {(wNum - 1) * 5 + 1}–{Math.min(wNum * 5, totalDays)})
-                                </button>
-                              ))}
-                            </div>
                           </div>
                         )}
 
-                        {/* 2. Days Selector Strip for Selected Scope */}
+                        {/* 2. Days Selector Strip for Selected Calendar Month */}
                         <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm">
-                          <div className="flex flex-wrap items-center justify-between gap-2 mb-2.5">
-                            <h4 className="text-xs font-bold uppercase tracking-wider text-slate-700 flex items-center gap-2">
+                          <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
+                            <h4 className="text-xs font-bold uppercase tracking-wider text-slate-800 flex items-center gap-2">
                               <span>
                                 {isShortCourse 
-                                  ? (selectedWeekFilter === 'ALL' 
-                                      ? `All ${totalDays} Daily Classes:` 
-                                      : `Daily Classes in Week ${selectedWeekFilter} (${filteredDays.length} Days):`)
-                                  : `Month ${selectedMonthFilter} Daily Classes (Exactly 30 Days • Days ${(selectedMonthFilter - 1) * 30 + 1} to ${selectedMonthFilter * 30}):`}
+                                  ? `All ${totalDays} Daily Classes:` 
+                                  : `Month ${currentMonthInfo.monthNumber}: ${currentMonthInfo.name} (${currentMonthInfo.daysCount} Calendar Days • Course Days ${currentMonthInfo.startDay} to ${currentMonthInfo.endDay}):`}
                               </span>
                               {!isShortCourse && (
-                                <span className="text-[10px] bg-blue-50 text-blue-700 font-bold px-2 py-0.5 rounded border border-blue-200">
-                                  30 Days / Month
+                                <span className="text-[10px] bg-blue-100 text-blue-800 font-bold px-2 py-0.5 rounded border border-blue-200">
+                                  {currentMonthInfo.daysCount} Days in {currentMonthInfo.name}
                                 </span>
                               )}
                             </h4>
                             <span className="text-[11px] text-blue-600 font-semibold">
-                              Click any day to view complete 1-hour teaching content
+                              Click any day to view 1-hour teaching content & 10+ page master study doc
                             </span>
                           </div>
 
-                          <div className="grid grid-cols-5 sm:grid-cols-6 md:grid-cols-10 gap-1.5">
+                          <div className="grid grid-cols-4 sm:grid-cols-6 md:grid-cols-8 lg:grid-cols-11 gap-1.5">
                             {filteredDays.map(d => (
                               <button
                                 key={d.day_number}
                                 type="button"
                                 onClick={() => setActiveDayDetail(d.day_number)}
-                                className={`p-2 rounded-xl text-center border transition-all ${activeDayDetail === d.day_number
-                                    ? 'bg-blue-600 border-blue-600 text-white font-extrabold shadow-md'
+                                className={`p-2 rounded-xl text-center border transition-all ${
+                                  activeDayDetail === d.day_number
+                                    ? 'bg-blue-600 border-blue-600 text-white font-extrabold shadow-md scale-[1.02]'
                                     : 'bg-slate-50 border-slate-200 text-slate-700 hover:bg-blue-50'
-                                  }`}
+                                }`}
                               >
-                                <span className="block text-[9px] uppercase opacity-75">Day</span>
-                                <span className="text-xs">{d.day_number}</span>
+                                <span className="block text-[9px] uppercase font-bold tracking-tight opacity-80">
+                                  {d.calendar_month_short} {d.day_in_month}
+                                </span>
+                                <span className="text-xs font-black">Day {d.day_number}</span>
                               </button>
                             ))}
                           </div>
@@ -1165,7 +1189,7 @@ export default function FacultyStudioPage() {
                               </span>
                               <div>
                                 <span className="text-xs font-semibold text-cyan-300 block">
-                                  {activeDay.module_week} • 1-Hour Comprehensive Class
+                                  {activeDay.calendar_month_name} • Day {activeDay.day_in_month} of {activeDay.month_total_days} (Course Day {activeDay.day_number} of {totalDays}) • 1-Hour Comprehensive Class
                                 </span>
                                 <h3 className="text-base font-bold text-white mt-0.5">
                                   {activeDay.day_topic}
@@ -1189,14 +1213,21 @@ export default function FacultyStudioPage() {
                                 ) : (
                                   <>
                                     <Download className="w-3.5 h-3.5" />
-                                    <span>Download Day {activeDay.day_number} Master DOCX (10+ Pages)</span>
+                                    <span>Download Day {activeDay.day_number} ({activeDay.calendar_month_short} {activeDay.day_in_month}) Master DOCX (10+ Pages)</span>
                                   </>
                                 )}
                               </button>
 
                               <button
                                 onClick={() => {
-                                  if (activeDay.day_number > 1) setActiveDayDetail(activeDay.day_number - 1);
+                                  if (activeDay.day_number > 1) {
+                                    const prevDayNum = activeDay.day_number - 1;
+                                    setActiveDayDetail(prevDayNum);
+                                    const prevDayObj = allDays.find(d => d.day_number === prevDayNum);
+                                    if (prevDayObj && prevDayObj.month_number !== selectedMonthFilter) {
+                                      setSelectedMonthFilter(prevDayObj.month_number);
+                                    }
+                                  }
                                 }}
                                 disabled={activeDay.day_number <= 1}
                                 className="px-3 py-1.5 bg-white/10 hover:bg-white/20 rounded-lg text-xs font-bold disabled:opacity-30"
@@ -1205,7 +1236,14 @@ export default function FacultyStudioPage() {
                               </button>
                               <button
                                 onClick={() => {
-                                  if (activeDay.day_number < totalDays) setActiveDayDetail(activeDay.day_number + 1);
+                                  if (activeDay.day_number < totalDays) {
+                                    const nextDayNum = activeDay.day_number + 1;
+                                    setActiveDayDetail(nextDayNum);
+                                    const nextDayObj = allDays.find(d => d.day_number === nextDayNum);
+                                    if (nextDayObj && nextDayObj.month_number !== selectedMonthFilter) {
+                                      setSelectedMonthFilter(nextDayObj.month_number);
+                                    }
+                                  }
                                 }}
                                 disabled={activeDay.day_number >= totalDays}
                                 className="px-3 py-1.5 bg-white/10 hover:bg-white/20 rounded-lg text-xs font-bold disabled:opacity-30"
