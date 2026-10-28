@@ -27,35 +27,50 @@ class SourceAnalyzerAgent:
     """Analyzes extracted source evidence to discover instructional content."""
 
     async def _call_gemini_json(self, prompt: str, max_tokens: int = 4096) -> Optional[dict]:
-        """Call Gemini with JSON response mode."""
+        """Call Gemini with JSON response mode, using fallback models."""
         if not settings.GEMINI_API_KEY or settings.GEMINI_API_KEY.startswith("AQ.placeholder"):
             return None
 
-        url = (
-            f"https://generativelanguage.googleapis.com/v1beta/models/"
-            f"{settings.LLM_MODEL}:generateContent?key={settings.GEMINI_API_KEY}"
-        )
-        payload = {
-            "contents": [{"parts": [{"text": prompt}]}],
-            "generationConfig": {
-                "temperature": 0.1,
-                "maxOutputTokens": max_tokens,
-                "response_mime_type": "application/json",
-            },
-        }
-        try:
-            async with httpx.AsyncClient(timeout=90.0) as client:
-                resp = await client.post(url, json=payload)
-                if resp.status_code == 200:
-                    data = resp.json()
-                    candidates = data.get("candidates", [])
-                    if candidates:
-                        raw = candidates[0]["content"]["parts"][0]["text"]
-                        return self._parse_json_safe(raw)
-                else:
-                    logger.warning(f"Gemini analysis call returned {resp.status_code}: {resp.text[:300]}")
-        except Exception as e:
-            logger.warning(f"Gemini analysis call failed: {e}")
+        models_to_try = [
+            settings.LLM_MODEL,
+            "gemini-2.0-flash",
+            "gemini-1.5-flash",
+            "gemini-flash-lite-latest",
+        ]
+        seen_models = []
+        for m in models_to_try:
+            if m and m not in seen_models:
+                seen_models.append(m)
+
+        for model_name in seen_models:
+            url = (
+                f"https://generativelanguage.googleapis.com/v1beta/models/"
+                f"{model_name}:generateContent?key={settings.GEMINI_API_KEY}"
+            )
+            payload = {
+                "contents": [{"parts": [{"text": prompt}]}],
+                "generationConfig": {
+                    "temperature": 0.1,
+                    "maxOutputTokens": max_tokens,
+                    "response_mime_type": "application/json",
+                },
+            }
+            try:
+                async with httpx.AsyncClient(timeout=90.0) as client:
+                    resp = await client.post(url, json=payload)
+                    if resp.status_code == 200:
+                        data = resp.json()
+                        candidates = data.get("candidates", [])
+                        if candidates:
+                            raw = candidates[0]["content"]["parts"][0]["text"]
+                            parsed = self._parse_json_safe(raw)
+                            if parsed:
+                                return parsed
+                    else:
+                        logger.warning(f"Gemini analysis with {model_name} returned {resp.status_code}: {resp.text[:200]}")
+            except Exception as e:
+                logger.warning(f"Gemini analysis with {model_name} failed: {e}")
+                continue
         return None
 
     @staticmethod

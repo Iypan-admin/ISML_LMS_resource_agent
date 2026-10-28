@@ -59,32 +59,47 @@ class SessionPlannerAgent:
         self.quality_evaluator = QualityEvaluator()
 
     async def _call_gemini(self, prompt: str, max_tokens: int = 8192) -> Optional[str]:
-        """Calls Gemini API with prompt and JSON response mode."""
+        """Calls Gemini API with prompt and JSON response mode, using multi-model resilience."""
         if not settings.GEMINI_API_KEY or settings.GEMINI_API_KEY.startswith("AQ.placeholder"):
             return None
 
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/{settings.LLM_MODEL}:generateContent?key={settings.GEMINI_API_KEY}"
-        payload = {
-            "contents": [{"parts": [{"text": prompt}]}],
-            "generationConfig": {
-                "temperature": 0.2,
-                "maxOutputTokens": max_tokens,
-                "response_mime_type": "application/json"
-            },
-        }
+        models_to_try = [
+            settings.LLM_MODEL,
+            "gemini-2.0-flash",
+            "gemini-1.5-flash",
+            "gemini-flash-lite-latest"
+        ]
+        seen_models = []
+        for m in models_to_try:
+            if m and m not in seen_models:
+                seen_models.append(m)
 
-        try:
-            async with httpx.AsyncClient(timeout=120.0) as client:
-                resp = await client.post(url, json=payload)
-                if resp.status_code == 200:
-                    data = resp.json()
-                    candidates = data.get("candidates", [])
-                    if candidates:
-                        return candidates[0]["content"]["parts"][0]["text"]
-                else:
-                    logger.warning(f"Gemini synthesis returned {resp.status_code}: {resp.text[:300]}")
-        except Exception as e:
-            logger.warning(f"Gemini API call failed in SessionPlannerAgent: {e}")
+        for model_name in seen_models:
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={settings.GEMINI_API_KEY}"
+            payload = {
+                "contents": [{"parts": [{"text": prompt}]}],
+                "generationConfig": {
+                    "temperature": 0.2,
+                    "maxOutputTokens": max_tokens,
+                    "response_mime_type": "application/json"
+                },
+            }
+
+            try:
+                async with httpx.AsyncClient(timeout=120.0) as client:
+                    resp = await client.post(url, json=payload)
+                    if resp.status_code == 200:
+                        data = resp.json()
+                        candidates = data.get("candidates", [])
+                        if candidates:
+                            raw_text = candidates[0]["content"]["parts"][0]["text"]
+                            if raw_text and len(raw_text.strip()) > 30:
+                                return raw_text
+                    else:
+                        logger.warning(f"Gemini synthesis with {model_name} returned {resp.status_code}: {resp.text[:200]}")
+            except Exception as e:
+                logger.warning(f"Gemini API call with {model_name} failed: {e}")
+                continue
         return None
 
     @staticmethod
@@ -197,24 +212,27 @@ class SessionPlannerAgent:
         topic: str,
         track_mode: str = "STANDARD",
         custom_days: Optional[int] = None,
+        institution_type: str = "COLLEGE",
+        course_duration_hours: Optional[int] = None,
+        period_duration_minutes: Optional[int] = None,
+        periods_per_week: Optional[int] = None,
+        total_periods: Optional[int] = None,
+        assessments_count: Optional[int] = None,
         source_context: str = "",
         pptx_output_dir: str = "static/presentations",
     ) -> FullSessionPackageResult:
         """Orchestrates the full dynamic pipeline:
         Extract → Analyze → Plan → Synthesize → Validate → Evaluate."""
 
-        # ── Track Configuration ──────────────────────────────────────────
-        track_labels = {
-            "STANDARD": ("Standard Course (12 Calendar Months • 365 Days)", 365),
-            "INTERNSHIP": ("Internship Program (6 Calendar Months • 181 Days)", 181),
-            "SUPER_INTERNSHIP": ("Super Internship Fast-Track (3 Calendar Months • 90 Days)", 90),
-            "CUSTOM": ("Custom Calendar Track", 30),
-        }
-        track_info = track_labels.get(track_mode.upper(), track_labels["SUPER_INTERNSHIP"])
-        track_label, total_days = track_info
-        if custom_days and custom_days > 0:
-            total_days = custom_days
-            track_label = f"Custom Focus ({custom_days} Days)"
+        # ── Institutional Track & Duration Configuration ───────────────────
+        unit_term = "Period" if institution_type == "SCHOOL" else "Session"
+        total_days = total_periods or custom_days or (60 if institution_type == "SCHOOL" else 80)
+        
+        hours_str = f"{course_duration_hours} Teaching Hours" if course_duration_hours else f"{total_days} {unit_term}s"
+        cadence_str = f"{periods_per_week} {unit_term}s/week" if periods_per_week else "Standard weekly cadence"
+        slot_str = f"{period_duration_minutes}m/{unit_term.lower()}" if period_duration_minutes else "60m/unit"
+
+        track_label = f"{institution_type.title()} Matrix: {hours_str} ({total_days} {unit_term}s • {cadence_str} • {slot_str})"
 
         # ── Stage A: Build Extraction Bundle ─────────────────────────────
         extraction_bundle = self._build_extraction_bundle(source_context)
@@ -222,6 +240,7 @@ class SessionPlannerAgent:
 
         logger.info(
             f"Pipeline start: session={session_id}, lang={language}, level={level}, "
+            f"inst={institution_type}, hours={course_duration_hours}, "
             f"sources={extraction_bundle.successful_sources}, "
             f"text_len={extraction_bundle.combined_text_length}"
         )
@@ -249,6 +268,10 @@ class SessionPlannerAgent:
             day_number=1,
             total_days=total_days,
             track_mode=track_mode,
+            institution_type=institution_type,
+            course_duration_hours=course_duration_hours,
+            periods_per_week=periods_per_week,
+            period_duration_minutes=period_duration_minutes,
         )
         logger.info(
             f"Instruction plan: '{plan.lesson_title}', "
@@ -267,6 +290,11 @@ class SessionPlannerAgent:
             track_mode=track_mode,
             total_days=total_days,
             day_count_to_generate=min(total_days, 10),
+            institution_type=institution_type,
+            course_duration_hours=course_duration_hours,
+            periods_per_week=periods_per_week,
+            period_duration_minutes=period_duration_minutes,
+            assessments_count=assessments_count,
         )
 
         llm_output = await self._call_gemini(synthesis_prompt, max_tokens=8192)

@@ -27,29 +27,46 @@ class InstructionDesignerAgent:
     async def _call_gemini_json(self, prompt: str, max_tokens: int = 4096) -> Optional[dict]:
         if not settings.GEMINI_API_KEY or settings.GEMINI_API_KEY.startswith("AQ.placeholder"):
             return None
-        url = (
-            f"https://generativelanguage.googleapis.com/v1beta/models/"
-            f"{settings.LLM_MODEL}:generateContent?key={settings.GEMINI_API_KEY}"
-        )
-        payload = {
-            "contents": [{"parts": [{"text": prompt}]}],
-            "generationConfig": {
-                "temperature": 0.15,
-                "maxOutputTokens": max_tokens,
-                "response_mime_type": "application/json",
-            },
-        }
-        try:
-            async with httpx.AsyncClient(timeout=60.0) as client:
-                resp = await client.post(url, json=payload)
-                if resp.status_code == 200:
-                    data = resp.json()
-                    candidates = data.get("candidates", [])
-                    if candidates:
-                        raw = candidates[0]["content"]["parts"][0]["text"]
-                        return self._parse_json_safe(raw)
-        except Exception as e:
-            logger.warning(f"Instruction design Gemini call failed: {e}")
+        models_to_try = [
+            settings.LLM_MODEL,
+            "gemini-2.0-flash",
+            "gemini-1.5-flash",
+            "gemini-flash-lite-latest",
+        ]
+        seen_models = []
+        for m in models_to_try:
+            if m and m not in seen_models:
+                seen_models.append(m)
+
+        for model_name in seen_models:
+            url = (
+                f"https://generativelanguage.googleapis.com/v1beta/models/"
+                f"{model_name}:generateContent?key={settings.GEMINI_API_KEY}"
+            )
+            payload = {
+                "contents": [{"parts": [{"text": prompt}]}],
+                "generationConfig": {
+                    "temperature": 0.15,
+                    "maxOutputTokens": max_tokens,
+                    "response_mime_type": "application/json",
+                },
+            }
+            try:
+                async with httpx.AsyncClient(timeout=60.0) as client:
+                    resp = await client.post(url, json=payload)
+                    if resp.status_code == 200:
+                        data = resp.json()
+                        candidates = data.get("candidates", [])
+                        if candidates:
+                            raw = candidates[0]["content"]["parts"][0]["text"]
+                            parsed = self._parse_json_safe(raw)
+                            if parsed:
+                                return parsed
+                    else:
+                        logger.warning(f"Instruction design with {model_name} returned {resp.status_code}: {resp.text[:200]}")
+            except Exception as e:
+                logger.warning(f"Instruction design with {model_name} failed: {e}")
+                continue
         return None
 
     @staticmethod
@@ -111,15 +128,25 @@ class InstructionDesignerAgent:
         day_number: int,
         total_days: int,
         track_mode: str,
+        institution_type: str = "COLLEGE",
+        course_duration_hours: Optional[int] = None,
+        periods_per_week: Optional[int] = None,
+        period_duration_minutes: Optional[int] = None,
     ) -> str:
         analysis_text = self._serialize_analysis_for_prompt(analysis)
+        unit_type = "School Period" if institution_type == "SCHOOL" else "College Session"
+        hrs_info = f"{course_duration_hours} Teaching Hours" if course_duration_hours else f"{total_days} Total Units"
+        cadence_info = f"{periods_per_week} units/week" if periods_per_week else "Regular cadence"
+        slot_info = f"{period_duration_minutes} mins/period" if period_duration_minutes else "60 mins/session"
 
         return f"""You are an instructional design specialist. Based on the source evidence analysis below, create an instruction plan that determines what a lesson should contain.
 
-CONTEXT:
+CONTEXT & INSTITUTIONAL SCHEDULE:
+- Target Institution: {institution_type} ({unit_type} format)
+- Course Scope: {hrs_info} ({total_days} total units, {cadence_info}, {slot_info})
 - Language: {language}, Level: {level}
 - Course Topic: {topic}
-- Day {day_number} of {total_days} ({track_mode} track)
+- Current Unit: Unit {day_number} of {total_days} ({track_mode} track)
 
 SOURCE EVIDENCE ANALYSIS:
 {analysis_text}
@@ -245,6 +272,10 @@ RULES:
         day_number: int = 1,
         total_days: int = 1,
         track_mode: str = "STANDARD",
+        institution_type: str = "COLLEGE",
+        course_duration_hours: Optional[int] = None,
+        periods_per_week: Optional[int] = None,
+        period_duration_minutes: Optional[int] = None,
     ) -> InstructionPlan:
         """Generate a dynamic instruction plan from source analysis."""
 
@@ -265,6 +296,10 @@ RULES:
             day_number=day_number,
             total_days=total_days,
             track_mode=track_mode,
+            institution_type=institution_type,
+            course_duration_hours=course_duration_hours,
+            periods_per_week=periods_per_week,
+            period_duration_minutes=period_duration_minutes,
         )
 
         result = await self._call_gemini_json(prompt, max_tokens=3072)

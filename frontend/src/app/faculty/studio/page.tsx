@@ -207,6 +207,7 @@ export default function FacultyStudioPage() {
       formData.append('institution_type', 'SCHOOL');
       formData.append('school_category', schoolCategory);
       formData.append('school_level', schoolLevel);
+      formData.append('course_duration_hours', schoolSched.courseDurationHours.toString());
       formData.append('period_duration_minutes', schoolSched.periodDurationMinutes.toString());
       formData.append('periods_per_week', schoolSched.periodsPerWeek.toString());
       formData.append('total_periods', schoolSched.totalPeriods.toString());
@@ -222,6 +223,7 @@ export default function FacultyStudioPage() {
       formData.append('institution_type', 'COLLEGE');
       formData.append('college_track', collegeTrack);
       formData.append('college_level', colSched.level);
+      formData.append('course_duration_hours', colSched.courseDurationHours.toString());
       formData.append('session_duration_minutes', colSched.sessionMinutes.toString());
       formData.append('sessions_per_week', colSched.sessionsPerWeek.toString());
       formData.append('total_sessions', colSched.sessionsRequired.toString());
@@ -1098,43 +1100,65 @@ export default function FacultyStudioPage() {
 
                     {/* Quick Institutional Metrics Ribbon */}
                     {sessionPackage.institution_type === 'SCHOOL' && sessionPackage.school_meta && (
-                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs bg-white/10 rounded-lg p-2.5 my-2 border border-white/10">
-                        <div>
-                          <span className="text-blue-200 block text-[10px] uppercase font-semibold">Period Duration:</span>
-                          <strong className="text-amber-300 font-bold">{sessionPackage.school_meta.periodDurationMinutes} mins / period</strong>
-                        </div>
-                        <div>
-                          <span className="text-blue-200 block text-[10px] uppercase font-semibold">Weekly Cadence:</span>
-                          <strong className="text-amber-300 font-bold">{sessionPackage.school_meta.periodsPerWeek} periods / week</strong>
-                        </div>
-                        <div>
-                          <span className="text-blue-200 block text-[10px] uppercase font-semibold">Assessments:</span>
-                          <strong className="text-amber-300 font-bold">{sessionPackage.school_meta.assessmentsCount} tests</strong>
-                        </div>
-                        <div>
-                          <span className="text-blue-200 block text-[10px] uppercase font-semibold">Human Speaking:</span>
-                          <strong className="text-amber-300 font-bold">{sessionPackage.school_meta.humanPracticeMinutesPer2Weeks}m / 2 wks</strong>
+                      <div className="space-y-2 my-2">
+                        <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 text-xs bg-white/10 rounded-lg p-2.5 border border-white/10">
+                          <div>
+                            <span className="text-blue-200 block text-[10px] uppercase font-semibold">Course Hours:</span>
+                            <strong className="text-amber-300 font-extrabold text-sm">{sessionPackage.school_meta.courseDurationHours} Hours</strong>
+                            <span className="text-[9px] text-blue-200 block">({sessionPackage.school_meta.courseDurationHours} x 1hr Units)</span>
+                          </div>
+                          <div>
+                            <span className="text-blue-200 block text-[10px] uppercase font-semibold">Weekly Cadence:</span>
+                            <strong className="text-amber-300 font-extrabold text-sm">{sessionPackage.school_meta.periodsPerWeek} Periods / wk</strong>
+                            <span className="text-[9px] text-blue-200 block">Dedicated Schedule</span>
+                          </div>
+                          <div>
+                            <span className="text-blue-200 block text-[10px] uppercase font-semibold">Period Duration:</span>
+                            <strong className="text-amber-300 font-bold">{sessionPackage.school_meta.periodDurationMinutes} mins / period</strong>
+                            <span className="text-[9px] text-blue-200 block">{sessionPackage.school_meta.totalPeriods} total slots</span>
+                          </div>
+                          <div>
+                            <span className="text-blue-200 block text-[10px] uppercase font-semibold">Assessments:</span>
+                            <strong className="text-amber-300 font-bold">{sessionPackage.school_meta.assessmentsCount} tests</strong>
+                            <span className="text-[9px] text-blue-200 block">Periodic Benchmarks</span>
+                          </div>
+                          <div>
+                            <span className="text-blue-200 block text-[10px] uppercase font-semibold">Speaking Drill:</span>
+                            <strong className="text-amber-300 font-bold">{sessionPackage.school_meta.humanPracticeMinutesPer2Weeks}m / 2 wks</strong>
+                            <span className="text-[9px] text-blue-200 block">🤖 {sessionPackage.school_meta.aiPracticePerDay}x AI/day</span>
+                          </div>
                         </div>
                       </div>
                     )}
 
                     {sessionPackage.institution_type === 'COLLEGE' && sessionPackage.college_meta && (
-                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs bg-white/10 rounded-lg p-2.5 my-2 border border-white/10">
-                        <div>
-                          <span className="text-blue-200 block text-[10px] uppercase font-semibold">Session Length:</span>
-                          <strong className="text-amber-300 font-bold">{sessionPackage.college_meta.sessionMinutes} mins / session</strong>
-                        </div>
-                        <div>
-                          <span className="text-blue-200 block text-[10px] uppercase font-semibold">Weekly Cadence:</span>
-                          <strong className="text-amber-300 font-bold">{sessionPackage.college_meta.sessionsPerWeek} sessions / week</strong>
-                        </div>
-                        <div>
-                          <span className="text-blue-200 block text-[10px] uppercase font-semibold">Course Completion:</span>
-                          <strong className="text-amber-300 font-bold">{sessionPackage.college_meta.monthsRequired} Months</strong>
-                        </div>
-                        <div>
-                          <span className="text-blue-200 block text-[10px] uppercase font-semibold">Human Speaking:</span>
-                          <strong className="text-amber-300 font-bold">{sessionPackage.college_meta.humanPracticeMinutesPerWeek}m / week</strong>
+                      <div className="space-y-2 my-2">
+                        <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 text-xs bg-white/10 rounded-lg p-2.5 border border-white/10">
+                          <div>
+                            <span className="text-blue-200 block text-[10px] uppercase font-semibold">Course Hours:</span>
+                            <strong className="text-amber-300 font-extrabold text-sm">{sessionPackage.college_meta.courseDurationHours} Hours</strong>
+                            <span className="text-[9px] text-blue-200 block">({sessionPackage.college_meta.courseDurationHours} x 1hr Base)</span>
+                          </div>
+                          <div>
+                            <span className="text-blue-200 block text-[10px] uppercase font-semibold">Weekly Cadence:</span>
+                            <strong className="text-amber-300 font-extrabold text-sm">{sessionPackage.college_meta.sessionsPerWeek} Sessions / wk</strong>
+                            <span className="text-[9px] text-blue-200 block">Campus Track</span>
+                          </div>
+                          <div>
+                            <span className="text-blue-200 block text-[10px] uppercase font-semibold">Session Length:</span>
+                            <strong className="text-amber-300 font-bold">{sessionPackage.college_meta.sessionMinutes} mins / session</strong>
+                            <span className="text-[9px] text-blue-200 block">{sessionPackage.college_meta.sessionsRequired} sessions total</span>
+                          </div>
+                          <div>
+                            <span className="text-blue-200 block text-[10px] uppercase font-semibold">Course Duration:</span>
+                            <strong className="text-amber-300 font-bold">{sessionPackage.college_meta.monthsRequired} Months</strong>
+                            <span className="text-[9px] text-blue-200 block">{sessionPackage.college_meta.assessmentsCount} Assessments</span>
+                          </div>
+                          <div>
+                            <span className="text-blue-200 block text-[10px] uppercase font-semibold">Human Speaking:</span>
+                            <strong className="text-amber-300 font-bold">{sessionPackage.college_meta.humanPracticeMinutesPerWeek}m / week</strong>
+                            <span className="text-[9px] text-blue-200 block">🤖 {sessionPackage.college_meta.aiPracticePerDay}x AI/day</span>
+                          </div>
                         </div>
                       </div>
                     )}

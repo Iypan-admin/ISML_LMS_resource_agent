@@ -98,14 +98,19 @@ def build_synthesis_prompt(
     track_mode: str,
     total_days: int,
     day_count_to_generate: int = 5,
+    institution_type: str = "COLLEGE",
+    course_duration_hours: Optional[int] = None,
+    periods_per_week: Optional[int] = None,
+    period_duration_minutes: Optional[int] = None,
+    assessments_count: Optional[int] = None,
 ) -> str:
-    """Build the complete Gemini synthesis prompt dynamically from evidence and plan.
+    """Build the complete Gemini synthesis prompt dynamically from evidence, institutional metrics and plan."""
 
-    This is NOT a static template. The prompt content changes based on:
-    - What the source actually contains (analysis)
-    - What the instruction plan decided to teach (plan)
-    - The original source text for reference
-    """
+    unit_term = "Period" if institution_type == "SCHOOL" else "Session"
+    course_hrs = course_duration_hours or total_days
+    cadence = periods_per_week or (3 if institution_type == "SCHOOL" else 2)
+    slot_mins = period_duration_minutes or (40 if institution_type == "SCHOOL" else 60)
+    tests = assessments_count or 4
 
     # Build evidence summary section
     evidence_sections = []
@@ -164,10 +169,17 @@ RAW SOURCE MATERIAL (truncated from {len(source_text)} chars for context budget)
     # Build the full prompt
     prompt = f"""{SYSTEM_POLICY}
 
+TARGET INSTITUTION: {institution_type} ({unit_term}-based structure)
 TARGET LANGUAGE: {language}
 PROFICIENCY LEVEL: {level}
 COURSE TOPIC: {topic}
-TRACK: {track_mode} ({total_days} total days)
+CURRICULUM SPECIFICATIONS:
+- Total Course Duration: {course_hrs} Teaching Hours (divided into {course_hrs} individual 1-hour/session teaching units)
+- Weekly Cadence: {cadence} {unit_term}s / Week
+- Unit Duration: {slot_mins} minutes per {unit_term}
+- Total Units in Course: {total_days} {unit_term}s
+- Formal Assessments: {tests} Examinations
+TRACK: {track_mode} ({total_days} total {unit_term}s)
 
 ================================================================================
 INSTRUCTION PLAN (dynamically generated from source analysis):
@@ -219,23 +231,27 @@ Generate the educational package as strict JSON with this structure:
     "grammar_focus": ["grammar focus from source evidence"],
     "key_vocabulary": ["key terms from source evidence"],
     "day_wise_syllabus": [
+      // Generate exactly {day_count_to_generate} distinct sequential days/units for this syllabus ({unit_term} 1 to {unit_term} {day_count_to_generate}), each directly analyzing and applying the discovered source content and course scope:
       {{
         "day_number": 1,
-        "module_week": "Week X: Topic from source",
-        "day_topic": "Day 1: Specific topic from source evidence",
-        "grammar_rules_detail": "Detailed grammar explanation grounded in source",
+        "module_week": "Week 1 • {unit_term} 1/{cadence} ({unit_term} 1 of {total_days})",
+        "day_topic": "{unit_term} 1: Specific core topic grounded in source",
+        "grammar_rules_detail": "Detailed senior faculty lecture for {unit_term} 1 grounded in the {course_hrs}-hour curriculum ({cadence} {unit_term}s/week, {slot_mins} mins/{unit_term.lower()}). Explains functional grammar rules, syntactic patterns, and usage nuances in {language}.",
         "video_breakdown_analysis": "Analysis of source materials (only if source evidence supports it, otherwise state 'No video/audio source available')",
-        "study_notes_markdown": "### Comprehensive study guide with markdown tables, formulas, and examples from source",
+        "study_notes_markdown": "### Master Study Guide: {unit_term} 1 (Course Unit 1 of {total_days})\nCurriculum Standard: **{course_hrs} Teaching Hours** ({total_days} x 1hr Units) • **{cadence} {unit_term}s / Week**\nScheduled Unit: **Week 1, {unit_term} 1 of {cadence}** ({slot_mins} mins)\nLanguage Track: **{language}** • Certified CEFR {level} • {topic}\n\n**1. Dedicated Pedagogical Milestone (Source-Grounded):**\n- **Unit Focus**: Core structural grounding\n- **Linguistic Competency**: Targeted functional production\n\n**2. Active Syntactic Architecture & Word Order Formula:**\n```text\n[Grammar Formula specific to {unit_term} 1 in {language}]\n```\n\n**3. Active Paradigm & Conjugation Matrix for {unit_term} 1:**\n| Subject / Element | Conjugation / Form in {language} | IPA Phonetics | Contextual Meaning |\n|---|---|---|---|\n| Item 1 | Form 1 | /ipa/ | Meaning 1 |\n| Item 2 | Form 2 | /ipa/ | Meaning 2 |\n\n**4. Native Phonetic Traps & Auditory Discrimination:**\n- Detailed phonetic discrimination and acoustic analysis.\n\n**5. Faculty Lesson Blueprint & Active Retention:**\n- Step-by-step instruction on applying today's concept in live spoken and written communication in {language}.",
         "vocabulary_bank": [
-          {{"word": "source word", "meaning": "meaning", "pronunciation": "IPA", "example_sentence": "contextual sentence"}}
+          {{"word": "word in {language}", "meaning": "English meaning", "pronunciation": "/IPA/", "example_sentence": "sentence in {language}"}}
         ],
-        "classroom_dialogues": ["Dialogue turn in {language} (Translation)"],
-        "pedagogical_instructions": "Teaching advice specific to this content",
-        "in_class_exercises": ["Exercise question testing source concept"],
+        "classroom_dialogues": [
+          "Person A ({language}): authentic dialogue turn (English translation)",
+          "Person B ({language}): authentic response turn (English translation)"
+        ],
+        "pedagogical_instructions": "Faculty directive for {unit_term} 1 ({slot_mins} Mins • Cadence: {cadence}/wk): prioritize authentic oral repetition, active student production, and error correction.",
+        "in_class_exercises": ["Exercise question testing source concept in {language}"],
         "exercise_solutions": [
-          {{"question": "Q", "answer": "verified answer", "explanation": "linguistic explanation"}}
+          {{"question": "Q", "answer": "verified answer in {language}", "explanation": "linguistic explanation"}}
         ],
-        "homework_tasks": ["Homework task relevant to source content"]
+        "homework_tasks": ["Homework task in {language} relevant to source content"]
       }}
     ],
     "homework_and_practice": ["Practice directive"]
