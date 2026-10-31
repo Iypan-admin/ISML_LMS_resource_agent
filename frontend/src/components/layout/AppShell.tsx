@@ -7,7 +7,26 @@ import MobileNav from './MobileNav';
 import { MasterDataProvider } from '@/context/MasterDataContext';
 import { ResourceProvider } from '@/context/ResourceContext';
 
+import { usePathname } from 'next/navigation';
+
 export default function AppShell({ children }: { children: React.ReactNode }) {
+  const pathname = usePathname();
+  const isAgentStudio = pathname?.startsWith('/faculty/studio');
+
+  if (isAgentStudio) {
+    return (
+      <MasterDataProvider>
+        <ResourceProvider>
+          <div className="min-h-screen bg-[#F8FAFC] text-slate-900 font-sans antialiased selection:bg-blue-600 selection:text-white">
+            <main className="w-full min-h-screen">
+              {children}
+            </main>
+          </div>
+        </ResourceProvider>
+      </MasterDataProvider>
+    );
+  }
+
   return (
     <MasterDataProvider>
       <ResourceProvider>

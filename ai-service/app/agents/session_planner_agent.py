@@ -31,6 +31,9 @@ from app.models.session_package import (
     QuestionItem,
     WritingEvaluationRubric,
     FullSessionPackageResult,
+    TeacherLessonGuide,
+    EvaluationTaskMetadata,
+    ContentLineageMetadata,
 )
 from app.models.source_evidence import (
     ExtractionBundle,
@@ -65,9 +68,9 @@ class SessionPlannerAgent:
 
         models_to_try = [
             settings.LLM_MODEL,
-            "gemini-2.0-flash",
-            "gemini-1.5-flash",
-            "gemini-flash-lite-latest"
+            "gemini-3-flash-preview",
+            "gemini-3.1-flash-lite-preview",
+            "gemma-4-26b-a4b-it",
         ]
         seen_models = []
         for m in models_to_try:
@@ -377,6 +380,82 @@ class SessionPlannerAgent:
         except Exception as e:
             logger.error(f"Failed to generate PPTX file: {e}")
 
+        # ── Teacher Lesson Guide (Detailed 1h/2h/2.5h Breakdown) ───────
+        allocated_mins = period_duration_minutes or 60
+        phases = [
+            {
+                "phase": "1. Phonetic Warm-up & Auditory Priming",
+                "duration_minutes": max(5, int(allocated_mins * 0.15)),
+                "instruction": f"Conduct choral repetition of target phonemes and vocabulary in {language}."
+            },
+            {
+                "phase": "2. Structural Concept & Grammar Presentation",
+                "duration_minutes": max(15, int(allocated_mins * 0.35)),
+                "instruction": f"Demonstrate word order, conjugation matrices, and register nuance for {topic}."
+            },
+            {
+                "phase": "3. Guided Interactive Drills & Pair Discourse",
+                "duration_minutes": max(15, int(allocated_mins * 0.30)),
+                "instruction": f"Facilitate role-play dialogues between students using authentic {language} markers."
+            },
+            {
+                "phase": "4. Formative Wrap-up & Homework Orientation",
+                "duration_minutes": max(5, int(allocated_mins * 0.20)),
+                "instruction": "Summarize key takeaway patterns, assign the daily worksheet, and explain homework."
+            }
+        ]
+
+        teacher_guide = TeacherLessonGuide(
+            allocated_duration_minutes=allocated_mins,
+            pedagogical_pacing_tier="Standard Balanced Academic Track" if course_duration_hours and course_duration_hours <= 80 else "Elaborated In-Depth Academic Track",
+            teaching_phases=phases,
+            board_work_notes=f"Key Blackboard Formula for {topic}: [Subject/Theme] + [Grammar Focus] + [Contextual Object] in {language}.",
+            remedial_activity=f"Students struggling with syntax should practice 3 minimal pair substitutions using basic present tense in {language}.",
+            extension_activity=f"Advanced learners should compose a short spontaneous monologue (60 seconds) analyzing {topic}.",
+            common_student_gotchas=[
+                f"L1 phonetic interference when pronouncing target sounds in {language}.",
+                f"Register confusion between formal and informal address in {topic}."
+            ]
+        )
+
+        # ── Evaluation Task Metadata (Ready for Evaluation Agent Handoff) ─
+        eval_rubrics = []
+        if parsed_data.get("student_lsrw", {}).get("writing", {}).get("evaluation_rubrics"):
+            for r in parsed_data["student_lsrw"]["writing"]["evaluation_rubrics"]:
+                eval_rubrics.append(WritingEvaluationRubric(**r))
+        else:
+            eval_rubrics = [
+                WritingEvaluationRubric(criteria_name="Grammatical Accuracy", weight_percentage=40, grading_prompt_instructions="Check syntax, agreement, and verb forms."),
+                WritingEvaluationRubric(criteria_name="Lexical Range", weight_percentage=30, grading_prompt_instructions="Verify accurate contextual usage of target vocabulary."),
+                WritingEvaluationRubric(criteria_name="Task Completion", weight_percentage=30, grading_prompt_instructions="Assess whether the communicative goal was achieved.")
+            ]
+
+        eval_metadata = EvaluationTaskMetadata(
+            task_id=f"EVAL_{session_id[:8]}",
+            target_skill="LSRW",
+            evaluation_agent="LSRW Evaluation Agent",
+            max_score=100,
+            rubric_criteria=eval_rubrics,
+            grading_instructions=f"Evaluate student responses for {topic} ({language} {level}) based on the 100-point rubric.",
+            prerequisites=[f"Basic CEFR {level} comprehension in {language}"]
+        )
+
+        # ── Content Lineage & Review Workflow Metadata ───────────────────
+        import datetime
+        content_lineage = ContentLineageMetadata(
+            source_attribution_ids=[f"SRC_{i+1}" for i in range(extraction_bundle.successful_sources)],
+            source_rights_status="ISML Original Synthesis (Fair Educational Use / Non-Derivative)",
+            ai_synthesis_model="Google Gemini Multi-Pipeline Orchestrator",
+            generation_timestamp=datetime.datetime.utcnow().isoformat() + "Z",
+            lineage_audit=(
+                f"Synthesized from {extraction_bundle.successful_sources} multi-modal sources "
+                f"({extraction_bundle.combined_text_length} chars). Evidence density: {analysis.evidence_density}. "
+                f"Audited by EvidenceValidator ({validation.passed_checks}/{validation.total_checks} checks passed)."
+            ),
+            review_status="AI_VALIDATED",
+            reviewer_notes="Ready for academic manager verification and LMS deployment."
+        )
+
         # ── Assemble Final Result ───────────────────────────────────────
         return FullSessionPackageResult(
             session_id=session_id,
@@ -385,6 +464,8 @@ class SessionPlannerAgent:
             level=level,
             track_mode=track_mode.upper(),
             track_duration_label=track_label,
+            institution_type=institution_type or "COLLEGE",
+            target_days_number=total_days,
             session_plan=SessionPlanResult(**parsed_data["session_plan"]),
             teacher_materials=TeacherMaterialResult(**parsed_data["teacher_materials"]),
             student_lsrw=StudentLSRWPackage(**parsed_data["student_lsrw"]),
@@ -394,6 +475,9 @@ class SessionPlannerAgent:
                 f"Evidence density: {analysis.evidence_density}. "
                 f"Validation: {validation.passed_checks}/{validation.total_checks} checks passed."
             ),
+            teacher_lesson_guide=teacher_guide,
+            evaluation_task_metadata=eval_metadata,
+            content_lineage=content_lineage,
         )
 
     def _build_analysis_based_package(

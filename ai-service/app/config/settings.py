@@ -17,7 +17,7 @@ class Settings(BaseSettings):
 
     # LLM Settings (Gemini Configuration)
     LLM_PROVIDER: str = "gemini"
-    LLM_MODEL: str = "gemini-flash-lite-latest"
+    LLM_MODEL: str = "gemini-3-flash-preview"
     GEMINI_API_KEY: Optional[str] = None
     OPENAI_API_KEY: Optional[str] = None
 

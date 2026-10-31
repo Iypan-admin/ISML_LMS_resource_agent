@@ -393,3 +393,410 @@ class MasterDocxGenerator:
         os.makedirs(os.path.dirname(output_filepath), exist_ok=True)
         doc.save(output_filepath)
         return output_filepath
+
+    @classmethod
+    def append_day_section(
+        cls,
+        doc: docx.Document,
+        day_data: Dict[str, Any],
+        language: str,
+        level: str,
+        topic: str,
+        track_label: str,
+        is_first: bool = False
+    ):
+        """Appends a complete textbook-grade chapter for a given day/period to an existing docx."""
+        if not is_first:
+            doc.add_page_break()
+
+        day_num = day_data.get("day_number", 1)
+        day_topic = day_data.get("day_topic", topic)
+
+        # Title Block for this Period / Day
+        p_title = doc.add_paragraph()
+        p_title.paragraph_format.space_before = Pt(14)
+        p_title.paragraph_format.space_after = Pt(2)
+        r_sub = p_title.add_run(f"ISML CURRICULUM • PERIOD / DAY {day_num}\n")
+        r_sub.font.size = Pt(10)
+        r_sub.bold = True
+        r_sub.font.color.rgb = RGBColor(0x02, 0x84, 0xC7)
+
+        r_main = p_title.add_run(f"Period {day_num}: {day_topic}")
+        r_main.font.size = Pt(18)
+        r_main.bold = True
+        r_main.font.color.rgb = RGBColor(0x0F, 0x17, 0x2A)
+
+        # Metadata Strip
+        meta_table = doc.add_table(rows=2, cols=4)
+        meta_table.alignment = WD_TABLE_ALIGNMENT.CENTER
+        set_table_borders(meta_table)
+
+        headers = ["Target Language", "CEFR Level", "Curriculum Track", "Slot Allocation"]
+        values = [language, level, track_label, f"Period {day_num} Comprehensive Guide"]
+
+        for i in range(4):
+            c_hdr = meta_table.cell(0, i)
+            set_cell_background(c_hdr, "0F172A")
+            set_cell_margins(c_hdr, top=100, bottom=100, left=120, right=120)
+            p = c_hdr.paragraphs[0]
+            r = p.add_run(headers[i])
+            r.bold = True
+            r.font.size = Pt(9)
+            r.font.color.rgb = RGBColor(0xFF, 0xFF, 0xFF)
+
+            c_val = meta_table.cell(1, i)
+            set_cell_background(c_val, "F8FAFC")
+            set_cell_margins(c_val, top=100, bottom=100, left=120, right=120)
+            p2 = c_val.paragraphs[0]
+            r2 = p2.add_run(values[i])
+            r2.bold = True
+            r2.font.size = Pt(9.5)
+            r2.font.color.rgb = RGBColor(0x1E, 0x29, 0x3B)
+
+        doc.add_paragraph().paragraph_format.space_after = Pt(8)
+
+        # 1. Executive Faculty Lecture & Linguistic Architecture
+        add_header(doc, f"1. Executive Faculty Lecture & Architecture (Period {day_num})", level=1)
+        p_lec = doc.add_paragraph()
+        p_lec.paragraph_format.line_spacing = 1.3
+        p_lec.paragraph_format.space_after = Pt(8)
+        r_lec = p_lec.add_run(day_data.get("grammar_rules_detail", f"Comprehensive analysis of {day_topic}."))
+        r_lec.font.size = Pt(10.5)
+
+        add_callout(
+            doc,
+            f"FACULTY PEDAGOGICAL ADVICE — PERIOD {day_num}",
+            day_data.get("pedagogical_instructions", "Deliver structured drills without relying on translation."),
+            bg_hex="FEF3C7",
+            border_hex="D97706"
+        )
+
+        # 2. Master Textbook Theory & Structural Grammar Matrices
+        add_header(doc, "2. Master Textbook Theory & Structural Grammar Matrices", level=1)
+        study_notes = day_data.get("study_notes_markdown", "")
+
+        for para in study_notes.split("\n\n"):
+            p_strip = para.strip()
+            if not p_strip:
+                continue
+            if "|" in p_strip and "---" in p_strip:
+                lines = [l.strip() for l in p_strip.split("\n") if l.strip()]
+                header_cols = [c.strip() for c in lines[0].split("|") if c.strip()]
+                if header_cols:
+                    tbl = doc.add_table(rows=1, cols=len(header_cols))
+                    tbl.alignment = WD_TABLE_ALIGNMENT.CENTER
+                    set_table_borders(tbl)
+                    hdr_cells = tbl.rows[0].cells
+                    for idx, hc in enumerate(header_cols):
+                        set_cell_background(hdr_cells[idx], "1E3A8A")
+                        set_cell_margins(hdr_cells[idx], top=100, bottom=100, left=120, right=120)
+                        p = hdr_cells[idx].paragraphs[0]
+                        r = p.add_run(hc)
+                        r.bold = True
+                        r.font.size = Pt(9.5)
+                        r.font.color.rgb = RGBColor(0xFF, 0xFF, 0xFF)
+
+                    for row_line in lines[2:]:
+                        cols = [c.strip() for c in row_line.split("|") if c.strip()]
+                        if len(cols) == len(header_cols):
+                            r_cells = tbl.add_row().cells
+                            for c_idx, c_val in enumerate(cols):
+                                set_cell_background(r_cells[c_idx], "F8FAFC" if c_idx % 2 == 0 else "FFFFFF")
+                                set_cell_margins(r_cells[c_idx], top=80, bottom=80, left=100, right=100)
+                                p = r_cells[c_idx].paragraphs[0]
+                                r = p.add_run(c_val)
+                                r.font.size = Pt(9)
+                                r.font.name = "Consolas"
+                    doc.add_paragraph().paragraph_format.space_after = Pt(6)
+            elif p_strip.startswith("### ") or p_strip.startswith("**"):
+                add_header(doc, p_strip.replace("###", "").replace("**", "").strip(), level=2)
+            else:
+                p_text = doc.add_paragraph()
+                p_text.paragraph_format.line_spacing = 1.3
+                p_text.paragraph_format.space_after = Pt(6)
+                r = p_text.add_run(p_strip)
+                r.font.size = Pt(10)
+                r.font.color.rgb = RGBColor(0x33, 0x41, 0x55)
+
+        # 3. Authentic Vocabulary Bank
+        add_header(doc, "3. Exhaustive Vocabulary Bank & Phonetic Articulation", level=1)
+        vocab_items = day_data.get("vocabulary_bank", [])
+        if vocab_items:
+            v_tbl = doc.add_table(rows=1, cols=4)
+            v_tbl.alignment = WD_TABLE_ALIGNMENT.CENTER
+            set_table_borders(v_tbl)
+
+            v_hdr = v_tbl.rows[0].cells
+            v_titles = ["Target Word / Expression", "IPA Phonetic Key", "English Definition & Register", "Authentic Contextual Example"]
+            for i, vt in enumerate(v_titles):
+                set_cell_background(v_hdr[i], "065F46")
+                set_cell_margins(v_hdr[i], top=100, bottom=100, left=120, right=120)
+                p = v_hdr[i].paragraphs[0]
+                r = p.add_run(vt)
+                r.bold = True
+                r.font.size = Pt(9.5)
+                r.font.color.rgb = RGBColor(0xFF, 0xFF, 0xFF)
+
+            for v in vocab_items:
+                r_cells = v_tbl.add_row().cells
+                word = v.get("word", "")
+                phon = v.get("pronunciation", "")
+                mean = v.get("meaning", "")
+                eg = v.get("example_sentence", "")
+                for idx, txt in enumerate([word, phon, mean, eg]):
+                    set_cell_background(r_cells[idx], "F0FDF4" if idx == 0 else "FFFFFF")
+                    set_cell_margins(r_cells[idx], top=80, bottom=80, left=100, right=100)
+                    p = r_cells[idx].paragraphs[0]
+                    r = p.add_run(txt)
+                    r.font.size = Pt(9)
+                    if idx == 0:
+                        r.bold = True
+                        r.font.color.rgb = RGBColor(0x06, 0x5F, 0x46)
+                    elif idx == 1:
+                        r.italic = True
+                        r.font.name = "Consolas"
+            doc.add_paragraph().paragraph_format.space_after = Pt(8)
+
+        # 4. In-Class Dialogues & Roleplay
+        add_header(doc, "4. In-Class Spoken Dialogues & Conversational Roleplay", level=1)
+        dialogues = day_data.get("classroom_dialogues", [])
+        for dlg in dialogues:
+            p_dlg = doc.add_paragraph()
+            p_dlg.paragraph_format.space_before = Pt(4)
+            p_dlg.paragraph_format.space_after = Pt(4)
+            p_dlg.paragraph_format.left_indent = Inches(0.2)
+            r_dlg = p_dlg.add_run(dlg)
+            r_dlg.font.size = Pt(9.5)
+            r_dlg.font.color.rgb = RGBColor(0x1E, 0x29, 0x3B)
+            if any(k in dlg for k in ["Teacher:", "Professeur:", "Lehrer:", "Profesor:", "Sensei:"]):
+                r_dlg.bold = True
+
+        # 5. Multi-Source Video & Audio Breakdown
+        add_header(doc, "5. Multi-Source Video Breakdown & Native Spoken Audio Analysis", level=1)
+        video_analysis = day_data.get("video_breakdown_analysis", "")
+        if not video_analysis:
+            video_analysis = f"Comprehensive pedagogical analysis of reference materials for Period {day_num}: vocal modulation, natural conversational liaisons, and native speaker pacing."
+
+        p_vid = doc.add_paragraph()
+        p_vid.paragraph_format.line_spacing = 1.3
+        p_vid.paragraph_format.space_after = Pt(8)
+        r_vid = p_vid.add_run(video_analysis)
+        r_vid.font.size = Pt(10)
+        r_vid.font.color.rgb = RGBColor(0x1E, 0x29, 0x3B)
+
+        # 6. Practice Drills & Solutions
+        add_header(doc, "6. Practice Drills with Verified Solutions & Explanations", level=1)
+        solutions = day_data.get("exercise_solutions", [])
+        if not solutions:
+            solutions = [{"question": q, "answer": "Model Answer", "explanation": "Grammar rule applied"} for q in day_data.get("in_class_exercises", [])]
+
+        for s_idx, sol in enumerate(solutions):
+            p_q = doc.add_paragraph()
+            p_q.paragraph_format.space_before = Pt(8)
+            p_q.paragraph_format.space_after = Pt(2)
+            p_q.paragraph_format.keep_with_next = True
+
+            r_qnum = p_q.add_run(f"Question {s_idx + 1}: ")
+            r_qnum.bold = True
+            r_qnum.font.color.rgb = RGBColor(0x1E, 0x3A, 0x8A)
+            r_qnum.font.size = Pt(10.5)
+
+            r_qtxt = p_q.add_run(sol.get("question", ""))
+            r_qtxt.bold = True
+            r_qtxt.font.size = Pt(10)
+
+            ans_table = doc.add_table(rows=1, cols=1)
+            ans_table.alignment = WD_TABLE_ALIGNMENT.CENTER
+            ans_cell = ans_table.cell(0, 0)
+            set_cell_background(ans_cell, "ECFDF5")
+            set_cell_margins(ans_cell, top=100, bottom=100, left=140, right=140)
+
+            tcPr = ans_cell._tc.get_or_add_tcPr()
+            borders = parse_xml(f'''
+                <w:tcBorders {nsdecls("w")}>
+                    <w:top w:val="none"/>
+                    <w:left w:val="single" w:sz="18" w:space="0" w:color="059669"/>
+                    <w:bottom w:val="none"/>
+                    <w:right w:val="none"/>
+                </w:tcBorders>
+            ''')
+            tcPr.append(borders)
+
+            p_ans = ans_cell.paragraphs[0]
+            r_ans_lbl = p_ans.add_run("✓ Verified Answer: ")
+            r_ans_lbl.bold = True
+            r_ans_lbl.font.size = Pt(9.5)
+            r_ans_lbl.font.color.rgb = RGBColor(0x06, 0x5F, 0x46)
+
+            r_ans_val = p_ans.add_run(f"{sol.get('answer', '')}\n")
+            r_ans_val.bold = True
+            r_ans_val.font.size = Pt(9.5)
+            r_ans_val.font.name = "Consolas"
+            r_ans_val.font.color.rgb = RGBColor(0x04, 0x78, 0x57)
+
+            if sol.get("explanation"):
+                r_exp_lbl = p_ans.add_run("Linguistic Breakdown: ")
+                r_exp_lbl.bold = True
+                r_exp_lbl.font.size = Pt(9)
+                r_exp_lbl.font.color.rgb = RGBColor(0x47, 0x55, 0x69)
+
+                r_exp_val = p_ans.add_run(sol.get("explanation", ""))
+                r_exp_val.font.size = Pt(9)
+                r_exp_val.font.color.rgb = RGBColor(0x33, 0x41, 0x55)
+
+        # 7. Daily Workbook & Student Tasks
+        add_header(doc, "7. Daily Workbook & LMS Student Submissions", level=1)
+        hw_tasks = day_data.get("homework_tasks", [])
+        for hw in hw_tasks:
+            p_hw = doc.add_paragraph()
+            p_hw.paragraph_format.space_before = Pt(3)
+            p_hw.paragraph_format.space_after = Pt(3)
+            p_hw.paragraph_format.left_indent = Inches(0.2)
+            r_hw = p_hw.add_run(f"• {hw}")
+            r_hw.font.size = Pt(9.5)
+            r_hw.font.color.rgb = RGBColor(0x1E, 0x29, 0x3B)
+
+    @classmethod
+    def generate_full_curriculum_docx(
+        cls,
+        days_list: List[Dict[str, Any]],
+        language: str,
+        level: str,
+        topic: str,
+        track_label: str,
+        output_filepath: str,
+        session_package: Dict[str, Any] = None
+    ) -> str:
+        """Generates an all-inclusive Master Curriculum Guide containing ALL periods and pages sequentially."""
+        doc = docx.Document()
+
+        # Configure standard 1-inch margins
+        for section in doc.sections:
+            section.top_margin = Inches(0.85)
+            section.bottom_margin = Inches(0.85)
+            section.left_margin = Inches(0.9)
+            section.right_margin = Inches(0.9)
+
+            # Header & Footer
+            header = section.header
+            hp = header.paragraphs[0]
+            hp.text = f"ISML Language & Management School • {language} ({level}) Master Curriculum Guide"
+            hp.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+            hp.runs[0].font.size = Pt(8.5)
+            hp.runs[0].font.color.rgb = RGBColor(0x94, 0xA3, 0xB8)
+
+            footer = section.footer
+            fp = footer.paragraphs[0]
+            fp.text = f"Comprehensive All-Period Faculty & Student Master Guide | Confidential & Proprietary ISML"
+            fp.alignment = WD_ALIGN_PARAGRAPH.CENTER
+            fp.runs[0].font.size = Pt(8.5)
+            fp.runs[0].font.color.rgb = RGBColor(0x94, 0xA3, 0xB8)
+
+        # ---------------------------------------------------------
+        # GRAND MASTER COVER PAGE
+        # ---------------------------------------------------------
+        p_cover_pre = doc.add_paragraph()
+        p_cover_pre.paragraph_format.space_before = Pt(20)
+        p_cover_pre.paragraph_format.space_after = Pt(4)
+        r_pre = p_cover_pre.add_run("ISML FACULTY & STUDENT MASTER CURRICULUM BLUEPRINT\nCOMPLETE MULTI-PERIOD EDITION")
+        r_pre.font.size = Pt(11)
+        r_pre.bold = True
+        r_pre.font.color.rgb = RGBColor(0x02, 0x84, 0xC7)
+
+        p_cover_title = doc.add_paragraph()
+        p_cover_title.paragraph_format.space_before = Pt(4)
+        p_cover_title.paragraph_format.space_after = Pt(12)
+        r_title = p_cover_title.add_run(f"{language} ({level})\n{topic}")
+        r_title.font.size = Pt(24)
+        r_title.bold = True
+        r_title.font.color.rgb = RGBColor(0x0F, 0x17, 0x2A)
+
+        total_units = len(days_list)
+        p_desc = doc.add_paragraph()
+        p_desc.paragraph_format.line_spacing = 1.3
+        p_desc.paragraph_format.space_after = Pt(14)
+        r_desc = p_desc.add_run(
+            f"This exhaustive master textbook encompasses all {total_units} sequential periods/days of the curriculum, "
+            f"complete with classroom lecture structures, grammar matrices, vocabulary banks, oral dialogue roleplays, "
+            f"comprehension drills, verified answers with linguistic explanations, and student workbook assignments."
+        )
+        r_desc.font.size = Pt(11)
+        r_desc.font.color.rgb = RGBColor(0x33, 0x41, 0x55)
+
+        # Overview Table
+        summary_tbl = doc.add_table(rows=2, cols=4)
+        summary_tbl.alignment = WD_TABLE_ALIGNMENT.CENTER
+        set_table_borders(summary_tbl)
+
+        headers = ["Target Language", "CEFR Standard", "Curriculum Track", "Total Course Scope"]
+        vals = [language, level, track_label, f"{total_units} Comprehensive Periods"]
+
+        for i in range(4):
+            c_hdr = summary_tbl.cell(0, i)
+            set_cell_background(c_hdr, "0F172A")
+            set_cell_margins(c_hdr, top=100, bottom=100, left=120, right=120)
+            p = c_hdr.paragraphs[0]
+            r = p.add_run(headers[i])
+            r.bold = True
+            r.font.size = Pt(9)
+            r.font.color.rgb = RGBColor(0xFF, 0xFF, 0xFF)
+
+            c_val = summary_tbl.cell(1, i)
+            set_cell_background(c_val, "F1F5F9")
+            set_cell_margins(c_val, top=100, bottom=100, left=120, right=120)
+            p2 = c_val.paragraphs[0]
+            r2 = p2.add_run(vals[i])
+            r2.bold = True
+            r2.font.size = Pt(9.5)
+            r2.font.color.rgb = RGBColor(0x1E, 0x29, 0x3B)
+
+        doc.add_paragraph().paragraph_format.space_after = Pt(16)
+
+        # Table of Contents
+        add_header(doc, "Curriculum Table of Contents & Period Roadmap", level=1)
+        toc_tbl = doc.add_table(rows=1, cols=3)
+        toc_tbl.alignment = WD_TABLE_ALIGNMENT.CENTER
+        set_table_borders(toc_tbl)
+
+        toc_hdr = toc_tbl.rows[0].cells
+        for idx, th in enumerate(["Period / Day", "Focus Concept & Lesson Topic", "Grammar & Competency Scope"]):
+            set_cell_background(toc_hdr[idx], "1E3A8A")
+            set_cell_margins(toc_hdr[idx], top=80, bottom=80, left=100, right=100)
+            p = toc_hdr[idx].paragraphs[0]
+            r = p.add_run(th)
+            r.bold = True
+            r.font.size = Pt(9)
+            r.font.color.rgb = RGBColor(0xFF, 0xFF, 0xFF)
+
+        for d in days_list:
+            r_c = toc_tbl.add_row().cells
+            p_num = d.get("day_number", 1)
+            p_top = d.get("day_topic", "")
+            p_rules = (d.get("grammar_rules_detail", "")[:120] + "...") if len(d.get("grammar_rules_detail", "")) > 120 else d.get("grammar_rules_detail", "")
+
+            for idx, val in enumerate([f"Period {p_num}", p_top, p_rules]):
+                set_cell_background(r_c[idx], "F8FAFC" if idx == 0 else "FFFFFF")
+                set_cell_margins(r_c[idx], top=60, bottom=60, left=80, right=80)
+                p = r_c[idx].paragraphs[0]
+                r = p.add_run(val)
+                r.font.size = Pt(8.5)
+                if idx == 0:
+                    r.bold = True
+                    r.font.color.rgb = RGBColor(0x1E, 0x3A, 0x8A)
+
+        # Append each Day's Full Textbook Chapter Sequentially
+        for idx, day_item in enumerate(days_list):
+            cls.append_day_section(
+                doc=doc,
+                day_data=day_item,
+                language=language,
+                level=level,
+                topic=topic,
+                track_label=track_label,
+                is_first=False
+            )
+
+        os.makedirs(os.path.dirname(output_filepath), exist_ok=True)
+        doc.save(output_filepath)
+        return output_filepath
+

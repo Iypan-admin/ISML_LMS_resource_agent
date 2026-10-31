@@ -234,7 +234,12 @@ class GenerationAgent:
         return '\n'.join(clean_lines)
 
     async def _call_gemini(self, prompt: str) -> Optional[str]:
-        models_to_try = [settings.LLM_MODEL, "gemini-2.0-flash", "gemini-1.5-flash", "gemini-flash-lite-latest"]
+        models_to_try = [
+            settings.LLM_MODEL,
+            "gemini-3-flash-preview",
+            "gemini-3.1-flash-lite-preview",
+            "gemma-4-26b-a4b-it",
+        ]
         api_key = settings.GEMINI_API_KEY
 
         async with httpx.AsyncClient(timeout=45.0) as client:

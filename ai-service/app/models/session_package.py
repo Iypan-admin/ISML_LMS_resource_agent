@@ -95,6 +95,33 @@ class StudentLSRWPackage(BaseModel):
     speaking: SpeakingModule
     writing: WritingModule
 
+class EvaluationTaskMetadata(BaseModel):
+    task_id: str
+    target_skill: str # "LSRW" | "SPEAKING" | "WRITING" | "LISTENING" | "READING"
+    evaluation_agent: str # "LSRW Evaluation Agent" | "Speaking Assessment Agent"
+    max_score: int = 100
+    rubric_criteria: List[WritingEvaluationRubric]
+    grading_instructions: str
+    prerequisites: Optional[List[str]] = None
+
+class TeacherLessonGuide(BaseModel):
+    allocated_duration_minutes: int = 60
+    pedagogical_pacing_tier: str = "Standard Academic Track"
+    teaching_phases: List[Dict[str, Any]] = [] # [{"phase": "Warm-up & Phonetics", "minutes": 10, "instructions": "..."}]
+    board_work_notes: str
+    remedial_activity: str
+    extension_activity: str
+    common_student_gotchas: List[str] = []
+
+class ContentLineageMetadata(BaseModel):
+    source_attribution_ids: List[str] = []
+    source_rights_status: str = "ISML Original Synthesis (Fair Educational Use)"
+    ai_synthesis_model: str = "Google Gemini Language Agent"
+    generation_timestamp: Optional[str] = None
+    lineage_audit: str = "Grounded from approved pedagogical curriculum and multi-modal sources"
+    review_status: str = "DRAFT" # DRAFT -> AI_VALIDATED -> ACADEMIC_REVIEW -> APPROVED -> PUBLISHED
+    reviewer_notes: Optional[str] = "Pending academic manager sign-off"
+
 class FullSessionPackageResult(BaseModel):
     session_id: str
     topic: str
@@ -102,7 +129,12 @@ class FullSessionPackageResult(BaseModel):
     level: str # A1, A2, B1, etc.
     track_mode: str = "STANDARD" # STANDARD (12mo), INTERNSHIP (6-8mo), SUPER_INTERNSHIP (3-5mo)
     track_duration_label: str = "12 Months (Comprehensive Track)"
+    institution_type: Optional[str] = "COLLEGE" # "SCHOOL" | "COLLEGE"
+    target_days_number: Optional[int] = 60
     session_plan: SessionPlanResult
     teacher_materials: TeacherMaterialResult
     student_lsrw: StudentLSRWPackage
     extracted_source_summary: Optional[str] = None
+    teacher_lesson_guide: Optional[TeacherLessonGuide] = None
+    evaluation_task_metadata: Optional[EvaluationTaskMetadata] = None
+    content_lineage: Optional[ContentLineageMetadata] = None

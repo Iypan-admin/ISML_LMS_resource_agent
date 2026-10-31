@@ -29,9 +29,9 @@ class InstructionDesignerAgent:
             return None
         models_to_try = [
             settings.LLM_MODEL,
-            "gemini-2.0-flash",
-            "gemini-1.5-flash",
-            "gemini-flash-lite-latest",
+            "gemini-3-flash-preview",
+            "gemini-3.1-flash-lite-preview",
+            "gemma-4-26b-a4b-it",
         ]
         seen_models = []
         for m in models_to_try:
