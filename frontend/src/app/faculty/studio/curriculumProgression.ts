@@ -6,6 +6,8 @@
 // STRICTLY ZERO HARDCODED STATIC PRE-DEFINED CONTENT OR PROMPTS.
 // =============================================================================
 
+import { getLinguisticUnit } from './curriculumLanguageBanks';
+
 export interface DayCurriculumItem {
   day_number: number;
   month_number: number;
@@ -105,32 +107,28 @@ Language: **${language}** • Certified CEFR **${level}** • Topic: **${baseTop
       classroom_dialogues: rawDay.classroom_dialogues || [],
       pedagogical_instructions: rawDay.pedagogical_instructions || `Faculty directive for ${unitLabel} (${unitMinutes} Mins • Cadence: ${weeklyCadence}/wk): prioritize authentic oral repetition, active student production, and error correction.`,
       video_breakdown_analysis: rawDay.video_breakdown_analysis || `Detailed audio/video analysis for ${unitLabel}: native pitch inflections, lip shape, and spoken nuances.`,
-      in_class_exercises: (rawDay.in_class_exercises && rawDay.in_class_exercises.length > 0)
+      in_class_exercises: (rawDay.in_class_exercises && rawDay.in_class_exercises.length >= 3)
         ? rawDay.in_class_exercises
         : [
-            `[${unitLabel} Drill 1] Construct a grammatically verified sentence in ${language} demonstrating "${rawDay.day_topic.replace(/^(Period|Session)\s*\d+:\s*/i, '')}".`,
-            `[${unitLabel} Drill 2] Convert the statement into an interactive interrogative dialogue question applying target vocabulary.`,
-            `[${unitLabel} Drill 3] Identify and correct the common inflection or pronunciation pitfall for this topic.`
-          ],
-      exercise_solutions: (rawDay.exercise_solutions && rawDay.exercise_solutions.length > 0)
+            ...(rawDay.in_class_exercises || []),
+            ...getLinguisticUnit(language, level, dayNumber).drills.map(d => d.question)
+          ].slice(0, 4),
+      exercise_solutions: ((rawDay.exercise_solutions && rawDay.exercise_solutions.length >= 3)
         ? rawDay.exercise_solutions
         : [
-            {
-              question: `[${unitLabel} Drill 1] Construct a grammatically verified sentence in ${language} demonstrating "${rawDay.day_topic.replace(/^(Period|Session)\s*\d+:\s*/i, '')}".`,
-              answer: `Model production adhering to certified CEFR ${level} syntax and active verb agreements in ${language}.`,
-              explanation: `Grounded in ${rawDay.day_topic} grammar constraints.`
-            },
-            {
-              question: `[${unitLabel} Drill 2] Convert the statement into an interactive interrogative dialogue question applying target vocabulary.`,
-              answer: `Apply standard polite inverted or modal syntax in ${language}.`,
-              explanation: `Develops situational speaking confidence and interactive listening comprehension.`
-            },
-            {
-              question: `[${unitLabel} Drill 3] Identify and correct the common inflection or pronunciation pitfall for this topic.`,
-              answer: `Demarcate silent consonants, vowel lengths, and appropriate liaison boundaries.`,
-              explanation: `Addresses high-frequency L1 negative transfer pitfalls.`
-            }
-          ],
+            ...(rawDay.exercise_solutions || []),
+            ...getLinguisticUnit(language, level, dayNumber).drills
+          ].slice(0, 4)
+      ).map((dr: any, dIdx: number) => {
+        const lsrwTags = ['[R - Reading & Syntax]', '[S - Spoken Interaction]', '[L - Auditory & Error Discrimination]', '[W - Contextual Writing]'];
+        const qText = typeof dr === 'string' ? dr : (dr.question || '');
+        const hasTag = qText.startsWith('[R') || qText.startsWith('[S') || qText.startsWith('[L') || qText.startsWith('[W');
+        return {
+          question: hasTag ? qText : `${lsrwTags[dIdx % 4]} ${qText}`,
+          answer: dr.answer || `Target solution applying CEFR ${level} syntax in ${language}.`,
+          explanation: dr.explanation || `Core grammatical milestone for this syllabus unit.`
+        };
+      }),
       homework_tasks: (rawDay.homework_tasks && rawDay.homework_tasks.length > 0) ? rawDay.homework_tasks : [
         `Complete the written exercises for ${unitLabel} applying the target syntax.`,
         "Record a 60-second voice note practicing the dialogues with correct pronunciation on the ISML portal."
@@ -381,6 +379,28 @@ Language: **${language}** • Certified CEFR **${level}** • Topic: **${baseTop
         "Préparation aux épreuves du DELF B1 : production orale (monologue suivi et débat avec l'examinateur)",
         "Bilan diagnostique et simulation complète d'examen DELF B1.3"
       ],
+      'a1': [
+        "L'alphabet français, voyelles nasales et phonétique de base",
+        "Les salutations formelles et informelles, politesse (Bonjour, Merci)",
+        "Se présenter : nom, nationalité, profession (Verbe 'Être')",
+        "Les nombres de 0 à 69 et coordonnées personnelles",
+        "Les articles définis et indéfinis (le, la, les / un, une, des)",
+        "Le genre et nombre des noms et adjectifs qualificatifs",
+        "Le verbe 'Avoir' : âge, possessions et expressions de base",
+        "Les verbes réguliers du 1er groupe en -ER au présent",
+        "La négation simple (ne... pas) et l'élision",
+        "Poser des questions : 'Est-ce que', intonation et mots interrogatifs",
+        "La famille et les proches : adjectifs possessifs (mon, ton, son)",
+        "Les jours de la semaine, les mois et donner la date",
+        "L'heure et l'emploi du temps quotidien (Quelle heure est-il ?)",
+        "Les activités quotidiennes et verbes pronominaux (se lever, se coucher)",
+        "Les goûts et préférences : aimer, adorer, détester, préférer",
+        "La nourriture, les repas et les articles partitifs (du, de la, des)",
+        "Au restaurant / au café : commander poliment et payer l'addition",
+        "La ville, les commerces et s'orienter (Où est la gare ?)",
+        "Le climat et la météo (Il fait beau/froid, il pleut)",
+        "Bilan intermédiaire et consolidation des compétences communicatives A1"
+      ],
       'b1': [
         "Le subjonctif présent et expression de la subjectivité",
         "L'hypothèse au présent et au passé avec 'Si'",
@@ -392,13 +412,40 @@ Language: **${language}** • Certified CEFR **${level}** • Topic: **${baseTop
         "Préparation aux compétences DELF B1 (LSRW)"
       ],
       default: [
-        "Structures syntaxiques fondamentales et phonétique",
-        "Conjugaison des verbes du présent et des temps composés",
-        "Formules de communication avancée et lexique thématique",
-        "Atelier d'expression orale et compréhension de documents authentiques"
+        "L'alphabet phonétique, voyelles nasales et accents",
+        "Salutations formelles et informelles, politesse",
+        "Identité personnelle, nationalités et verbe Être",
+        "Âge, possessions matérielles et verbe Avoir",
+        "Vie quotidienne et verbes réguliers en -ER",
+        "Négation absolue (ne... pas) et transformation des articles",
+        "Interrogation, mots interrogatifs et intonation",
+        "Au restaurant : commander et payer l'addition",
+        "Orientation dans la ville et prépositions spatiales"
       ]
     },
     german: {
+      'a1': [
+        "Das deutsche Alphabet, Aussprache und Diphtonge (ei, eu, au)",
+        "Begrüßung, Verabschiedung und Höflichkeitsformeln",
+        "Sich und andere vorstellen: Name, Herkunft (Verben 'sein' und 'kommen')",
+        "Zahlen von 0 bis 100, Telefonnummern und Buchstabieren",
+        "Bestimmte und unbestimmte Artikel im Nominativ (der, die, das / ein, eine)",
+        "Substantive: Großschreibung und Pluralbildung im Deutschen",
+        "Präsens der regelmäßigen Verben (wohnen, lernen, arbeiten)",
+        "Die unregelmäßigen Hilfsverben: sein und haben im Präsens",
+        "W-Fragen (Wer, Wie, Wo, Woher, Was) und Satzmelodie",
+        "Ja/Nein-Fragen und die Satzstellung im Hauptsatz (Verb an Position 2)",
+        "Familie und Freunde: Possessivartikel im Nominativ (mein, dein, sein)",
+        "Länder, Sprachen und Nationalitäten",
+        "Berufe und Arbeitsplatz: maskuline und feminine Bezeichnungen",
+        "Tageszeiten, Wochentage, Monate und Zeitangaben",
+        "Uhrzeit: formell und informell (Wie spät ist es?)",
+        "Tagesablauf und trennbare Verben im Präsens (aufstehen, anrufen)",
+        "Essen und Trinken: Wortschatz im Supermarkt und Restaurant",
+        "Der Akkusativ: den, die, das / einen, eine, ein (Möchten Sie...?)",
+        "Die Verneinung mit 'nicht' und 'kein/keine'",
+        "Zusammenfassende Wiederholung und kommunikatives Training A1"
+      ],
       'a1.1': [
         "Das deutsche Alphabet, Aussprache und Diphtonge (ei, eu, au)",
         "Begrüßung, Verabschiedung und Höflichkeitsformeln",
@@ -422,28 +469,25 @@ Language: **${language}** • Certified CEFR **${level}** • Topic: **${baseTop
         "Zusammenfassende Wiederholung und kommunikatives Training A1.1"
       ],
       default: [
-        "Grundlegende grammatische Strukturen und Phonetik",
-        "Verbkonjugation im Präsens und Satzbildung",
-        "Wortschatz für Alltagssituationen und Hörübungen",
-        "Mündliche Interaktion und schriftliche Übungen"
+        "Das deutsche Alphabet, Aussprache und Begrüßung",
+        "Sich vorstellen und Verben sein und haben",
+        "Zahlen, Uhrzeit und Tagesablauf",
+        "Artikel im Nominativ und Akkusativ",
+        "Die Satzstellung und W-Fragen",
+        "Essen, Trinken und Einkaufen im Alltag",
+        "Mündliche Interaktion und Rollenspiele"
       ]
     }
   };
 
   // Resolve curriculum syllabus topics based on selected language & level
   const langKey = language.toLowerCase();
-  const levelKey = level.toLowerCase();
+  const normalizedLevelKey = level.toLowerCase().split('/')[0].trim(); // e.g. 'a1 / l1' -> 'a1'
   const langBank = LEVEL_CURRICULUM_BANK[langKey] || LEVEL_CURRICULUM_BANK.spanish;
-  const levelTopics = langBank[levelKey] || langBank.default || [
-    `Foundational grammar and phonetics for ${baseTopic}`,
-    `Verb conjugation and sentence structures in ${language}`,
-    `Situational vocabulary and dialogue production for ${baseTopic}`,
-    `Listening comprehension and auditory drills in ${language}`,
-    `Interactive conversation and contextual speech for ${baseTopic}`,
-    `Reading analysis and textual comprehension in ${language}`,
-    `Written practice and syntax consolidation for ${baseTopic}`,
-    `Formative review and competency assessment in ${language}`
-  ];
+  const levelTopics = langBank[normalizedLevelKey] || langBank[level.toLowerCase()] || langBank.default;
+
+  // Resolve authentic linguistic unit data for language, CEFR level, and session number
+  const linguisticUnit = getLinguisticUnit(language, level, dayNumber);
 
   // Fallbacks strictly contextual to user's topic and language
   const analyzedGrammar = collectedGrammar.length > 0
@@ -452,11 +496,7 @@ Language: **${language}** • Certified CEFR **${level}** • Topic: **${baseTop
 
   const analyzedVocab = collectedVocab.length > 0
     ? collectedVocab
-    : [
-        { word: `${baseTopic} term 1`, meaning: `Core domain expression in ${language}`, pronunciation: `/${language.toLowerCase()}/`, example_sentence: `Authentic application in ${baseTopic}.` },
-        { word: `${baseTopic} term 2`, meaning: `Communicative collocation in ${language}`, pronunciation: `/${language.toLowerCase()}/`, example_sentence: `Applied spoken exchange for ${baseTopic}.` },
-        { word: `${baseTopic} term 3`, meaning: `Functional phrase in ${language}`, pronunciation: `/${language.toLowerCase()}/`, example_sentence: `Essential sentence for ${baseTopic}.` }
-      ];
+    : linguisticUnit.vocabulary;
 
   // Derive pacing & depth based on total course hours (User request: 40h short, 60h standard, 80h/100h elaborate)
   let depthTier: 'CONDENSED_FAST_TRACK' | 'BALANCED_ACADEMIC' | 'ELABORATED_MASTERY' = 'BALANCED_ACADEMIC';
@@ -488,135 +528,94 @@ Language: **${language}** • Certified CEFR **${level}** • Topic: **${baseTop
     phaseFocus = 'Spontaneous oral production, precise stylistic register, complex reasoning, and formal assessment review.';
   }
 
-  // Derive unit anchors dynamically from AI analyzed items
+  // Derive unit anchors dynamically
   const activeGrammarIndex = (dayNumber - 1) % analyzedGrammar.length;
-  const currentGrammarFocus = analyzedGrammar[activeGrammarIndex];
+  const currentGrammarFocus = collectedGrammar.length > 0 
+    ? analyzedGrammar[activeGrammarIndex] 
+    : (levelTopics[activeGrammarIndex] || linguisticUnit.grammarFocus);
+
   const activeObjectiveIndex = (dayNumber - 1) % collectedObjectives.length;
-  const currentObjective = collectedObjectives[activeObjectiveIndex];
+  const currentObjective = collectedObjectives.length > 0 && !collectedObjectives[0].startsWith('Master core')
+    ? collectedObjectives[activeObjectiveIndex]
+    : linguisticUnit.pedagogicalObjective;
 
   // Select dynamic vocabulary items for this unit
-  const v1 = analyzedVocab[(dayNumber - 1) % analyzedVocab.length];
-  const v2 = analyzedVocab[(dayNumber * 2 - 1) % analyzedVocab.length];
-  const v3 = analyzedVocab[(dayNumber * 3 - 1) % analyzedVocab.length];
+  const v1 = analyzedVocab[(dayNumber - 1) % analyzedVocab.length] || linguisticUnit.vocabulary[0];
+  const v2 = analyzedVocab[(dayNumber * 2 - 1) % analyzedVocab.length] || linguisticUnit.vocabulary[1] || v1;
+  const v3 = analyzedVocab[(dayNumber * 3 - 1) % analyzedVocab.length] || linguisticUnit.vocabulary[2] || v2;
 
   const currentVocabList = [v1, v2, v3].filter(Boolean).map((v, i) => ({
     word: v.word,
     meaning: v.meaning || `Contextual usage in ${baseTopic}`,
     pronunciation: v.pronunciation || `/${v.word.toLowerCase()}/`,
-    example_sentence: v.example_sentence || `In this unit, students apply "${v.word}" to express key concepts related to ${baseTopic}.`
+    example_sentence: v.example_sentence || `In this unit, students apply "${v.word}" to express key concepts.`
   }));
 
-  const unitTopic = `${unitLabel}: ${currentGrammarFocus}`;
+  const unitTopic = `${unitLabel}: ${collectedGrammar.length > 0 ? currentGrammarFocus : (levelTopics[activeGrammarIndex] || linguisticUnit.topic)}`;
 
   // Construct dynamic syntactic formula and paradigm matrix directly derived from inputs
   const dynamicFormula = `Unit ${dayNumber} [${depthTier}] Syntactic Rule in ${language}:\n` +
-    `  Target Pattern: [Subject / Topic Focus] + [${currentGrammarFocus}] + [Direct/Indirect Object in ${baseTopic}] + [Contextual Clause]\n` +
-    `  Grammatical Constraint: Must adhere to ${language} ${level} CEFR accuracy standards in both affirmative and interrogative forms.`;
+    `  Target Pattern: [Subject / Topic Focus] + [${currentGrammarFocus}] + [Applied Direct/Indirect Clause]\n` +
+    `  Grammatical Constraint: Must adhere to ${language} ${level} CEFR accuracy standards in affirmative, negative, and interrogative forms.`;
 
   const dynamicParadigmTable = 
-`| Structural Element | Target Form in ${language} | Applied Context (${baseTopic}) | Level Standard |
+`| Structural Element | Target Form in ${language} | Applied Context | Level Standard |
 |---|---|---|---|
 | Primary Focus | ${currentGrammarFocus} | Core thematic application for ${unitLabel} | CEFR ${level} |
-| Vocabulary Anchor 1 | ${currentVocabList[0]?.word || baseTopic} | ${currentVocabList[0]?.meaning || 'Thematic reference'} | Active Spoken Drills |
-| Vocabulary Anchor 2 | ${currentVocabList[1]?.word || baseTopic} | ${currentVocabList[1]?.meaning || 'Thematic reference'} | Applied Interaction |
-| Vocabulary Anchor 3 | ${currentVocabList[2]?.word || baseTopic} | ${currentVocabList[2]?.meaning || 'Thematic reference'} | Writing & Retention |`;
+| Vocabulary Anchor 1 | ${currentVocabList[0]?.word || 'Léxico 1'} | ${currentVocabList[0]?.meaning || 'Thematic reference'} | Active Spoken Drills |
+| Vocabulary Anchor 2 | ${currentVocabList[1]?.word || 'Léxico 2'} | ${currentVocabList[1]?.meaning || 'Thematic reference'} | Applied Interaction |
+| Vocabulary Anchor 3 | ${currentVocabList[2]?.word || 'Léxico 3'} | ${currentVocabList[2]?.meaning || 'Thematic reference'} | Writing & Retention |`;
 
   // Classroom dialogues dynamically grounded in analyzed vocabulary and context
-  const primaryWord = currentVocabList[0]?.word || baseTopic;
-  const secondaryWord = currentVocabList[1]?.word || baseTopic;
-
-  // Language-specific conversational phrases constructed dynamically around the user's topic and words
-  const buildDynamicDialogue = (lang: string, w1: string, w2: string, topicName: string) => {
-    const l = lang.toLowerCase();
-    if (l.includes('french') || l.includes('français')) {
-      return [
-        `Claire (French): "Bonjour Thomas ! Est-ce que tu peux m'expliquer comment utiliser '${w1}' dans notre leçon sur ${topicName} ?"`,
-        `Thomas (French): "Oui bien sûr ! Regarde, on utilise '${w1}' quand on commence l'action, et ensuite on ajoute '${w2}' pour compléter la phrase."`,
-        `Claire (French): "Ah d'accord ! Par exemple : 'Nous pratiquons ${w1} chaque matin pour bien maîtriser ${topicName}', c'est correct ?"`,
-        `Professeur (French): "Exactement Claire ! Très bonne prononciation. N'oubliez pas d'accorder '${w2}' selon le contexte de la conversation."`
-      ];
-    } else if (l.includes('german') || l.includes('deutsch')) {
-      return [
-        `Lukas (German): "Guten Tag Anna! Wie verwenden wir das Wort '${w1}' im Thema ${topicName} richtig?"`,
-        `Anna (German): "Ganz einfach Lukas! Wir setzen '${w1}' an die richtige Stelle im Satz und verbinden es mit '${w2}'."`,
-        `Lukas (German): "Verstehe! Also sagen wir: 'Ich lerne heute ${w1} und wiederhole ${w2} für meine Prüfung'?"`,
-        `Lehrer (German): "Ausgezeichnet! Die Satzstellung und Aussprache von '${w1}' sind perfekt. Weiter so!"`
-      ];
-    } else if (l.includes('spanish') || l.includes('español')) {
-      return [
-        `Carlos (Spanish): "¡Hola Elena! ¿Cómo aplicamos el término '${w1}' cuando hablamos de ${topicName}?"`,
-        `Elena (Spanish): "Es muy fácil Carlos. Usamos '${w1}' al inicio de la conversación y lo complementamos con '${w2}'."`,
-        `Carlos (Spanish): "¿Por ejemplo: 'Todos los días practicamos ${w1} para comunicarnos mejor sobre ${topicName}'?"`,
-        `Profesor (Spanish): "¡Excelente Carlos! Tu pronunciación de '${w1}' y el uso de '${w2}' suenan muy naturales."`
-      ];
-    } else if (l.includes('korean')) {
-      return [
-        `민수 (Korean): "지우 씨, ${topicName}에 대해 이야기할 때 '${w1}' 단어를 어떻게 쓰나요?"`,
-        `지우 (Korean): "네, 보통 문장 앞에서 '${w1}'(을/를) 말하고 뒤에 '${w2}' 문형을 연결하면 자연스러워요."`,
-        `민수 (Korean): "아, 그렇군요! '오늘 우리는 ${w1} 연습을 하고 ${w2} 문장을 만들어요', 맞나요?"`,
-        `선생님 (Korean): "아주 잘했어요! 발음도 정확하고 '${w1}' 표현도 문맥에 딱 맞습니다."`
-      ];
-    } else if (l.includes('japanese')) {
-      return [
-        `ケン (Japanese): "さくらさん、${topicName}について話すとき、'${w1}'はどう使えばいいですか？"`,
-        `さくら (Japanese): "はい、文の中で'${w1}'を使って、そのあと'${w2}'を続けるととても自然になりますよ。"`,
-        `ケン (Japanese): "なるほど！'毎日${topicName}の会話で${w1}を使って、${w2}も練習します'ですね？"`,
-        `先生 (Japanese): "素晴らしいです！発音もきれいで、'${w1}'の文法的な使い方も完璧ですよ。"`
-      ];
-    } else {
-      return [
-        `Speaker A (${language}): "Hello! Could you clarify how '${w1}' functions when discussing ${topicName}?"`,
-        `Speaker B (${language}): "Certainly! We position '${w1}' actively in the clause and connect it with '${w2}' for precision."`,
-        `Speaker A (${language}): "Understood! So in practical dialogue: 'We actively utilize ${w1} and ${w2} for fluent discourse'?"`,
-        `Instructor (${language}): "Spot on! That demonstrates certified CEFR fluency and accurate pronunciation of '${w1}'."`
-      ];
-    }
-  };
+  const primaryWord = currentVocabList[0]?.word || linguisticUnit.vocabulary[0]?.word || 'terme clé';
+  const secondaryWord = currentVocabList[1]?.word || linguisticUnit.vocabulary[1]?.word || 'expression';
 
   const classroomDialogues = (collectedDialogues.length >= 2 && !collectedDialogues[0].includes('Engaging situational dialogue'))
     ? collectedDialogues
-    : buildDynamicDialogue(language, primaryWord, secondaryWord, baseTopic);
+    : linguisticUnit.dialogue;
 
-  // Dynamic in-class exercises and solutions - Context-grounded for every day
-  const exerciseSolutions = [
-    {
-      question: `[${unitLabel} Drill 1: Syntax Construction] Construct an affirmative clause in ${language} integrating "${primaryWord}" adhering to the grammar rule: "${currentGrammarFocus}".`,
-      answer: `Accurate sentence following: ${dynamicFormula || `Subject + Target Syntax + ${primaryWord}`}`,
-      explanation: `Tests active syntactic construction and CEFR ${level} agreement in ${language}.`
-    },
-    {
-      question: `[${unitLabel} Drill 2: Dialogue Exchange] Formulate a polite conversational question applying "${secondaryWord}" when discussing ${baseTopic}.`,
-      answer: `Interrogative pattern utilizing inverted verb-subject syntax or formal question markers in ${language}.`,
-      explanation: `Develops situational speaking confidence, pragmatic tone, and auditory responsiveness.`
-    },
-    {
-      question: `[${unitLabel} Drill 3: Error Correction] Spot and rectify the structural or inflection error: "Incorrect application of ${primaryWord} without agreement in ${language}."`,
-      answer: `Correct the tense marker, gender/number inflection, or auxiliary placement according to ${currentGrammarFocus}.`,
-      explanation: `Eliminates habitual L1 mother-tongue interference errors.`
-    },
-    {
-      question: `[${unitLabel} Drill 4: Contextual Production] Compose a 2-sentence micro-dialogue between two peers on "${unitTopic}" using today's target vocabulary: ${currentVocabList.slice(0, 3).map(v => v.word).join(', ')}.`,
-      answer: `Cohesive two-turn dialogue demonstrating natural conversational liaisons and authentic CEFR ${level} register.`,
-      explanation: `Consolidates active retention and bridge to spontaneous conversational fluency.`
-    }
-  ];
+  // Dynamic in-class exercises and solutions - Authentic CEFR drills categorized across LSRW
+  const exerciseSolutions = (collectedGrammar.length > 0)
+    ? [
+        {
+          question: `[R - Reading & Syntax] Construct an affirmative clause in ${language} integrating "${primaryWord}" adhering strictly to: "${currentGrammarFocus}".`,
+          answer: `Sentence following standard syntax: Subject + ${currentGrammarFocus} + ${primaryWord}.`,
+          explanation: `Tests active reading comprehension, syntactic formulation, and CEFR ${level} agreement in ${language}.`
+        },
+        {
+          question: `[S - Spoken Interaction] Formulate an authentic conversational question applying "${secondaryWord}" in spoken discourse.`,
+          answer: `Interrogative pattern utilizing inverted verb-subject syntax or formal question markers in ${language}.`,
+          explanation: `Develops situational speaking confidence, pragmatic tone, and auditory responsiveness.`
+        },
+        {
+          question: `[L - Auditory & Error Discrimination] Identify and rectify the structural or inflection error in applying "${primaryWord}" in auditory dialogue.`,
+          answer: `Correct the tense marker, phonetic liaison, or gender/number agreement according to ${currentGrammarFocus}.`,
+          explanation: `Eliminates habitual auditory confusion and mother-tongue interference errors.`
+        },
+        {
+          question: `[W - Contextual Writing] Draft a cohesive 2-sentence micro-dialogue or written response using today's target vocabulary: ${currentVocabList.map(v => v.word).join(', ')}.`,
+          answer: `Cohesive two-turn response demonstrating natural written cohesion and authentic CEFR ${level} register.`,
+          explanation: `Consolidates active retention and bridges conceptual understanding to written communicative mastery.`
+        }
+      ]
+    : linguisticUnit.drills;
 
   const inClassExercises = exerciseSolutions.map(e => e.question);
 
   const homeworkTasks = [
     `Complete the dedicated ${unitLabel} practice sheet applying "${currentGrammarFocus}" with "${primaryWord}" in 4 distinct sentences.`,
-    `Record an audio voice response using "${primaryWord}" and "${secondaryWord}" in a simulated conversation on ${baseTopic}.`
+    `Record an audio voice response using "${primaryWord}" and "${secondaryWord}" in a simulated 60-second conversation.`
   ];
 
   if (courseHours >= 80) {
-    homeworkTasks.push(`Draft a short analytical paragraph (75-100 words) in ${language} discussing ${baseTopic} utilizing today's syntactic matrix.`);
+    homeworkTasks.push(`Draft a short analytical paragraph (75-100 words) in ${language} utilizing today's syntactic matrix.`);
   }
 
   // Synthesize complete Master Study Guide Markdown
   const studyNotesMarkdown = `### Master Study Guide: ${unitLabel} (Course Unit ${dayNumber} of ${totalDays})
 Curriculum Standard: **${courseHours} Teaching Hours** (${totalDays} x 1hr Units) • **${weeklyCadence} ${unitLabel.split(' ')[0]}s / Week**
 Scheduled Unit: **Week ${weekNum}, ${unitLabel.split(' ')[0]} ${periodInWeek} of ${weeklyCadence}** (${unitMinutes} mins / ${unitLabel.split(' ')[0].toLowerCase()})
-Language Track: **${language}** • Certified CEFR **${level}** • Topic: **${baseTopic}**
+Language Track: **${language}** • Certified CEFR **${level}** • Topic: **${linguisticUnit.topic}**
 
 **1. Course Scope & Pedagogical Pacing:**
 - **Pacing Standard**: ${pedagogicalPacing}
@@ -624,10 +623,10 @@ Language Track: **${language}** • Certified CEFR **${level}** • Topic: **${b
 - **Curriculum Progression**: ${phaseName}
 - **Phase Objective**: ${phaseFocus}
 
-**2. ${unitLabel} Dedicated Pedagogical Milestone (Source-Grounded):**
+**2. ${unitLabel} Dedicated Pedagogical Milestone:**
 - **Core Grammar Target**: ${currentGrammarFocus}
 - **Competency Milestone**: ${currentObjective}
-- **Thematic Domain**: ${baseTopic}
+- **Thematic Domain**: ${linguisticUnit.topic}
 
 **3. Active Syntactic Architecture & Word Order Formula:**
 \`\`\`text
@@ -654,31 +653,29 @@ Conduct structured guided drills where learners actively construct original sent
     week_number: weekNum,
     module_week: `Week ${weekNum} • ${unitLabel.split(' ')[0]} ${periodInWeek}/${weeklyCadence} (${unitLabel} of ${totalDays})`,
     day_topic: unitTopic,
-    grammar_rules_detail: `Senior Faculty Lecture for ${unitLabel} (Week ${weekNum}, ${weeklyCadence} ${unitLabel.split(' ')[0]}s/wk): Core Target: ${currentGrammarFocus}. Grounded in ${courseHours}-hour curriculum syllabus (${depthTier}). Systematically builds long-term retention through structured drills, auditory discrimination, and contextual discourse in ${baseTopic}.`,
+    grammar_rules_detail: (collectedGrammar.length > 0)
+      ? `Senior Faculty Lecture for ${unitLabel} (Week ${weekNum}, ${weeklyCadence} ${unitLabel.split(' ')[0]}s/wk): Core Target: ${currentGrammarFocus}. Grounded in ${courseHours}-hour curriculum syllabus (${depthTier}).`
+      : `${currentGrammarFocus}. Objectif pédagogique : ${currentObjective}`,
     study_notes_markdown: studyNotesMarkdown,
     vocabulary_bank: currentVocabList,
     classroom_dialogues: classroomDialogues,
-    pedagogical_instructions: `Faculty Directive for ${unitLabel} (${unitMinutes} Mins • Cadence: ${weeklyCadence}/wk): Conduct active oral repetition of key target items (${currentVocabList.map(v => v.word).join(', ')}). Rectify syntax and pronunciation immediately during live production.`,
-    video_breakdown_analysis: `Audio/Video Analysis for ${unitLabel}: Detailed breakdown of native pitch accent, vocal inflections, and communicative pragmatics for ${baseTopic}.`,
+    pedagogical_instructions: `Faculty Directive for ${unitLabel} (${unitMinutes} Mins • Cadence: ${weeklyCadence}/wk): Conduct active oral repetition of target items (${currentVocabList.map(v => v.word).join(', ')}). Rectify syntax and pronunciation immediately during live production.`,
+    video_breakdown_analysis: `Audio/Video Analysis for ${unitLabel}: Detailed breakdown of native pitch accent, vocal inflections, and communicative pragmatics for ${linguisticUnit.topic}.`,
     in_class_exercises: inClassExercises,
     exercise_solutions: exerciseSolutions,
     homework_tasks: homeworkTasks,
     // Dual Output Architecture: Populated Dedicated Teacher Breakdown
     teacher_lesson_breakdown: {
       allocated_minutes: unitMinutes,
-      phases: [
-        { phase: '1. Phonetic Warm-Up & Pronunciation', minutes: Math.max(5, Math.round(unitMinutes * 0.15)), instruction: `Auditory discrimination and native repetition for ${currentVocabList.map(v => v.word).join(', ')}.` },
-        { phase: '2. Concept Architecture & Grammar Lecture', minutes: Math.max(15, Math.round(unitMinutes * 0.35)), instruction: `Explicit breakdown of ${currentGrammarFocus} with board paradigm matrix.` },
-        { phase: '3. Guided Pair Discourse & Drills', minutes: Math.max(15, Math.round(unitMinutes * 0.30)), instruction: `Students enact live classroom dialogues practicing oral fluency.` },
-        { phase: '4. Formative Wrap-Up & Retention Task', minutes: Math.max(5, Math.round(unitMinutes * 0.20)), instruction: `Review common L1 pitfalls, assign homework, and conduct rapid exit-ticket Q&A.` }
-      ],
-      board_notes: `Blackboard Equation: [Subject Focus] + [${currentGrammarFocus}] + [Applied ${primaryWord}] in ${language} (${level}).`,
-      remedial_activity: `Learners struggling with word order construct 3 short affirmative clauses using "${primaryWord}".`,
-      extension_activity: `Advanced learners conduct an unscripted 60-second roleplay presenting ${baseTopic} with "${secondaryWord}".`,
-      common_gotchas: [
-        `Phonetic interference on silent letters or liaison boundaries in ${language}.`,
-        `Subject-verb inflection mismatch when conjugating around "${primaryWord}".`
-      ]
+      phases: linguisticUnit.teacherPhases.map(p => ({
+        phase: p.phase,
+        minutes: Math.max(5, Math.round(unitMinutes * p.minutesRatio)),
+        instruction: p.instruction
+      })),
+      board_notes: linguisticUnit.boardNotes,
+      remedial_activity: linguisticUnit.remedialActivity,
+      extension_activity: linguisticUnit.extensionActivity,
+      common_gotchas: linguisticUnit.commonGotchas
     },
     // Dual Output Architecture: Populated Dedicated Student LSRW Practice
     student_lsrw_practice: {
@@ -687,29 +684,25 @@ Conduct structured guided drills where learners actively construct original sent
         practice_prompt: `Compose an authentic contextual sentence using "${v.word}" demonstrating CEFR ${level} production.`
       })),
       grammar_exercise: {
-        instruction: `Fill in the blank using the correct structural inflection for "${currentGrammarFocus}":`,
+        instruction: `Fill in the blank using the correct structural form for "${currentGrammarFocus}":`,
         fill_in_blanks: [
-          `1. ________ [Subject marker] + (${primaryWord}) + clause.`,
-          `2. Applying (${secondaryWord}) in formal register: ________.`
+          `1. Complétez avec la forme correcte : (${primaryWord}) ________.`,
+          `2. Expression en contexte formel : ________ (${secondaryWord}).`
         ],
-        answer_key: `Adheres to the target syntactic constraint: ${dynamicFormula.split('\n')[1]}`
+        answer_key: `Conforme à la règle syntaxique : ${currentGrammarFocus}`
       },
       listening_audio_script: {
-        scene: `Native Situational Exchange on ${baseTopic} (${language})`,
+        scene: `Native Situational Exchange on ${linguisticUnit.topic} (${language})`,
         dialogue_lines: classroomDialogues,
-        comprehension_check: `What is the speaker expressing regarding "${primaryWord}" in this interaction?`
+        comprehension_check: linguisticUnit.listeningCheck
       },
       speaking_prompt: {
-        situation: `Imagine you are conversing with a native speaker about ${baseTopic}.`,
-        guiding_cues: [
-          `Incorporate target term "${primaryWord}" naturally.`,
-          `Apply the grammatical structure "${currentGrammarFocus}".`,
-          `Maintain polite CEFR ${level} conversational register.`
-        ],
-        sample_model: `Exemplary oral response model: "${classroomDialogues[0] || primaryWord}"`
+        situation: linguisticUnit.speakingCue.situation,
+        guiding_cues: linguisticUnit.speakingCue.cues,
+        sample_model: linguisticUnit.speakingCue.sample
       },
       writing_task: {
-        task: `Write a short 50-75 word paragraph in ${language} describing ${baseTopic} using today's target vocabulary (${primaryWord}, ${secondaryWord}).`,
+        task: linguisticUnit.writingPrompt,
         rubric_summary: `Scored out of 100 on Grammatical Accuracy (40%), Lexical Range (30%), and Communicative Task Completion (30%) by the ISML LSRW Evaluation Agent.`
       }
     }

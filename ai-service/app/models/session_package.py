@@ -138,3 +138,4 @@ class FullSessionPackageResult(BaseModel):
     teacher_lesson_guide: Optional[TeacherLessonGuide] = None
     evaluation_task_metadata: Optional[EvaluationTaskMetadata] = None
     content_lineage: Optional[ContentLineageMetadata] = None
+    raw_source_context: Optional[str] = None

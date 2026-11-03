@@ -84,7 +84,7 @@ class SessionPlannerAgent:
                 "generationConfig": {
                     "temperature": 0.2,
                     "maxOutputTokens": max_tokens,
-                    "response_mime_type": "application/json"
+                    "responseMimeType": "application/json"
                 },
             }
 
@@ -478,6 +478,7 @@ class SessionPlannerAgent:
             teacher_lesson_guide=teacher_guide,
             evaluation_task_metadata=eval_metadata,
             content_lineage=content_lineage,
+            raw_source_context=source_context or "",
         )
 
     def _build_analysis_based_package(

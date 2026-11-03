@@ -29,6 +29,7 @@ class InputValidationResult(BaseModel):
     unreachable_urls: List[Dict[str, Any]] = []
     valid_source_count: int = 0
     message: str = "Validation successful"
+    extracted_source_context: Optional[str] = None
 
 
 @router.post("/validate-inputs", response_model=InputValidationResult)
@@ -149,13 +150,20 @@ async def validate_session_inputs(
             message=f"{len(unreachable_urls)} reference link(s) could not be analyzed due to security/subtitle restrictions."
         )
 
+    # Build full grounded source context from uploaded materials
+    combined_context_parts = []
+    for item in text_samples:
+        combined_context_parts.append(f"[{item.get('name', 'Material')}]:\n{item.get('content', '')[:10000]}")
+    combined_extracted_text = "\n\n".join(combined_context_parts)
+
     return InputValidationResult(
         is_valid=True,
         language_mismatch=False,
         has_unreachable_urls=False,
         unreachable_urls=[],
         valid_source_count=valid_source_count,
-        message="All uploaded materials and reference links verified successfully."
+        message="All uploaded materials and reference links verified successfully.",
+        extracted_source_context=combined_extracted_text
     )
 
 
@@ -513,14 +521,16 @@ class RefineBlueprintRequest(BaseModel):
     topic: str
     active_module: Optional[int] = 1
     days: List[Dict[str, Any]]
+    source_context: Optional[str] = None
 
 @router.post("/refine-blueprint")
 async def refine_blueprint(req: RefineBlueprintRequest):
     """
     Intelligent Pedagogical Co-Pilot Agent:
-    Takes natural language instructions from the tutor (e.g. 'Add focus on past tense in Module 2',
-    'Include more conversational restaurant dialogue questions', 'Make period 5 focus on numbers 1-100'),
-    analyzes the request, reasons about the pedagogical structure, and modifies the target days accordingly.
+    Takes natural language instructions from the tutor (e.g. 'Generate 20 practice questions from the uploaded materials',
+    'indha practice ques pidikala, vera 20 ques kudu', 'replace questions with exercises on etre, avoir, aller'),
+    analyzes the request, reasons about the pedagogical structure and user's uploaded materials,
+    and returns dedicated individual exercise items with verified solutions grounded in the source text.
     """
     import json
     import httpx
@@ -536,25 +546,58 @@ async def refine_blueprint(req: RefineBlueprintRequest):
             "day_number": d.get("day_number"),
             "day_topic": d.get("day_topic"),
             "grammar_rules_detail": d.get("grammar_rules_detail", ""),
+            "existing_exercises": d.get("in_class_exercises", [])[:5]
         })
 
-    system_instruction = f"""You are the ISML Academic Curriculum Co-Pilot Agent.
-You are assisting a university/school faculty in refining an institutional language course ({req.language} CEFR {req.level}).
-Topic: {req.topic}
+    source_evidence_section = ""
+    if req.source_context and req.source_context.strip():
+        source_evidence_section = f"\nUSER UPLOADED SOURCE MATERIAL CONTENT (GROUND TRUTH):\n{req.source_context[:10000]}\n"
 
-The tutor gave you this instruction to modify/adjust the syllabus blueprint:
+    system_instruction = f"""You are the ISML Academic Curriculum Co-Pilot Agent.
+You are assisting an institutional language faculty in modifying an institutional course ({req.language} CEFR {req.level}).
+Topic: {req.topic}
+{source_evidence_section}
+USER INSTRUCTION:
 "{req.user_prompt}"
 
 INSTRUCTIONS:
-1. Analyze the user prompt carefully: determine which module or periods need modification (or all if general).
-2. Make intelligent, pedagogical decisions aligned with CEFR standards for {req.language} {req.level}.
-3. Return a JSON object with:
-   - "agent_reply": A professional, helpful message in 1-2 sentences explaining what changes you made.
-   - "updated_days": An array of day objects that were modified or needs update. Each object MUST have:
+1. STRICT SOURCE GROUNDING:
+   - Ground all vocabulary, examples, sentences, verbs, grammar rules, lecture notes, and answers directly in the user's uploaded source material and the CEFR {req.level} standards for {req.language}.
+   - Do NOT produce vague placeholders like "[Answer requires model generation]". Everything generated MUST be authentic, rigorous, and verified.
+2. DYNAMIC CONTENT & SECTION UPDATES:
+   - The user may request updates to ANY part of the period/curriculum:
+     * Practice questions / Drills (e.g. 5, 10, 20, 50 questions)
+     * Grammar lecture / structural explanations (grammar_rules_detail)
+     * Topic name / Session focus (day_topic)
+     * Study Notes / Master Guide Markdown (study_notes_markdown)
+     * Vocabulary Bank (vocabulary_bank: list of {{"word": "...", "meaning": "...", "pronunciation": "...", "example_sentence": "..."}})
+     * Classroom Dialogues (classroom_dialogues: list of native dialogue turns)
+     * Listening Comprehension Script & Questions (student_lsrw_practice.listening_audio_script)
+     * Speaking Prompts / Roleplay (student_lsrw_practice.speaking_prompt)
+     * Homework tasks (homework_tasks)
+     * Teacher lesson breakdown / Blackboard notes (teacher_lesson_breakdown)
+   - Accurately apply whatever modification the user requested to the specified period(s).
+3. INDIVIDUAL NUMBERED ITEMS FOR DRILLS:
+   - When practice questions are requested, generate EACH question as a SEPARATE item in "exercise_solutions" array!
+   - Each item in "exercise_solutions" must be:
+     {{
+       "question": "1. [Question sentence]",
+       "answer": "[Exact verified answer]",
+       "explanation": "[Linguistic / grammar explanation]"
+     }}
+4. Return a JSON object with:
+   - "agent_reply": A professional, friendly message (1-2 sentences) explaining what was modified and updated.
+   - "updated_days": An array of modified day objects. Each day object can include:
        - "day_number": integer
-       - "day_topic": string (e.g. "Period X: [New topic name in target language or English]")
-       - "grammar_rules_detail": string (short pedagogical focus / grammar target)
-       - "practice_question": string (an authentic exercise question in target language)
+       - "day_topic": string (optional, if topic or name changed)
+       - "grammar_rules_detail": string (optional, if grammar lecture changed)
+       - "study_notes_markdown": string (optional, if master notes updated)
+       - "vocabulary_bank": array of objects with "word", "meaning", "pronunciation", "example_sentence" (optional, if vocab updated)
+       - "classroom_dialogues": array of strings (optional, if dialogues updated)
+       - "homework_tasks": array of strings (optional, if homework updated)
+       - "in_class_exercises": array of strings (the individual exercise questions)
+       - "exercise_solutions": array of objects with {{"question": string, "answer": string, "explanation": string}}
+       - "student_lsrw_practice": object with optional updated listening_audio_script, speaking_prompt, writing_task, grammar_exercise
 
 Return ONLY a valid JSON object without markdown fences, or wrapped in standard ```json ```.
 """
@@ -573,7 +616,7 @@ Return ONLY a valid JSON object without markdown fences, or wrapped in standard 
         ],
         "generationConfig": {
             "temperature": 0.2,
-            "maxOutputTokens": 3000,
+            "maxOutputTokens": 6000,
             "responseMimeType": "application/json"
         }
     }
@@ -608,6 +651,132 @@ Return ONLY a valid JSON object without markdown fences, or wrapped in standard 
         "agent_reply": f"Applied your pedagogical adjustment: '{req.user_prompt}' to the curriculum blueprint.",
         "updated_days": updated
     }
+
+class ChatCurriculumMessage(BaseModel):
+    role: str  # 'user' | 'assistant'
+    content: str
+
+class ChatCurriculumRequest(BaseModel):
+    messages: List[ChatCurriculumMessage]
+    language: str
+    level: str
+    topic: str
+    curriculum_context: Dict[str, Any]
+    active_period: Optional[int] = None
+    source_context: Optional[str] = None
+
+@router.post("/chat-curriculum")
+async def chat_curriculum_agent(req: ChatCurriculumRequest):
+    """
+    Normal ChatGPT/Gemini/Claude style Conversational AI Assistant:
+    Has full institutional curriculum memory (syllabus, modules, periods, grammar rules, exercises)
+    AND full raw user uploaded source material (PDF, Docs, Videos, Transcripts).
+    Maintains multi-turn conversation history and responds intelligently to any user question,
+    practice request, vocabulary queries, or explanations dynamically grounded in the user's materials.
+    """
+    import json
+    import httpx
+    from app.config.settings import settings
+
+    if not req.messages:
+        raise HTTPException(status_code=400, detail="Messages cannot be empty.")
+
+    # Format Curriculum Memory Context into LLM System Instruction
+    ctx = req.curriculum_context or {}
+    session_title = ctx.get("session_title", req.topic)
+    overview = ctx.get("curriculum_overview_summary", "")
+    objectives = ctx.get("learning_objectives", [])
+    grammar_focus = ctx.get("grammar_focus", [])
+    days_summary = []
+
+    # Extract up to 60 days summary for memory grounding
+    raw_days = ctx.get("day_wise_syllabus", []) or ctx.get("all_days", []) or []
+    for d in raw_days[:60]:
+        days_summary.append({
+            "period": d.get("day_number"),
+            "topic": d.get("day_topic"),
+            "grammar": d.get("grammar_rules_detail", "")[:120],
+            "sample_vocab": [v.get("word") if isinstance(v, dict) else v for v in (d.get("vocabulary_bank") or [])[:3]],
+            "sample_drill": (d.get("in_class_exercises") or [""])[0]
+        })
+
+    source_evidence_section = ""
+    if req.source_context and req.source_context.strip():
+        source_evidence_section = f"\n=== USER UPLOADED MATERIALS & EVIDENCE (PRIMARY GROUND TRUTH) ===\n{req.source_context[:15000]}\n"
+
+    system_instruction = f"""You are the ISML Senior Academic AI Assistant & Dynamic Curriculum Chatbot (ChatGPT/Gemini/Claude style interactive tutor).
+Target Language: {req.language}
+Target CEFR Level: {req.level}
+Course Topic / Focus: {req.topic}
+Session Title: {session_title}
+Active Inspected Period: {req.active_period if req.active_period else "Whole Course"}
+{source_evidence_section}
+CURRICULUM MEMORY INGESTION (Ground truth from generated syllabus):
+- Overview: {overview}
+- Core Objectives: {json.dumps(objectives, ensure_ascii=False)}
+- Core Grammar Focus: {json.dumps(grammar_focus, ensure_ascii=False)}
+- Complete Days & Periods Outline:
+{json.dumps(days_summary, ensure_ascii=False, indent=2)}
+
+YOUR ROLE & CRITICAL INSTRUCTIONS:
+1. STRICT SOURCE-GROUNDED DYNAMIC RESPONSES:
+   - Base all answers, questions, vocabulary items, dialogues, and explanations directly on the user's uploaded materials and the generated curriculum memory.
+   - Do NOT give generic or blind responses. Use the exact vocabulary, verbs, phrases, and scenarios present in the user's uploaded evidence and curriculum memory.
+2. DYNAMIC QUESTIONS & DRILLS:
+   - When asked for practice questions, generate authentic exercises derived specifically from the user's materials with verified solutions and explanations.
+3. CONVERSATIONAL & PEDAGOGICALLY RIGOROUS:
+   - Maintain a friendly, supportive, yet rigorous CEFR {req.level} academic tone.
+   - Format responses cleanly with markdown headings, bold terms, phonetic tips, and translations where helpful.
+"""
+
+    # Build Gemini multi-turn contents format
+    gemini_contents = []
+    gemini_contents.append({
+        "role": "user",
+        "parts": [{"text": f"SYSTEM INSTRUCTION & CURRICULUM MEMORY:\n{system_instruction}\n\nPlease acknowledge receipt of curriculum memory."}]
+    })
+    gemini_contents.append({
+        "role": "model",
+        "parts": [{"text": f"Understood! I have fully ingested the complete {req.language} ({req.level}) curriculum memory for '{req.topic}' ({len(days_summary)} periods). How can I help you today?"}]
+    })
+
+    for m in req.messages:
+        role = "user" if m.role == "user" else "model"
+        gemini_contents.append({
+            "role": role,
+            "parts": [{"text": m.content}]
+        })
+
+    model_name = settings.LLM_MODEL or "gemini-2.5-flash"
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={settings.GEMINI_API_KEY}"
+
+    payload = {
+        "contents": gemini_contents,
+        "generationConfig": {
+            "temperature": 0.4,
+            "maxOutputTokens": 2500,
+        }
+    }
+
+    try:
+        async with httpx.AsyncClient(timeout=45.0) as client:
+            resp = await client.post(url, json=payload)
+            if resp.status_code == 200:
+                data = resp.json()
+                cand = data.get("candidates", [])
+                if cand:
+                    reply_text = cand[0]["content"]["parts"][0]["text"].strip()
+                    return {"reply": reply_text, "status": "success"}
+    except Exception as e:
+        logger.warning(f"Curriculum Chat LLM call failed: {e}")
+
+    # Fallback response if API call fails
+    last_user_msg = req.messages[-1].content
+    return {
+        "reply": f"Based on the {req.language} ({req.level}) curriculum memory for '{req.topic}': Regarding your query '{last_user_msg}', the course structure covers this in depth with active LSRW dialogues and verified practice exercises. (AI Assistant offline fallback mode).",
+        "status": "fallback"
+    }
+
 
 
 

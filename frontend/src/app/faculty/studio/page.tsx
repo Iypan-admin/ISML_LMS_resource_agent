@@ -81,7 +81,7 @@ export default function FacultyStudioPage() {
   const [schoolLevel, setSchoolLevel] = useState<string>('A1.1');
   const [collegeTrack, setCollegeTrack] = useState<CollegeTrackKey>('STANDARD');
 
-  const [selectedLanguage, setSelectedLanguage] = useState<'Spanish' | 'German' | 'French' | 'Japanese' | 'Korean'>('Spanish');
+  const [selectedLanguage, setSelectedLanguage] = useState<'Spanish' | 'German' | 'French' | 'Japanese' | 'Korean' | ''>('');
   const [selectedLevel, setSelectedLevel] = useState('A1');
   const [selectedTrack, setSelectedTrack] = useState<'STANDARD' | 'INTERNSHIP' | 'SUPER_INTERNSHIP' | 'CUSTOM'>('CUSTOM');
   const [customDays, setCustomDays] = useState<number | ''>(5);
@@ -180,9 +180,10 @@ export default function FacultyStudioPage() {
   const [syncStatus, setSyncStatus] = useState<string | null>(null);
   const [copiedNotes, setCopiedNotes] = useState(false);
   const [outputMode, setOutputMode] = useState<'TEACHER' | 'STUDENT'>('TEACHER');
-  // Multi-step Wizard: 1 = Stream & Language, 2 = Topic & Presets, 3 = Materials & Generate
-  const [wizardStep, setWizardStep] = useState<1 | 2 | 3>(1);
+  // Store real-time interactive prompt modifications (practice questions, drills, topics) for periods
+  const [periodOverrides, setPeriodOverrides] = useState<Record<number, any>>({});
   const [proposedPlanner, setProposedPlanner] = useState<any | null>(null);
+  const [plannerLoading, setPlannerLoading] = useState(false);
   const [plannerConfirmed, setPlannerConfirmed] = useState(false);
   const [isEditingPlanner, setIsEditingPlanner] = useState(false);
   const [plannerActiveModule, setPlannerActiveModule] = useState<number>(1);
@@ -190,6 +191,7 @@ export default function FacultyStudioPage() {
   const [coPilotPrompt, setCoPilotPrompt] = useState<string>('');
   const [coPilotLoading, setCoPilotLoading] = useState<boolean>(false);
   const [coPilotResponse, setCoPilotResponse] = useState<string | null>(null);
+  const [isCoPilotOpen, setIsCoPilotOpen] = useState<boolean>(false);
   const [isFullScreen, setIsFullScreen] = useState(false);
   const [mounted, setMounted] = useState(false);
 
@@ -201,6 +203,129 @@ export default function FacultyStudioPage() {
   const [savedSessions, setSavedSessions] = useState<any[]>([]);
   const [historySearch, setHistorySearch] = useState('');
   const [loadingHistory, setLoadingHistory] = useState(false);
+  // Track currently active loaded saved session - chat bot is only enabled when a saved session is loaded
+  const [activeSavedSession, setActiveSavedSession] = useState<any | null>(null);
+
+  // 💬 Multi-turn Conversational AI Assistant (ChatGPT / Gemini / Claude memory pipeline)
+  const [isChatOpen, setIsChatOpen] = useState(false);
+  const [isChatFullscreen, setIsChatFullscreen] = useState(false);
+  const [showSelectSessionModal, setShowSelectSessionModal] = useState(false);
+  const [curriculumChatMessages, setCurriculumChatMessages] = useState<Array<{role: 'user' | 'assistant', content: string}>>([
+    {
+      role: 'assistant',
+      content: 'Hello! I am your ISML Academic AI Assistant. I have the entire curriculum memory loaded. Ask me any questions, request extra oral/written practice drills, or ask for pedagogical lesson explanations!'
+    }
+  ]);
+  const [curriculumChatInput, setCurriculumChatInput] = useState('');
+  const [curriculumChatLoading, setCurriculumChatLoading] = useState(false);
+  const chatMessagesEndRef = useRef<HTMLDivElement | null>(null);
+
+  // Update default assistant welcome message dynamically whenever language, topic, or materials change
+  useEffect(() => {
+    const curLang = activeSavedSession?.language || proposedPlanner?.language || selectedLanguage;
+    const curLevel = activeSavedSession?.level || proposedPlanner?.level || selectedLevel;
+    const curTopic = activeSavedSession?.title || activeSavedSession?.topic || proposedPlanner?.topic || topic || 'Curriculum Syllabus';
+    const totalPeriodsCount = activeSavedSession?.sessionPlanJson?.all_days?.length || proposedPlanner?.total_days || (sessionPackage?.session_plan?.all_days?.length || 0);
+    
+    // Authentic native greetings based on language
+    const NATIVE_GREETINGS: Record<string, string> = {
+      Spanish: '¡Hola!',
+      French: 'Bonjour !',
+      German: 'Hallo!',
+      Japanese: 'こんにちは！',
+      Korean: '안녕하세요!'
+    };
+    const greetingWord = NATIVE_GREETINGS[curLang] || 'Hello!';
+
+    const hasSource = Boolean(sessionPackage?.raw_source_context || proposedPlanner?.extracted_source_context || uploadedFiles.length > 0 || activeSavedSession?.sourceUrl);
+    const materialNote = hasSource 
+      ? 'grounded directly in your uploaded study materials and institutional curriculum' 
+      : 'with complete curriculum memory loaded';
+
+    const periodsLabel = totalPeriodsCount > 0 ? ` (${totalPeriodsCount} periods memory)` : '';
+
+    setCurriculumChatMessages(prev => {
+      // If user hasn't started talking yet (only 1 greeting message), keep greeting dynamic
+      if (prev.length <= 1) {
+        return [{
+          role: 'assistant',
+          content: `${greetingWord} I am your ISML Academic AI Assistant for ${curLang} ${curLevel}${periodsLabel}.\n\nI have fully ingested your curriculum for **"${curTopic}"**, ${materialNote}. What would you like to explore? You can request authentic oral/written drills, vocabulary explanations, or pedagogical lesson steps!`
+        }];
+      }
+      return prev;
+    });
+  }, [selectedLanguage, selectedLevel, topic, proposedPlanner, sessionPackage, uploadedFiles.length, activeSavedSession]);
+
+  useEffect(() => {
+    if (isChatOpen) {
+      chatMessagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }
+  }, [curriculumChatMessages, isChatOpen]);
+
+  const handleSendCurriculumChat = async (e?: React.FormEvent, customPrompt?: string) => {
+    if (e) e.preventDefault();
+    const promptToSend = customPrompt || curriculumChatInput;
+    if (!promptToSend.trim() || curriculumChatLoading) return;
+
+    const userMsg = { role: 'user' as const, content: promptToSend.trim() };
+    const updatedMessages = [...curriculumChatMessages, userMsg];
+    setCurriculumChatMessages(updatedMessages);
+    if (!customPrompt) setCurriculumChatInput('');
+    setCurriculumChatLoading(true);
+
+    const activeCurriculum = sessionPackage?.session_plan || proposedPlanner || activeSavedSession?.sessionPlanJson;
+
+    const effectiveSourceContext = sessionPackage?.raw_source_context || 
+      sessionPackage?.extracted_source_summary || 
+      proposedPlanner?.extracted_source_context || 
+      activeSavedSession?.sourceUrl || 
+      '';
+
+    const effectiveLanguage = activeSavedSession?.language || sessionPackage?.language || proposedPlanner?.language || selectedLanguage;
+    const effectiveLevel = activeSavedSession?.level || sessionPackage?.level || proposedPlanner?.level || selectedLevel;
+    const effectiveTopic = activeSavedSession?.title || activeSavedSession?.topic || sessionPackage?.topic || proposedPlanner?.topic || topic || 'Curriculum Blueprint';
+
+    try {
+      const res = await fetch('http://localhost:8000/api/v1/sessions/chat-curriculum', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          messages: updatedMessages,
+          curriculum_context: activeCurriculum || null,
+          language: effectiveLanguage,
+          level: effectiveLevel,
+          topic: effectiveTopic,
+          source_context: effectiveSourceContext,
+          active_period: activeDayDetail || 1
+        })
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        const replyText = data.agent_reply || data.reply || "I have analyzed your curriculum memory.";
+        setCurriculumChatMessages(prev => [...prev, { role: 'assistant', content: replyText }]);
+      } else {
+        setCurriculumChatMessages(prev => [
+          ...prev,
+          {
+            role: 'assistant',
+            content: "Sorry, I encountered an issue communicating with the AI service. Please verify the AI Service is running on port 8000."
+          }
+        ]);
+      }
+    } catch (err) {
+      setCurriculumChatMessages(prev => [
+        ...prev,
+        {
+          role: 'assistant',
+          content: "Network error connecting to the AI Assistant. Please ensure the backend AI service is active on http://localhost:8000."
+        }
+      ]);
+    } finally {
+      setCurriculumChatLoading(false);
+    }
+  };
+
 
   // Load past curriculum sessions from Database with seamless localStorage fallback
   const fetchSavedSessions = async () => {
@@ -283,9 +408,10 @@ export default function FacultyStudioPage() {
     setTopic('');
     setSourceUrls(['']);
     setUploadedFiles([]);
-    setWizardStep(1);
     setCoPilotPrompt('');
     setCoPilotResponse(null);
+    setActiveSavedSession(null);
+    setIsChatOpen(false);
     setActivePipelineStage('A');
     try {
       localStorage.removeItem('isml_last_curriculum_blueprint');
@@ -478,16 +604,17 @@ export default function FacultyStudioPage() {
     }
   };
 
-  const handleLanguageChange = (lang: 'Spanish' | 'German' | 'French' | 'Japanese' | 'Korean') => {
+  const handleLanguageChange = (lang: 'Spanish' | 'German' | 'French' | 'Japanese' | 'Korean' | '') => {
     setSelectedLanguage(lang);
     setMismatchError(null);
     setProposedPlanner(null);
     setSessionPackage(null);
     setIsEditingPlanner(false);
-    const availableLevels = LANGUAGE_LEVEL_MAP[lang].levels;
-    // Auto-select beginner level for that language if current level is not valid
-    if (!availableLevels.includes(selectedLevel)) {
-      setSelectedLevel(availableLevels[0]);
+    if (lang && LANGUAGE_LEVEL_MAP[lang]) {
+      const availableLevels = LANGUAGE_LEVEL_MAP[lang].levels;
+      if (!availableLevels.includes(selectedLevel)) {
+        setSelectedLevel(availableLevels[0]);
+      }
     }
   };
 
@@ -525,6 +652,15 @@ export default function FacultyStudioPage() {
     setUnreachableLinksPrompt(null);
     setSessionPackage(null);
     setProposedPlanner(null);
+
+    // Required check: language must be selected
+    if (!selectedLanguage) {
+      setMismatchError('Target Language is required. Please select a language before reviewing the lesson planner.');
+      setTimeout(() => {
+        errorAlertRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }, 50);
+      return;
+    }
 
     // 0. Instant Client-Side Filename & Topic Language Audit
     const targetLang = selectedLanguage.toLowerCase(); // 'spanish', 'french', 'german', 'japanese', 'korean'
@@ -576,6 +712,7 @@ export default function FacultyStudioPage() {
 
     // 1. Language Pre-Validation Check against uploaded links and files via Backend
     const validUrls = sourceUrls.map(u => u.trim()).filter(Boolean);
+    let extractedSourceContextFromValidation = '';
     if (validUrls.length > 0 || uploadedFiles.length > 0) {
       setLoading(true);
       try {
@@ -600,6 +737,9 @@ export default function FacultyStudioPage() {
               errorAlertRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
             }, 50);
             return;
+          }
+          if (valData.extracted_source_context) {
+            extractedSourceContextFromValidation = valData.extracted_source_context;
           }
         }
       } catch (err) {
@@ -686,26 +826,35 @@ export default function FacultyStudioPage() {
       });
     }
 
-    setProposedPlanner({
-      language: selectedLanguage,
-      level: effectiveLevel,
-      topic: effectiveTopic,
-      institution_type: institutionType,
-      total_days: totalDays,
-      unit_name: unitName,
-      period_duration_minutes: periodMins,
-      periods_per_week: weeklyCadence,
-      course_duration_hours: courseHours,
-      track_label: trackLabel,
-      total_modules: totalModules,
-      modules,
-      all_days: days,
-      selected_lsrw_skills: selectedLsrwSkills,
-      source_urls_count: sourceUrls.filter(u => u.trim()).length,
-      uploaded_files_count: uploadedFiles.length,
-    });
-    setPlannerActiveModule(1);
-    setPlannerConfirmed(false);
+    // Enable high-tech animation state for autonomous blueprint compilation
+    setPlannerLoading(true);
+    setProposedPlanner(null);
+
+    setTimeout(() => {
+      setProposedPlanner({
+        language: selectedLanguage,
+        level: effectiveLevel,
+        topic: effectiveTopic,
+        institution_type: institutionType,
+        total_days: totalDays,
+        unit_name: unitName,
+        period_duration_minutes: periodMins,
+        periods_per_week: weeklyCadence,
+        course_duration_hours: courseHours,
+        track_label: trackLabel,
+        total_modules: totalModules,
+        modules,
+        all_days: days,
+        selected_lsrw_skills: selectedLsrwSkills,
+        source_urls_count: sourceUrls.filter(u => u.trim()).length,
+        uploaded_files_count: uploadedFiles.length,
+        extracted_source_context: extractedSourceContextFromValidation || undefined,
+      });
+      setPlannerActiveModule(1);
+      setPlannerConfirmed(false);
+      setIsFullScreen(true);
+      setPlannerLoading(false);
+    }, 700);
   };
 
   const handleAdjustParameters = () => {
@@ -860,6 +1009,15 @@ export default function FacultyStudioPage() {
       setSessionPackage(null);
     }
 
+    if (!selectedLanguage) {
+      setLoading(false);
+      setMismatchError('Target Language is required. Please select a language to synthesize the course kit.');
+      setTimeout(() => {
+        errorAlertRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }, 50);
+      return;
+    }
+
     const validUrls = sourceUrls.map(u => u.trim()).filter(Boolean);
     const formData = new FormData();
     formData.append('language', selectedLanguage);
@@ -894,8 +1052,11 @@ export default function FacultyStudioPage() {
       formData.append('college_track', collegeTrack);
       formData.append('college_level', colSched.level);
       formData.append('course_duration_hours', colSched.courseDurationHours.toString());
+      formData.append('period_duration_minutes', colSched.sessionMinutes.toString());
       formData.append('session_duration_minutes', colSched.sessionMinutes.toString());
+      formData.append('periods_per_week', colSched.sessionsPerWeek.toString());
       formData.append('sessions_per_week', colSched.sessionsPerWeek.toString());
+      formData.append('total_periods', colSched.sessionsRequired.toString());
       formData.append('total_sessions', colSched.sessionsRequired.toString());
       formData.append('months_required', colSched.monthsRequired.toString());
       formData.append('assessments_count', colSched.assessmentsCount.toString());
@@ -960,7 +1121,16 @@ export default function FacultyStudioPage() {
           return;
         }
 
-        throw new Error(detail?.message || `Server returned ${res.status}`);
+        let errorMsg = `Server returned ${res.status}`;
+        if (typeof detail === 'string') {
+          errorMsg = detail;
+        } else if (detail && typeof detail === 'object') {
+          errorMsg = detail.message || JSON.stringify(detail);
+        } else if (errData && errData.message) {
+          errorMsg = errData.message;
+        }
+
+        throw new Error(errorMsg);
       }
 
       const data = await res.json();
@@ -1191,17 +1361,17 @@ export default function FacultyStudioPage() {
   return (
     <div className="min-h-screen bg-[#F8FAFC] text-slate-900 p-3 sm:p-5 md:p-8 space-y-4 sm:space-y-6 max-w-[1700px] mx-auto">
       {/* Clean Light-Theme Agent Control Bar */}
-      <div className="bg-white border border-slate-200/80 rounded-2xl p-3.5 sm:p-4 shadow-sm flex flex-wrap items-center justify-between gap-3">
+      <div className="bg-white border border-slate-200 rounded-xl p-3 sm:p-3.5 shadow-2xs flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-blue-600 to-indigo-600 flex items-center justify-center text-white font-black shadow-md shadow-blue-500/20 shrink-0">
-            <Bot className="w-5 h-5" />
+          <div className="w-9 h-9 rounded-xl bg-slate-900 flex items-center justify-center text-white font-bold shadow-xs shrink-0">
+            <Bot className="w-4 h-4 text-slate-200" />
           </div>
           <div>
             <div className="flex items-center gap-2">
-              <h1 className="text-sm sm:text-base font-black tracking-tight text-slate-900">
+              <h1 className="text-sm sm:text-base font-bold tracking-tight text-slate-900">
                 ISML AI Academic Agent
               </h1>
-              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200/60">
                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-ping" />
                 Live Co-Pilot
               </span>
@@ -1218,11 +1388,36 @@ export default function FacultyStudioPage() {
           <button
             type="button"
             onClick={handleNewChat}
-            className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white text-xs font-black shadow-md shadow-blue-500/20 transition-all cursor-pointer"
+            className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold shadow-xs transition-all cursor-pointer"
             title="Start a fresh curriculum session"
           >
-            <Plus className="w-3.5 h-3.5" />
+            <Plus className="w-3.5 h-3.5 text-slate-300" />
             <span>New Chat</span>
+          </button>
+
+          {/* 💬 Chat AI Button: Prompts user to select an active or saved chat session before opening */}
+          <button
+            type="button"
+            onClick={() => {
+              if (isChatOpen) {
+                setIsChatOpen(false);
+              } else {
+                // Must prompt user to pick/confirm which chat session to ground on
+                setShowSelectSessionModal(true);
+              }
+            }}
+            className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-black shadow-md transition-all cursor-pointer ${
+              isChatOpen
+                ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-blue-500/30'
+                : 'bg-white hover:bg-slate-50 text-indigo-700 border border-indigo-200'
+            }`}
+            title="Select a curriculum session to chat with AI"
+          >
+            <Bot className="w-3.5 h-3.5 text-indigo-600" />
+            <span>Chat AI</span>
+            {(activeSavedSession || sessionPackage || proposedPlanner) && (
+              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" title="Active curriculum session loaded" />
+            )}
           </button>
 
           {/* Chat History & DB Sessions Toggle Button */}
@@ -1371,7 +1566,7 @@ export default function FacultyStudioPage() {
                       onClick={() => {
                         // Restore past curriculum package to live workspace
                         if (sessionItem.sessionPlanJson) {
-                          setSessionPackage({
+                          const restoredPkg = {
                             session_id: sessionItem.sessionId,
                             language: sessionItem.language,
                             level: sessionItem.level,
@@ -1383,8 +1578,29 @@ export default function FacultyStudioPage() {
                             session_plan: sessionItem.sessionPlanJson,
                             teacher_materials: sessionItem.teacherMaterialsJson || {},
                             student_lsrw: sessionItem.studentLsrwJson || {},
-                          });
+                          };
+                          setSessionPackage(restoredPkg);
+                          setActiveSavedSession(sessionItem);
                           setIsHistoryOpen(false);
+                          // Auto open the Curriculum Memory Assistant for this saved session
+                          setIsChatOpen(true);
+                          const NATIVE_GREETINGS: Record<string, string> = {
+                            Spanish: '¡Hola!',
+                            French: 'Bonjour !',
+                            German: 'Hallo!',
+                            Japanese: 'こんにちは！',
+                            Korean: '안녕하세요!'
+                          };
+                          const greetingWord = NATIVE_GREETINGS[sessionItem.language] || 'Hello!';
+                          const periodCount = sessionItem.sessionPlanJson?.all_days?.length || sessionItem.sessionPlanJson?.total_curriculum_days || 0;
+                          const periodsText = periodCount > 0 ? ` (${periodCount} periods memory)` : '';
+
+                          setCurriculumChatMessages([
+                            {
+                              role: 'assistant',
+                              content: `${greetingWord} I am your ISML Academic AI Assistant for ${sessionItem.language} ${sessionItem.level}${periodsText}.\n\nLoaded with the saved session memory for **"${sessionItem.title || sessionItem.topic}"**. What would you like to review, drill, or generate from this session?`
+                            }
+                          ]);
                         }
                       }}
                       className="p-3 rounded-xl border border-slate-200/90 hover:border-blue-400 bg-white hover:bg-blue-50/40 transition-all cursor-pointer space-y-1.5 shadow-2xs group"
@@ -1414,6 +1630,195 @@ export default function FacultyStudioPage() {
           </div>
         </div>
       )}
+
+      {/* 🎯 Modal: Must Select Which Chat Session to Ground Before AI Chat Opens */}
+      {showSelectSessionModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="bg-white w-full max-w-xl rounded-2xl shadow-2xl border border-slate-200 overflow-hidden flex flex-col max-h-[90vh] animate-in zoom-in-95 duration-200">
+            {/* Modal Header */}
+            <div className="p-4 sm:p-5 bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 text-white flex items-center justify-between border-b border-slate-800">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-indigo-600/90 border border-indigo-400/30 flex items-center justify-center text-white shadow-md">
+                  <Bot className="w-5 h-5 text-indigo-200" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h3 className="text-sm sm:text-base font-extrabold text-white tracking-tight">
+                      Select Chat Curriculum Session
+                    </h3>
+                    <span className="text-[10px] bg-emerald-500/20 text-emerald-300 font-bold px-2 py-0.5 rounded-full border border-emerald-500/30">
+                      Step 1 of 2
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-300">
+                    Choose which curriculum or material memory the AI Assistant should ground its answers in:
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowSelectSessionModal(false)}
+                className="w-8 h-8 rounded-lg text-slate-400 hover:text-white hover:bg-white/10 flex items-center justify-center text-sm font-bold transition-colors cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Modal Body: Available Sessions to Select */}
+            <div className="p-4 sm:p-5 overflow-y-auto space-y-3.5 flex-1 bg-slate-50/60">
+              {/* Option 1: Currently Active Generated Workspace Session (If exists) */}
+              {(sessionPackage || proposedPlanner) && (
+                <div>
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-indigo-700 block mb-1.5">
+                    Currently Active Workspace:
+                  </span>
+                  <div
+                    onClick={() => {
+                      setShowSelectSessionModal(false);
+                      setIsChatOpen(true);
+                      const activeTopic = sessionPackage?.topic || proposedPlanner?.topic || topic || 'Curriculum Syllabus';
+                      const curLang = sessionPackage?.language || proposedPlanner?.language || selectedLanguage;
+                      const curLevel = sessionPackage?.level || proposedPlanner?.level || selectedLevel;
+                      const NATIVE_GREETINGS: Record<string, string> = {
+                        Spanish: '¡Hola!',
+                        French: 'Bonjour !',
+                        German: 'Hallo!',
+                        Japanese: 'こんにちは！',
+                        Korean: '안녕하세요!'
+                      };
+                      const greetingWord = NATIVE_GREETINGS[curLang] || 'Hello!';
+                      setCurriculumChatMessages([
+                        {
+                          role: 'assistant',
+                          content: `${greetingWord} I am your ISML Academic AI Assistant for ${curLang} ${curLevel}.\n\nLoaded with the currently active workspace memory for **"${activeTopic}"** (100% Grounded in your generated lessons & drills). How can I assist you today?`
+                        }
+                      ]);
+                    }}
+                    className="p-3.5 rounded-xl border-2 border-indigo-500 bg-indigo-50/70 hover:bg-indigo-100/70 transition-all cursor-pointer space-y-2 shadow-xs group"
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded bg-indigo-600 text-white">
+                          Active Now
+                        </span>
+                        <span className="text-xs font-bold text-indigo-950">
+                          {sessionPackage?.language || proposedPlanner?.language || selectedLanguage} • {sessionPackage?.level || proposedPlanner?.level || selectedLevel}
+                        </span>
+                      </div>
+                      <span className="text-xs font-bold text-indigo-600 flex items-center gap-1 group-hover:translate-x-1 transition-transform">
+                        Select & Chat →
+                      </span>
+                    </div>
+                    <h4 className="text-xs font-bold text-slate-900">
+                      {sessionPackage?.session_plan?.session_title || proposedPlanner?.topic || topic || 'Active Curriculum Workspace'}
+                    </h4>
+                    <p className="text-[11px] text-slate-600">
+                      Scope: {sessionPackage?.target_days_number || proposedPlanner?.total_days || 60} Periods • Grounded in live editor content
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              {/* Option 2: Saved Curriculum Chat Sessions from Database / Local Archive */}
+              <div>
+                <div className="flex items-center justify-between mb-1.5">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 block">
+                    Saved Curriculum Archive ({savedSessions.length}):
+                  </span>
+                  <span className="text-[10px] text-slate-400">Click any session to ground AI</span>
+                </div>
+
+                {savedSessions.length === 0 ? (
+                  <div className="bg-white border border-slate-200 rounded-xl p-6 text-center space-y-2">
+                    <Database className="w-8 h-8 text-slate-300 mx-auto" />
+                    <p className="text-xs font-semibold text-slate-700">No past sessions saved yet</p>
+                    <p className="text-[11px] text-slate-400">
+                      Generate a curriculum or configure materials on the left to start your first session.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
+                    {savedSessions.map((sessionItem) => (
+                      <div
+                        key={sessionItem.sessionId || sessionItem.id}
+                        onClick={() => {
+                          if (sessionItem.sessionPlanJson) {
+                            const restoredPkg = {
+                              session_id: sessionItem.sessionId,
+                              language: sessionItem.language,
+                              level: sessionItem.level,
+                              topic: sessionItem.topic,
+                              track_duration_label: `Restored Archive: ${sessionItem.language} ${sessionItem.level}`,
+                              institution_type: sessionItem.sessionPlanJson?.institution_type || 'SCHOOL',
+                              school_meta: sessionItem.sessionPlanJson?.school_meta,
+                              college_meta: sessionItem.sessionPlanJson?.college_meta,
+                              session_plan: sessionItem.sessionPlanJson,
+                              teacher_materials: sessionItem.teacherMaterialsJson || {},
+                              student_lsrw: sessionItem.studentLsrwJson || {},
+                            };
+                            setSessionPackage(restoredPkg);
+                            setActiveSavedSession(sessionItem);
+                            setShowSelectSessionModal(false);
+                            setIsChatOpen(true);
+                            const NATIVE_GREETINGS: Record<string, string> = {
+                              Spanish: '¡Hola!',
+                              French: 'Bonjour !',
+                              German: 'Hallo!',
+                              Japanese: 'こんにちは！',
+                              Korean: '안녕하세요!'
+                            };
+                            const greetingWord = NATIVE_GREETINGS[sessionItem.language] || 'Hello!';
+                            const periodCount = sessionItem.sessionPlanJson?.all_days?.length || sessionItem.sessionPlanJson?.total_curriculum_days || 0;
+                            const periodsText = periodCount > 0 ? ` (${periodCount} periods memory)` : '';
+
+                            setCurriculumChatMessages([
+                              {
+                                role: 'assistant',
+                                content: `${greetingWord} I am your ISML Academic AI Assistant for ${sessionItem.language} ${sessionItem.level}${periodsText}.\n\nLoaded with the saved session memory for **"${sessionItem.title || sessionItem.topic}"**. All answers will be 100% grounded in this curriculum's materials, vocabulary, and grammar rules. What would you like to explore?`
+                              }
+                            ]);
+                          }
+                        }}
+                        className="p-3 rounded-xl border border-slate-200 bg-white hover:border-indigo-400 hover:bg-indigo-50/40 transition-all cursor-pointer space-y-1 shadow-2xs group"
+                      >
+                        <div className="flex items-center justify-between">
+                          <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded bg-blue-100 text-blue-800">
+                            {sessionItem.language} • {sessionItem.level}
+                          </span>
+                          <span className="text-[10px] text-indigo-600 font-bold group-hover:underline flex items-center gap-1">
+                            Load & Chat AI →
+                          </span>
+                        </div>
+                        <h4 className="text-xs font-bold text-slate-900 group-hover:text-indigo-900 line-clamp-1">
+                          {sessionItem.title || sessionItem.topic || 'Curriculum Package'}
+                        </h4>
+                        <p className="text-[11px] text-slate-500 line-clamp-1">
+                          Topic: {sessionItem.topic || 'General Syllabus'}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Modal Footer */}
+            <div className="p-3.5 bg-white border-t border-slate-200 flex items-center justify-between">
+              <span className="text-[11px] text-slate-500">
+                AI answers will strictly follow the selected session&apos;s materials.
+              </span>
+              <button
+                type="button"
+                onClick={() => setShowSelectSessionModal(false)}
+                className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl transition-colors cursor-pointer"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
 
       {/* Target anchor for auto-scrolling to errors */}
       <div ref={errorAlertRef} className="scroll-mt-8 space-y-4">
@@ -1527,53 +1932,32 @@ export default function FacultyStudioPage() {
 
       {/* Main Grid: Responsive Split vs Fullscreen View */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 lg:gap-8 items-start">
-        {/* Left Column: Pedagogical Setup Form (Desktop 4 cols, stacks naturally on mobile, hidden on desktop if isFullScreen) */}
-        <div ref={formContainerRef} className={`space-y-6 scroll-mt-24 ${isFullScreen ? 'hidden' : 'lg:col-span-4'}`}>
+        {/* Left Column: Pedagogical Setup Form (Desktop 4 cols, stacks naturally on mobile, hidden on desktop only when viewing active planner/package/loading in fullscreen) */}
+        <div ref={formContainerRef} className={`space-y-6 scroll-mt-24 ${(isFullScreen && (Boolean(proposedPlanner) || Boolean(sessionPackage) || plannerLoading)) ? 'hidden' : 'lg:col-span-4'}`}>
           <div className="bg-white rounded-2xl border border-slate-200/90 shadow-sm p-4 sm:p-5">
-            {/* Step Wizard Header with Progress Indicator */}
-            <div className="mb-4">
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-xs font-black text-slate-900 tracking-tight flex items-center gap-1.5">
-                  <span className="w-5 h-5 rounded-full bg-blue-600 text-white text-[11px] font-bold flex items-center justify-center">
-                    {wizardStep}
-                  </span>
-                  {wizardStep === 1 && 'Step 1: Stream & Curriculum'}
-                  {wizardStep === 2 && 'Step 2: Topic & LSRW Skills'}
-                  {wizardStep === 3 && 'Step 3: Materials & Synthesis'}
-                </span>
-                <span className="text-[10px] font-extrabold text-slate-400">
-                  Step {wizardStep} of 3
-                </span>
+            {/* Unified Form Header */}
+            <div className="flex items-center justify-between pb-3.5 mb-4 border-b border-slate-100">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-xl bg-slate-900 text-white flex items-center justify-center font-bold text-xs shadow-xs">
+                  <Sparkles className="w-4 h-4 text-indigo-300" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-black text-slate-900 tracking-tight">Pedagogical Setup</h3>
+                  <p className="text-[10px] text-slate-400 font-medium">Configure stream, language, syllabus & materials</p>
+                </div>
               </div>
-
-              {/* Progress Bar Segments */}
-              <div className="grid grid-cols-3 gap-1.5">
-                {[1, 2, 3].map((step) => (
-                  <button
-                    key={step}
-                    type="button"
-                    onClick={() => {
-                      if (step === 3 && !topic.trim()) {
-                        setWizardStep(2);
-                      } else {
-                        setWizardStep(step as 1 | 2 | 3);
-                      }
-                    }}
-                    className={`h-1.5 rounded-full transition-all cursor-pointer ${
-                      wizardStep >= step
-                        ? 'bg-blue-600'
-                        : 'bg-slate-200 hover:bg-slate-300'
-                    }`}
-                    title={`Go to Step ${step}`}
-                  />
-                ))}
-              </div>
+              <span className="text-[10px] font-bold text-blue-700 bg-blue-50 border border-blue-200/80 px-2 py-0.5 rounded-full">
+                Unified Setup
+              </span>
             </div>
 
-            <form onSubmit={handleGenerate} className="space-y-4">
-              {/* ================= STEP 1: Stream & Curriculum ================= */}
-              {wizardStep === 1 && (
-                <div className="space-y-4 animate-in fade-in duration-200">
+            <form onSubmit={handleGenerate} className="space-y-5">
+              {/* SECTION 1: Institutional Stream & Target Language */}
+              <div className="space-y-3.5">
+                <div className="flex items-center gap-1.5 text-xs font-black text-slate-900 uppercase tracking-wider">
+                  <span className="w-5 h-5 rounded-full bg-blue-100 text-blue-700 text-[10px] font-bold flex items-center justify-center">1</span>
+                  <span>Stream & Target Language</span>
+                </div>
                   {/* Institutional Stream Switcher: SCHOOL vs COLLEGE */}
               <div>
                 <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5 flex items-center justify-between">
@@ -1612,14 +1996,27 @@ export default function FacultyStudioPage() {
 
               {/* Language Selection */}
               <div>
-                <label className="block text-xs font-bold text-slate-600 uppercase tracking-wider mb-1.5">
-                  Language ({institutionType === 'SCHOOL' ? '4 Core School Languages' : 'Core Languages & JLPT Japanese'})
+                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5 flex items-center justify-between">
+                  <span>Language ({institutionType === 'SCHOOL' ? '4 Core School Languages' : 'Core Languages & JLPT Japanese'}) <span className="text-rose-500 font-bold">*</span></span>
+                  {!selectedLanguage && (
+                    <span className="text-[10px] text-rose-500 font-semibold bg-rose-50 px-2 py-0.5 rounded border border-rose-200">
+                      Required
+                    </span>
+                  )}
                 </label>
                 <select
                   value={selectedLanguage}
+                  required
                   onChange={(e) => handleLanguageChange(e.target.value as any)}
-                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className={`w-full px-3.5 py-2.5 rounded-xl text-sm font-semibold transition-colors focus:outline-none focus:ring-2 ${
+                    !selectedLanguage
+                      ? 'bg-amber-50/50 border-2 border-amber-300 text-slate-500 focus:ring-amber-400'
+                      : 'bg-white border border-slate-200 text-slate-800 focus:ring-blue-500'
+                  }`}
                 >
+                  <option value="" disabled className="text-slate-400 font-normal">
+                    -- Select Target Language (Required) * --
+                  </option>
                   <option value="Spanish">Spanish (Español) 🇪🇸</option>
                   <option value="German">German (Deutsch) 🇩🇪</option>
                   <option value="French">French (Français) 🇫🇷</option>
@@ -1816,447 +2213,245 @@ export default function FacultyStudioPage() {
                 </div>
               )}
 
-                  {/* Step 1 Next Button */}
-                  <button
-                    type="button"
-                    onClick={() => setWizardStep(2)}
-                    className="w-full py-2.5 px-4 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl flex items-center justify-center gap-2 transition-colors cursor-pointer shadow-sm text-xs"
-                  >
-                    <span>Next: Set Topic & Concept</span>
-                    <ArrowRight className="w-4 h-4" />
-                  </button>
-                </div>
-              )}
-
-              {/* ================= STEP 2: Topic & Concept ================= */}
-              {wizardStep === 2 && (
-                <div className="space-y-4 animate-in fade-in duration-200">
-                  {/* Curriculum Scope: Full Course vs Specific Focus Topic */}
-                  <div className="bg-gradient-to-br from-blue-50/80 to-indigo-50/60 border border-blue-200/90 rounded-2xl p-3.5 space-y-2">
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs font-black text-blue-950 flex items-center gap-1.5">
-                        <Sparkles className="w-4 h-4 text-amber-500" />
-                        Autonomous Full-Course Syllabus
-                      </span>
-                      <span className="text-[10px] font-bold text-emerald-700 bg-emerald-100/90 border border-emerald-300 px-2 py-0.5 rounded-full">
-                        AI Recommended
-                      </span>
-                    </div>
-                    <p className="text-[11px] text-slate-600 leading-relaxed">
-                      AI Agent will automatically design and structure the <strong>entire sequential curriculum</strong> for <strong>{selectedLanguage} {institutionType === 'SCHOOL' ? schoolLevel : selectedLevel}</strong> across the full course period (CEFR/JLPT Common Core Framework).
-                    </p>
-                  </div>
-
-                  {/* Optional Custom Topic / Concept Filter */}
-                  <div>
-                    <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5 flex items-center justify-between">
-                      <span>Specific Thematic Focus (Optional)</span>
-                      {topic ? (
-                        <button
-                          type="button"
-                          onClick={() => setTopic('')}
-                          className="text-[10px] text-rose-600 hover:underline font-bold cursor-pointer"
-                        >
-                          Clear (Reset to Whole Course)
-                        </button>
-                      ) : (
-                        <span className="text-[10px] text-slate-400 font-semibold">Leave blank for Whole Course</span>
-                      )}
-                    </label>
-
-                    <input
-                      type="text"
-                      placeholder={`Leave blank to generate whole ${selectedLanguage} ${institutionType === 'SCHOOL' ? schoolLevel : selectedLevel} curriculum, or type a custom topic...`}
-                      value={topic}
-                      onChange={(e) => setTopic(e.target.value)}
-                      className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500 placeholder:text-slate-400"
-                    />
-                  </div>
-
-                  {/* Target LSRW Core Skills Multi-Selector */}
-                  <div>
-                    <div className="flex items-center justify-between mb-1.5">
-                      <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider">
-                        Target LSRW Competencies *
-                      </label>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          const allSelected = Object.values(selectedLsrwSkills).every(Boolean);
-                          setSelectedLsrwSkills({
-                            listening: !allSelected,
-                            speaking: !allSelected,
-                            reading: !allSelected,
-                            writing: !allSelected
-                          });
-                        }}
-                        className="text-[10px] text-blue-600 font-bold hover:underline cursor-pointer"
-                      >
-                        {Object.values(selectedLsrwSkills).every(Boolean) ? 'Deselect All' : 'Select All (Full LSRW)'}
-                      </button>
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-2">
-                      {/* Listening */}
-                      <button
-                        type="button"
-                        onClick={() => setSelectedLsrwSkills(prev => ({ ...prev, listening: !prev.listening }))}
-                        className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer flex items-center justify-between ${
-                          selectedLsrwSkills.listening
-                            ? 'bg-purple-50 border-purple-300 text-purple-900 shadow-2xs'
-                            : 'bg-white border-slate-200 text-slate-500 hover:bg-slate-50'
-                        }`}
-                      >
-                        <div className="flex items-center gap-2">
-                          <div className={`w-7 h-7 rounded-lg flex items-center justify-center text-xs ${
-                            selectedLsrwSkills.listening ? 'bg-purple-600 text-white' : 'bg-slate-100 text-slate-400'
-                          }`}>
-                            <Headphones className="w-3.5 h-3.5" />
-                          </div>
-                          <div>
-                            <span className="block text-xs font-bold">Listening (L)</span>
-                            <span className="text-[10px] opacity-75">Audio & phonetics</span>
-                          </div>
-                        </div>
-                        {selectedLsrwSkills.listening && <Check className="w-4 h-4 text-purple-600 shrink-0" />}
-                      </button>
-
-                      {/* Speaking */}
-                      <button
-                        type="button"
-                        onClick={() => setSelectedLsrwSkills(prev => ({ ...prev, speaking: !prev.speaking }))}
-                        className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer flex items-center justify-between ${
-                          selectedLsrwSkills.speaking
-                            ? 'bg-emerald-50 border-emerald-300 text-emerald-900 shadow-2xs'
-                            : 'bg-white border-slate-200 text-slate-500 hover:bg-slate-50'
-                        }`}
-                      >
-                        <div className="flex items-center gap-2">
-                          <div className={`w-7 h-7 rounded-lg flex items-center justify-center text-xs ${
-                            selectedLsrwSkills.speaking ? 'bg-emerald-600 text-white' : 'bg-slate-100 text-slate-400'
-                          }`}>
-                            <Mic className="w-3.5 h-3.5" />
-                          </div>
-                          <div>
-                            <span className="block text-xs font-bold">Speaking (S)</span>
-                            <span className="text-[10px] opacity-75">Dialogue drills</span>
-                          </div>
-                        </div>
-                        {selectedLsrwSkills.speaking && <Check className="w-4 h-4 text-emerald-600 shrink-0" />}
-                      </button>
-
-                      {/* Reading */}
-                      <button
-                        type="button"
-                        onClick={() => setSelectedLsrwSkills(prev => ({ ...prev, reading: !prev.reading }))}
-                        className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer flex items-center justify-between ${
-                          selectedLsrwSkills.reading
-                            ? 'bg-blue-50 border-blue-300 text-blue-900 shadow-2xs'
-                            : 'bg-white border-slate-200 text-slate-500 hover:bg-slate-50'
-                        }`}
-                      >
-                        <div className="flex items-center gap-2">
-                          <div className={`w-7 h-7 rounded-lg flex items-center justify-center text-xs ${
-                            selectedLsrwSkills.reading ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-400'
-                          }`}>
-                            <BookOpen className="w-3.5 h-3.5" />
-                          </div>
-                          <div>
-                            <span className="block text-xs font-bold">Reading (R)</span>
-                            <span className="text-[10px] opacity-75">Text & grammar</span>
-                          </div>
-                        </div>
-                        {selectedLsrwSkills.reading && <Check className="w-4 h-4 text-blue-600 shrink-0" />}
-                      </button>
-
-                      {/* Writing */}
-                      <button
-                        type="button"
-                        onClick={() => setSelectedLsrwSkills(prev => ({ ...prev, writing: !prev.writing }))}
-                        className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer flex items-center justify-between ${
-                          selectedLsrwSkills.writing
-                            ? 'bg-amber-50 border-amber-300 text-amber-900 shadow-2xs'
-                            : 'bg-white border-slate-200 text-slate-500 hover:bg-slate-50'
-                        }`}
-                      >
-                        <div className="flex items-center gap-2">
-                          <div className={`w-7 h-7 rounded-lg flex items-center justify-center text-xs ${
-                            selectedLsrwSkills.writing ? 'bg-amber-600 text-white' : 'bg-slate-100 text-slate-400'
-                          }`}>
-                            <PenTool className="w-3.5 h-3.5" />
-                          </div>
-                          <div>
-                            <span className="block text-xs font-bold">Writing (W)</span>
-                            <span className="text-[10px] opacity-75">Compositions & key</span>
-                          </div>
-                        </div>
-                        {selectedLsrwSkills.writing && <Check className="w-4 h-4 text-amber-600 shrink-0" />}
-                      </button>
-                    </div>
-                  </div>
-
-                  {/* Navigation Buttons */}
-                  <div className="flex items-center gap-2 pt-2">
-                    <button
-                      type="button"
-                      onClick={() => setWizardStep(1)}
-                      className="py-2.5 px-3 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl flex items-center justify-center gap-1.5 transition-colors cursor-pointer text-xs"
-                    >
-                      <ArrowLeft className="w-4 h-4" />
-                      <span>Back</span>
-                    </button>
-                    <button
-                      type="button"
-                      disabled={!Object.values(selectedLsrwSkills).some(Boolean)}
-                      onClick={() => setWizardStep(3)}
-                      className="flex-1 py-2.5 px-4 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl flex items-center justify-center gap-2 transition-colors cursor-pointer shadow-sm text-xs disabled:opacity-40"
-                    >
-                      <span>Next: Materials & Generate</span>
-                      <ArrowRight className="w-4 h-4" />
-                    </button>
-                  </div>
-                </div>
-              )}
-
-              {/* ================= STEP 3: Materials & Synthesis ================= */}
-              {wizardStep === 3 && (
-                <div className="space-y-4 animate-in fade-in duration-200">
-                  {/* Summary of Chosen Parameters */}
-                  <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs space-y-1.5">
-                    <div className="flex items-center justify-between">
-                      <span className="text-slate-500 font-medium">Stream / Language:</span>
-                      <strong className="text-slate-800">{institutionType} • {selectedLanguage}</strong>
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <span className="text-slate-500 font-medium">Curriculum Scope:</span>
-                      <strong className="text-blue-600 truncate max-w-[200px]">
-                        {topic || `Full ${selectedLanguage} ${institutionType === 'SCHOOL' ? schoolLevel : selectedLevel} Syllabus`}
-                      </strong>
-                    </div>
-                    <div className="flex items-center justify-between pt-1 border-t border-slate-200/60">
-                      <span className="text-slate-500 font-medium">LSRW Skills:</span>
-                      <div className="flex items-center gap-1 font-bold text-[10px]">
-                        {selectedLsrwSkills.listening && <span className="bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded">L</span>}
-                        {selectedLsrwSkills.speaking && <span className="bg-emerald-100 text-emerald-700 px-1.5 py-0.5 rounded">S</span>}
-                        {selectedLsrwSkills.reading && <span className="bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded">R</span>}
-                        {selectedLsrwSkills.writing && <span className="bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded">W</span>}
-                      </div>
-                    </div>
-                  </div>
-
-              {/* Material Input 1: Multiple Reference Video & Web Links */}
-              <div className="bg-slate-50 border border-slate-200/90 rounded-2xl p-3.5 space-y-3">
-                <div className="flex items-center justify-between border-b border-slate-200/80 pb-2">
-                  <div className="flex items-center gap-2">
-                    <div className="w-7 h-7 rounded-lg bg-rose-100 text-rose-600 flex items-center justify-center">
-                      <Video className="w-4 h-4" />
-                    </div>
-                    <div>
-                      <h4 className="text-xs font-bold text-slate-800">
-                        1. Reference Videos & Web Links
-                      </h4>
-                      <p className="text-[10px] text-slate-500">
-                        Add YouTube videos, news clips, or web articles
-                      </p>
-                    </div>
-                  </div>
-                  <span className="text-[10px] font-bold text-rose-700 bg-rose-50 border border-rose-200 px-2 py-0.5 rounded-full">
-                    {sourceUrls.filter(Boolean).length} Link{sourceUrls.filter(Boolean).length === 1 ? '' : 's'} Added
-                  </span>
-                </div>
-
-                {/* Multiple Link Input Rows */}
-                <div className="space-y-2">
-                  {sourceUrls.map((url, idx) => (
-                    <div key={idx} className="flex items-center gap-1.5">
-                      <span className="text-[10px] font-mono text-slate-400 w-4 text-center shrink-0">
-                        #{idx + 1}
-                      </span>
-                      <div className="relative flex-1">
-                        <input
-                          type="url"
-                          placeholder={
-                            idx === 0
-                              ? "Paste 1st YouTube video / web link..."
-                              : `Paste reference link #${idx + 1}...`
-                          }
-                          value={url}
-                          onChange={(e) => updateSourceUrl(idx, e.target.value)}
-                          className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500 placeholder:text-slate-400 shadow-2xs"
-                        />
-                      </div>
-                      {sourceUrls.length > 1 && (
-                        <button
-                          type="button"
-                          onClick={() => removeSourceUrlField(idx)}
-                          className="w-7 h-7 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 flex items-center justify-center text-xs font-bold transition-colors cursor-pointer shrink-0"
-                          title="Remove this link"
-                        >
-                          ✕
-                        </button>
-                      )}
-                    </div>
-                  ))}
-                </div>
-
-                <button
-                  type="button"
-                  onClick={addSourceUrlField}
-                  className="w-full py-2 px-3 border border-dashed border-rose-300 hover:border-rose-400 hover:bg-rose-50/50 rounded-xl text-xs font-bold text-rose-700 flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
-                >
-                  <Plus className="w-3.5 h-3.5" />
-                  <span>+ Add Another Link</span>
-                </button>
               </div>
 
-              {/* Material Input 2: Multiple Files Upload (Textbooks, Audio, Slides) */}
-              <div className="bg-slate-50 border border-slate-200/90 rounded-2xl p-3.5 space-y-3">
-                <div className="flex items-center justify-between border-b border-slate-200/80 pb-2">
-                  <div className="flex items-center gap-2">
-                    <div className="w-7 h-7 rounded-lg bg-blue-100 text-blue-600 flex items-center justify-center">
-                      <Files className="w-4 h-4" />
+              {/* SECTION 2: Reference Materials & Media (Optional) */}
+              <div className="space-y-3.5 pt-3 border-t border-slate-200/80">
+                <div className="flex items-center gap-1.5 text-xs font-black text-slate-900 uppercase tracking-wider">
+                  <span className="w-5 h-5 rounded-full bg-blue-100 text-blue-700 text-[10px] font-bold flex items-center justify-center">2</span>
+                  <span>Reference Materials (Optional)</span>
+                </div>
+
+                {/* Material Input 1: Multiple Reference Video & Web Links */}
+                <div className="bg-slate-50 border border-slate-200/90 rounded-2xl p-3.5 space-y-3">
+                  <div className="flex items-center justify-between border-b border-slate-200/80 pb-2">
+                    <div className="flex items-center gap-2">
+                      <div className="w-7 h-7 rounded-lg bg-rose-100 text-rose-600 flex items-center justify-center">
+                        <Video className="w-4 h-4" />
+                      </div>
+                      <div>
+                        <h4 className="text-xs font-bold text-slate-800">
+                          1. Reference Videos & Web Links
+                        </h4>
+                        <p className="text-[10px] text-slate-500">
+                          Add YouTube videos, news clips, or web articles
+                        </p>
+                      </div>
                     </div>
-                    <div>
-                      <h4 className="text-xs font-bold text-slate-800">
-                        2. Course Documents & Media Files
-                      </h4>
-                      <p className="text-[10px] text-slate-500">
-                        Upload textbooks, audio drills, lecture slides, notes
-                      </p>
-                    </div>
+                    <span className="text-[10px] font-bold text-rose-700 bg-rose-50 border border-rose-200 px-2 py-0.5 rounded-full">
+                      {sourceUrls.filter(Boolean).length} Link{sourceUrls.filter(Boolean).length === 1 ? '' : 's'} Added
+                    </span>
                   </div>
-                  {uploadedFiles.length > 0 && (
-                    <button
-                      type="button"
-                      onClick={() => setUploadedFiles([])}
-                      className="text-[10px] font-bold text-rose-600 hover:underline cursor-pointer"
-                    >
-                      Clear All ({uploadedFiles.length})
-                    </button>
-                  )}
-                </div>
 
-                {/* Drag & Drop Multi-file Target */}
-                <div
-                  onDragOver={handleDragOver}
-                  onDragLeave={handleDragLeave}
-                  onDrop={handleDrop}
-                  className={`border-2 border-dashed rounded-2xl p-5 text-center transition-all cursor-pointer ${
-                    isDragging
-                      ? 'border-blue-500 bg-blue-50 scale-[1.01]'
-                      : 'border-slate-300 hover:border-blue-400 bg-white hover:bg-blue-50/20'
-                  }`}
-                >
-                  <input
-                    type="file"
-                    id="tutor-file"
-                    className="hidden"
-                    multiple
-                    accept="image/*,video/*,audio/*,.pdf,.txt,.docx,.csv,.pptx,.ppt,application/vnd.openxmlformats-officedocument.presentationml.presentation"
-                    onChange={handleFileUpload}
-                  />
-                  <label htmlFor="tutor-file" className="cursor-pointer block space-y-1.5">
-                    <div className="w-10 h-10 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center mx-auto border border-blue-100">
-                      <FileUp className="w-5 h-5" />
-                    </div>
-                    <div>
-                      <p className="text-xs font-bold text-slate-800">
-                        <span className="text-blue-600 hover:underline">Click to browse multiple files</span> or drag & drop here
-                      </p>
-                      <p className="text-[10px] text-slate-400 mt-0.5">
-                        Supports: PDF, MP3/WAV, MP4, Word (DOCX), PowerPoint (PPTX) • Bulk upload any number of files
-                      </p>
-                    </div>
-                  </label>
-                </div>
-
-                {/* Uploaded File List with Visual Counters */}
-                {uploadedFiles.length > 0 ? (
-                  <div className="space-y-1.5 max-h-48 overflow-y-auto pr-1">
-                    <div className="flex items-center justify-between text-[10px] font-bold text-slate-500 uppercase px-1">
-                      <span>Ready for AI Synthesis ({uploadedFiles.length} files)</span>
-                      <span>Total: {(uploadedFiles.reduce((acc, f) => acc + f.size, 0) / (1024 * 1024)).toFixed(1)} MB</span>
-                    </div>
-                    {uploadedFiles.map((f, i) => (
-                      <div
-                        key={i}
-                        className={`flex items-center justify-between border rounded-xl px-3 py-2 text-xs transition-colors bg-white ${getFileBadgeColor(f.name)}`}
-                      >
-                        <div className="flex items-center gap-2 min-w-0">
-                          <span className="text-sm">📄</span>
-                          <div className="truncate min-w-0">
-                            <p className="font-bold truncate text-slate-900" title={f.name}>
-                              {f.name}
-                            </p>
-                            <span className="text-[10px] text-slate-500">
-                              {formatFileSize(f.size)}
-                            </span>
-                          </div>
+                  {/* Multiple Link Input Rows */}
+                  <div className="space-y-2">
+                    {sourceUrls.map((url, idx) => (
+                      <div key={idx} className="flex items-center gap-1.5">
+                        <span className="text-[10px] font-mono text-slate-400 w-4 text-center shrink-0">
+                          #{idx + 1}
+                        </span>
+                        <div className="relative flex-1">
+                          <input
+                            type="url"
+                            placeholder={
+                              idx === 0
+                                ? "Paste 1st YouTube video / web link..."
+                                : `Paste reference link #${idx + 1}...`
+                            }
+                            value={url}
+                            onChange={(e) => updateSourceUrl(idx, e.target.value)}
+                            className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500 placeholder:text-slate-400 shadow-2xs"
+                          />
                         </div>
-                        <button
-                          type="button"
-                          onClick={() => removeUploadedFile(i)}
-                          className="w-6 h-6 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 flex items-center justify-center text-xs font-bold transition-colors cursor-pointer shrink-0 ml-2"
-                          title="Remove file"
-                        >
-                          ✕
-                        </button>
+                        {sourceUrls.length > 1 && (
+                          <button
+                            type="button"
+                            onClick={() => removeSourceUrlField(idx)}
+                            className="w-7 h-7 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 flex items-center justify-center text-xs font-bold transition-colors cursor-pointer shrink-0"
+                            title="Remove this link"
+                          >
+                            ✕
+                          </button>
+                        )}
                       </div>
                     ))}
                   </div>
-                ) : (
-                  <div className="bg-slate-100/70 border border-slate-200/80 rounded-xl px-3 py-2 text-center text-[11px] text-slate-500">
-                    No files added yet (Optional). You can upload multiple PDFs or audios together.
+
+                  <button
+                    type="button"
+                    onClick={addSourceUrlField}
+                    className="w-full py-2 px-3 border border-dashed border-rose-300 hover:border-rose-400 hover:bg-rose-50/50 rounded-xl text-xs font-bold text-rose-700 flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>+ Add Another Link</span>
+                  </button>
+                </div>
+
+                {/* Material Input 2: Multiple Files Upload (Textbooks, Audio, Slides) */}
+                <div className="bg-slate-50 border border-slate-200/90 rounded-2xl p-3.5 space-y-3">
+                  <div className="flex items-center justify-between border-b border-slate-200/80 pb-2">
+                    <div className="flex items-center gap-2">
+                      <div className="w-7 h-7 rounded-lg bg-blue-100 text-blue-600 flex items-center justify-center">
+                        <Files className="w-4 h-4" />
+                      </div>
+                      <div>
+                        <h4 className="text-xs font-bold text-slate-800">
+                          2. Course Documents & Media Files
+                        </h4>
+                        <p className="text-[10px] text-slate-500">
+                          Upload textbooks, audio drills, lecture slides, notes
+                        </p>
+                      </div>
+                    </div>
+                    {uploadedFiles.length > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => setUploadedFiles([])}
+                        className="text-[10px] font-bold text-rose-600 hover:underline cursor-pointer"
+                      >
+                        Clear All ({uploadedFiles.length})
+                      </button>
+                    )}
                   </div>
-                )}
+
+                  {/* Drag & Drop Multi-file Target */}
+                  <div
+                    onDragOver={handleDragOver}
+                    onDragLeave={handleDragLeave}
+                    onDrop={handleDrop}
+                    className={`border-2 border-dashed rounded-2xl p-5 text-center transition-all cursor-pointer ${
+                      isDragging
+                        ? 'border-blue-500 bg-blue-50 scale-[1.01]'
+                        : 'border-slate-300 hover:border-blue-400 bg-white hover:bg-blue-50/20'
+                    }`}
+                  >
+                    <input
+                      type="file"
+                      id="tutor-file"
+                      className="hidden"
+                      multiple
+                      accept="image/*,video/*,audio/*,.pdf,.txt,.docx,.csv,.pptx,.ppt,application/vnd.openxmlformats-officedocument.presentationml.presentation"
+                      onChange={handleFileUpload}
+                    />
+                    <label htmlFor="tutor-file" className="cursor-pointer block space-y-1.5">
+                      <div className="w-10 h-10 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center mx-auto border border-blue-100">
+                        <FileUp className="w-5 h-5" />
+                      </div>
+                      <div>
+                        <p className="text-xs font-bold text-slate-800">
+                          <span className="text-blue-600 hover:underline">Click to browse multiple files</span> or drag & drop here
+                        </p>
+                        <p className="text-[10px] text-slate-400 mt-0.5">
+                          Supports: PDF, MP3/WAV, MP4, Word (DOCX), PowerPoint (PPTX) • Bulk upload any number of files
+                        </p>
+                      </div>
+                    </label>
+                  </div>
+
+                  {/* Uploaded File List with Visual Counters */}
+                  {uploadedFiles.length > 0 ? (
+                    <div className="space-y-1.5 max-h-48 overflow-y-auto pr-1">
+                      <div className="flex items-center justify-between text-[10px] font-bold text-slate-500 uppercase px-1">
+                        <span>Ready for AI Synthesis ({uploadedFiles.length} files)</span>
+                        <span>Total: {(uploadedFiles.reduce((acc, f) => acc + f.size, 0) / (1024 * 1024)).toFixed(1)} MB</span>
+                      </div>
+                      {uploadedFiles.map((f, i) => (
+                        <div
+                          key={i}
+                          className={`flex items-center justify-between border rounded-xl px-3 py-2 text-xs transition-colors bg-white ${getFileBadgeColor(f.name)}`}
+                        >
+                          <div className="flex items-center gap-2 min-w-0">
+                            <span className="text-sm">📄</span>
+                            <div className="truncate min-w-0">
+                              <p className="font-bold truncate text-slate-900" title={f.name}>
+                                {f.name}
+                              </p>
+                              <span className="text-[10px] text-slate-500">
+                                {formatFileSize(f.size)}
+                              </span>
+                            </div>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => removeUploadedFile(i)}
+                            className="w-6 h-6 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 flex items-center justify-center text-xs font-bold transition-colors cursor-pointer shrink-0 ml-2"
+                            title="Remove file"
+                          >
+                            ✕
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="bg-slate-100/70 border border-slate-200/80 rounded-xl px-3 py-2 text-center text-[11px] text-slate-500">
+                      No files added yet (Optional). You can upload multiple PDFs or audios together.
+                    </div>
+                  )}
+                </div>
               </div>
 
-                  {/* Step 3 Action Buttons */}
-                  <div className="pt-2 space-y-2">
-                    <button
-                      type="button"
-                      onClick={handlePreviewPlanner}
-                      disabled={loading || !Object.values(selectedLsrwSkills).some(Boolean)}
-                      className="w-full py-3 px-4 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-bold rounded-xl shadow-lg shadow-blue-500/25 flex items-center justify-center gap-2 transition-all disabled:opacity-50 cursor-pointer"
-                    >
-                      <CalendarDays className="w-4 h-4 text-amber-300" />
-                      <span>Review & Confirm Lesson Planner</span>
-                    </button>
+              {/* Action Buttons: Review Planner OR Direct Generate Full Kit */}
+              <div className="pt-2 space-y-2">
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    setIsFullScreen(true);
+                    handlePreviewPlanner(e);
+                  }}
+                  disabled={loading || !selectedLanguage}
+                  className={`w-full py-3 px-4 font-bold rounded-xl shadow-md flex items-center justify-center gap-2 transition-all cursor-pointer text-xs ${
+                    !selectedLanguage
+                      ? 'bg-slate-200 text-slate-400 cursor-not-allowed shadow-none'
+                      : 'bg-slate-900 hover:bg-slate-800 text-white shadow-slate-900/10'
+                  }`}
+                >
+                  <CalendarDays className="w-4 h-4 text-slate-200" />
+                  <span>Review & Confirm Lesson Planner</span>
+                </button>
 
-                    <button
-                      type="button"
-                      onClick={() => setWizardStep(2)}
-                      className="w-full py-2 px-3 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl flex items-center justify-center gap-1.5 transition-colors cursor-pointer text-xs"
-                    >
-                      <ArrowLeft className="w-4 h-4" />
-                      <span>Back to Topic & Concept</span>
-                    </button>
-                  </div>
-                </div>
-              )}
+                <button
+                  type="button"
+                  onClick={(e) => handleGenerate(e)}
+                  disabled={loading || !selectedLanguage}
+                  className={`w-full py-3 px-4 font-bold rounded-xl shadow-md flex items-center justify-center gap-2 transition-all cursor-pointer text-xs ${
+                    !selectedLanguage
+                      ? 'bg-slate-100 text-slate-400 border border-slate-200 cursor-not-allowed shadow-none'
+                      : 'bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white shadow-blue-600/20'
+                  }`}
+                >
+                  <Sparkles className="w-4 h-4 text-white" />
+                  <span>Directly Generate Content & Teaching Kit</span>
+                </button>
+
+                {!selectedLanguage && (
+                  <p className="text-[11px] text-amber-700 font-medium text-center mt-2 flex items-center justify-center gap-1">
+                    <span>⚠️</span> Please select a target language above to proceed
+                  </p>
+                )}
+              </div>
             </form>
           </div>
         </div>
 
-        {/* Right Column: Generated Curriculum Workspace (Full width if isFullScreen or 8 cols, stacks naturally on mobile) */}
-        <div className={`space-y-6 ${isFullScreen ? 'lg:col-span-12' : 'lg:col-span-8'}`}>
+        {/* Right Column: Generated Curriculum Workspace (Full width if isFullScreen with active planner/package/loading, otherwise 8 cols) */}
+        <div className={`space-y-6 ${(isFullScreen && (Boolean(proposedPlanner) || Boolean(sessionPackage) || plannerLoading)) ? 'lg:col-span-12' : 'lg:col-span-8'}`}>
           {/* 1. Proposed Lesson Planner Review & Confirmation Card (Strictly blocked if mismatch error exists) */}
           {proposedPlanner && !sessionPackage && !loading && !mismatchError && proposedPlanner.language === selectedLanguage && (
             <div className="bg-white rounded-2xl border border-blue-200/90 shadow-md overflow-hidden animate-in fade-in slide-in-from-top-3 duration-300">
-              {/* 🎯 Interactive Academic Lesson Planner Agent Studio */}
-              <div className="p-4 sm:p-5 bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 text-white">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-indigo-900/60">
-                  <div className="space-y-1">
+              {/* 🎯 Interactive Academic Lesson Planner Agent Studio Header */}
+              <div className="p-4 sm:p-5 bg-slate-900 border-b border-slate-800 text-white">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-slate-800">
+                  <div className="space-y-1.5">
                     <div className="flex items-center gap-2">
-                      <span className="bg-gradient-to-r from-amber-400 to-amber-500 text-slate-950 text-[11px] font-black px-2.5 py-0.5 rounded-full flex items-center gap-1.5 shadow-sm">
-                        <Bot className="w-3.5 h-3.5" />
+                      <span className="bg-slate-800 text-white text-[11px] font-bold px-2.5 py-1 rounded-lg border border-slate-700 flex items-center gap-1.5 shadow-xs">
+                        <Bot className="w-3.5 h-3.5 text-indigo-400" />
                         Autonomous Lesson Planner Agent
                       </span>
-                      <span className="bg-emerald-500/20 text-emerald-300 text-xs font-mono font-bold px-2 py-0.5 rounded-md border border-emerald-500/30 flex items-center gap-1">
+                      <span className="bg-emerald-500/10 text-emerald-300 text-xs font-mono font-semibold px-2 py-0.5 rounded-md border border-emerald-500/25 flex items-center gap-1.5">
                         <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
                         Live Studio
                       </span>
-                      <span className="bg-white/10 text-cyan-200 text-xs font-semibold px-2 py-0.5 rounded-md hidden md:inline">
+                      <span className="bg-slate-800/80 text-slate-300 text-xs font-medium px-2 py-0.5 rounded-md border border-slate-700/60 hidden md:inline">
                         {proposedPlanner.language} • {proposedPlanner.level}
                       </span>
                     </div>
@@ -2265,191 +2460,69 @@ export default function FacultyStudioPage() {
                     </h3>
                   </div>
 
-                  <div className="flex items-center gap-2 shrink-0">
+                  <div className="flex items-center gap-2 shrink-0 flex-wrap">
                     <button
                       type="button"
-                      onClick={() => handleDownloadFullCurriculumDocx()}
-                      disabled={downloadingFullDocx}
-                      className="px-3.5 py-1.5 rounded-xl text-xs font-black bg-gradient-to-r from-blue-600 via-indigo-600 to-blue-700 hover:from-blue-500 hover:to-indigo-500 text-white shadow-md border border-blue-400/30 transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
-                      title="Download complete Master Guide with all periods and study materials"
+                      onClick={() => {
+                        setIsFullScreen(false);
+                        setProposedPlanner(null);
+                        setIsEditingPlanner(false);
+                        setTimeout(() => {
+                          formContainerRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                        }, 50);
+                      }}
+                      className="px-3.5 py-2 rounded-xl text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700 transition-all flex items-center gap-1.5 cursor-pointer shadow-xs"
+                      title="Return to the configuration form to adjust parameters"
                     >
-                      {downloadingFullDocx ? (
-                        <>
-                          <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                          <span>Exporting All {proposedPlanner.total_days}...</span>
-                        </>
-                      ) : (
-                        <>
-                          <Download className="w-3.5 h-3.5 text-amber-300" />
-                          <span>Download All {proposedPlanner.total_days} {proposedPlanner.unit_name}s</span>
-                        </>
-                      )}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setIsEditingPlanner(!isEditingPlanner)}
-                      className={`px-3 py-1.5 rounded-xl text-xs font-bold border transition-all flex items-center gap-1.5 cursor-pointer ${
-                        isEditingPlanner
-                          ? 'bg-amber-400 text-slate-950 border-amber-300 shadow-md font-black'
-                          : 'bg-white/10 hover:bg-white/20 text-white border-white/20'
-                      }`}
-                    >
-                      <Edit3 className="w-3.5 h-3.5" />
-                      <span>{isEditingPlanner ? 'Done Editing' : 'Manual Edit'}</span>
+                      <ArrowLeft className="w-3.5 h-3.5" />
+                      <span>Back to Setup</span>
                     </button>
                     <button
                       type="button"
                       onClick={handleGenerate}
-                      className="px-4 py-2 bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-slate-950 font-black rounded-xl text-xs shadow-lg shadow-emerald-500/20 transition-all flex items-center gap-1.5 cursor-pointer"
+                      className="px-4 py-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-bold rounded-xl text-xs shadow-md shadow-blue-600/25 transition-all flex items-center gap-1.5 cursor-pointer"
                     >
-                      <Sparkles className="w-3.5 h-3.5 text-slate-950" />
-                      <span>Confirm & Synthesize Full Kit</span>
-                    </button>
-                  </div>
-                </div>
-
-                {/* 🤖 Embedded Agent Studio Command Bar */}
-                <div className="pt-3 space-y-2">
-                  <div className="flex items-center justify-between text-xs">
-                    <span className="text-indigo-200 font-semibold flex items-center gap-1.5">
-                      <Sparkles className="w-3.5 h-3.5 text-amber-300" />
-                      <span>Agent Prompt Co-Pilot</span>
-                      <span className="text-slate-400 font-normal hidden sm:inline">— Modify any chapter, adjust cadence, or re-structure periods:</span>
-                    </span>
-                    <div className="flex items-center gap-2">
-                      {autoSaveStatus === 'saving' && (
-                        <span className="text-amber-300 font-mono text-[11px] flex items-center gap-1 animate-pulse bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/20">
-                          <Loader2 className="w-3 h-3 animate-spin" />
-                          Auto-saving...
-                        </span>
-                      )}
-                      {autoSaveStatus === 'saved' && (
-                        <span className="text-emerald-400 font-mono text-[11px] flex items-center gap-1 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20 animate-in fade-in duration-150">
-                          <Check className="w-3 h-3 text-emerald-400" />
-                          Auto-saved to DB {lastAutoSavedTime && `(${lastAutoSavedTime})`}
-                        </span>
-                      )}
-                      {coPilotLoading && (
-                        <span className="text-amber-300 font-mono text-[11px] flex items-center gap-1 animate-pulse">
-                          <Loader2 className="w-3 h-3 animate-spin" />
-                          AI Agent Processing...
-                        </span>
-                      )}
-                    </div>
-                  </div>
-
-                  <form onSubmit={handleRefineWithCopilot} className="relative flex items-center gap-2">
-                    <div className="relative flex-1">
-                      <input
-                        type="text"
-                        value={coPilotPrompt}
-                        onChange={(e) => setCoPilotPrompt(e.target.value)}
-                        disabled={coPilotLoading}
-                        placeholder="e.g. 'In Module 2, add 2 speaking dialogues about ordering food and make period 15 a review milestone'..."
-                        className="w-full bg-white/10 hover:bg-white/15 focus:bg-white/20 border border-white/20 rounded-xl pl-9 pr-4 py-2.5 text-xs text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-400 transition-all shadow-inner"
-                      />
-                      <Bot className="w-4 h-4 text-slate-400 absolute left-3 top-3" />
-                    </div>
-                    <button
-                      type="submit"
-                      disabled={coPilotLoading || !coPilotPrompt.trim()}
-                      className="px-4 py-2.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-bold text-xs rounded-xl shadow-md transition-all flex items-center gap-1.5 disabled:opacity-40 cursor-pointer shrink-0"
-                    >
-                      {coPilotLoading ? (
-                        <>
-                          <Loader2 className="w-3.5 h-3.5 animate-spin text-amber-300" />
-                          <span>Executing...</span>
-                        </>
-                      ) : (
-                        <>
-                          <Send className="w-3.5 h-3.5 text-amber-300" />
-                          <span>Instruct Agent</span>
-                        </>
-                      )}
-                    </button>
-                  </form>
-
-                  {/* Agent Reasoning Output & Auto-save confirmation */}
-                  {coPilotResponse && (
-                    <div className="bg-indigo-950/90 border border-indigo-400/30 rounded-xl p-3 flex items-start justify-between gap-2.5 text-xs text-indigo-100 shadow-sm animate-in fade-in duration-200">
-                      <div className="flex items-start gap-2.5 flex-1">
-                        <div className="w-5 h-5 rounded-full bg-amber-400/20 text-amber-300 flex items-center justify-center shrink-0 mt-0.5 font-bold">
-                          ⚡
-                        </div>
-                        <div className="space-y-1 flex-1">
-                          <div className="flex items-center gap-2">
-                            <span className="font-bold text-amber-300 text-[11px] block">Agent Blueprint Decision:</span>
-                            <span className="text-[10px] text-emerald-300 font-mono bg-emerald-950/60 border border-emerald-500/30 px-1.5 py-0.2 rounded flex items-center gap-1">
-                              ✓ Auto-saved
-                            </span>
-                          </div>
-                          <p className="text-[11px] leading-relaxed text-indigo-100">{coPilotResponse}</p>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Quick Action Badges */}
-                  <div className="flex flex-wrap items-center gap-1.5 pt-0.5 text-[11px]">
-                    <span className="text-slate-400 text-[10px] font-bold uppercase tracking-wider">Quick Actions:</span>
-                    <button
-                      type="button"
-                      onClick={() => setCoPilotPrompt(`Add intensive paired speaking drill and oral scenario to Module ${plannerActiveModule}`)}
-                      className="bg-white/10 hover:bg-white/20 text-slate-200 hover:text-white px-2.5 py-1 rounded-lg border border-white/10 cursor-pointer transition-colors flex items-center gap-1"
-                    >
-                      <span>🗣️ Add Speaking Drills</span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setCoPilotPrompt(`Inject a 35-minute mid-term checkpoint assessment into Module ${plannerActiveModule}`)}
-                      className="bg-white/10 hover:bg-white/20 text-slate-200 hover:text-white px-2.5 py-1 rounded-lg border border-white/10 cursor-pointer transition-colors flex items-center gap-1"
-                    >
-                      <span>🎯 Insert Milestone Quiz</span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setCoPilotPrompt(`Focus on daily life and shopping vocabulary with audio comprehension in Module ${plannerActiveModule}`)}
-                      className="bg-white/10 hover:bg-white/20 text-slate-200 hover:text-white px-2.5 py-1 rounded-lg border border-white/10 cursor-pointer transition-colors flex items-center gap-1"
-                    >
-                      <span>🎧 Audio Comprehension</span>
+                      <Sparkles className="w-3.5 h-3.5 text-white" />
+                      <span>Confirm & Generate Package</span>
                     </button>
                   </div>
                 </div>
               </div>
 
               {/* Course Metrics Ribbon */}
-              <div className="bg-slate-50 border-b border-slate-200 px-4 py-2.5 flex flex-wrap items-center justify-between gap-2 text-xs text-slate-600">
-                <div className="flex flex-wrap items-center gap-4">
-                  <span className="inline-flex items-center gap-1.5">
+              <div className="bg-slate-50 border-b border-slate-200 px-5 py-3 flex flex-wrap items-center justify-between gap-4 text-xs text-slate-600">
+                <div className="flex flex-wrap items-center gap-5">
+                  <span className="inline-flex items-center gap-2">
                     <span className="w-2 h-2 rounded-full bg-blue-600" />
-                    <strong>{proposedPlanner.course_duration_hours} Total Hours</strong>
+                    <span className="text-slate-500">Duration:</span>
+                    <strong className="text-slate-900">{proposedPlanner.course_duration_hours} Total Hours</strong>
                   </span>
-                  <span className="inline-flex items-center gap-1.5">
-                    <span className="w-2 h-2 rounded-full bg-indigo-600" />
-                    <span>Cadence: <strong>{proposedPlanner.periods_per_week} {proposedPlanner.unit_name}s / wk</strong></span>
+                  <span className="inline-flex items-center gap-2">
+                    <span className="w-2 h-2 rounded-full bg-slate-400" />
+                    <span className="text-slate-500">Cadence:</span>
+                    <strong className="text-slate-900">{proposedPlanner.periods_per_week} {proposedPlanner.unit_name}s / wk</strong>
                   </span>
-                  <span className="inline-flex items-center gap-1.5">
-                    <span className="w-2 h-2 rounded-full bg-emerald-600" />
-                    <span>Duration: <strong>{proposedPlanner.period_duration_minutes} Mins / {proposedPlanner.unit_name.toLowerCase()}</strong></span>
+                  <span className="inline-flex items-center gap-2">
+                    <span className="w-2 h-2 rounded-full bg-slate-400" />
+                    <span className="text-slate-500">Period Length:</span>
+                    <strong className="text-slate-900">{proposedPlanner.period_duration_minutes} Mins</strong>
                   </span>
                 </div>
 
-                <div className="flex items-center gap-2">
-                  <span className="text-[11px] text-slate-500">
-                    Total: <strong>{proposedPlanner.total_modules} Modules</strong> ({proposedPlanner.total_days} {proposedPlanner.unit_name}s)
-                  </span>
+                <div className="flex items-center gap-2 text-xs text-slate-500 font-medium">
+                  <span>Scope: <strong className="text-slate-900">{proposedPlanner.total_modules} Modules</strong> ({proposedPlanner.total_days} {proposedPlanner.unit_name}s total)</span>
                 </div>
               </div>
 
-              {/* Sleek Top Navigation Bar for Proposed Planner Modules & Periods */}
+              {/* Sleek Navigation Bar for Proposed Planner Modules & Periods */}
               {(() => {
                 const activeMod = proposedPlanner.modules.find((m: any) => m.moduleNumber === plannerActiveModule) || proposedPlanner.modules[0];
                 return (
-                  <div className="bg-slate-900 text-white border-b border-slate-800 p-3 sm:p-4 space-y-2.5">
-                    {/* Top Row: Module pills + Milestone Indicator */}
+                  <div className="bg-slate-900 text-white border-b border-slate-800 p-4 space-y-3">
+                    {/* Top Row: Module pills */}
                     <div className="flex items-center justify-between gap-3">
-                      <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar scroll-smooth">
-                        <span className="text-[10px] uppercase font-black tracking-wider text-slate-400 mr-1 shrink-0">
+                      <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar scroll-smooth py-0.5">
+                        <span className="text-[10px] uppercase font-bold tracking-wider text-slate-400 mr-2 shrink-0">
                           Modules:
                         </span>
                         {proposedPlanner.modules.map((m: any) => {
@@ -2462,15 +2535,15 @@ export default function FacultyStudioPage() {
                                 setPlannerActiveModule(m.moduleNumber);
                                 setExpandedPeriodId(null);
                               }}
-                              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all shrink-0 cursor-pointer flex items-center gap-1.5 border ${
+                              className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-all shrink-0 cursor-pointer flex items-center gap-1.5 border ${
                                 isActive
-                                  ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white border-blue-400 shadow-md shadow-blue-500/25'
-                                  : 'bg-slate-800/80 hover:bg-slate-800 text-slate-300 border-slate-700/60 hover:text-white'
+                                  ? 'bg-blue-600 text-white border-blue-500 shadow-sm'
+                                  : 'bg-slate-800 hover:bg-slate-700/80 text-slate-300 border-slate-700/80 hover:text-white'
                               }`}
                             >
                               <span>Module {m.moduleNumber}</span>
                               <span className={`text-[10px] font-mono px-1.5 py-0.2 rounded ${
-                                isActive ? 'bg-black/25 text-blue-200 font-bold' : 'bg-slate-900/60 text-slate-400'
+                                isActive ? 'bg-black/25 text-white font-bold' : 'bg-slate-900/60 text-slate-400'
                               }`}>
                                 {m.startUnit}–{m.endUnit}
                               </span>
@@ -2480,15 +2553,15 @@ export default function FacultyStudioPage() {
                       </div>
 
                       <div className="hidden lg:flex items-center gap-2 shrink-0">
-                        <span className="text-[11px] text-slate-300 bg-slate-800 px-2.5 py-1 rounded-lg border border-slate-700 font-semibold">
-                          Active: <strong className="text-amber-400">Module {activeMod.moduleNumber}</strong> ({proposedPlanner.unit_name}s {activeMod.startUnit}–{activeMod.endUnit})
+                        <span className="text-xs text-slate-300 bg-slate-800 px-3 py-1 rounded-lg border border-slate-700">
+                          Viewing: <strong className="text-white">Module {activeMod.moduleNumber}</strong> ({proposedPlanner.unit_name}s {activeMod.startUnit}–{activeMod.endUnit})
                         </span>
                       </div>
                     </div>
 
                     {/* Bottom Row: Quick Period Buttons in Active Module */}
-                    <div className="pt-2 border-t border-slate-800/80 flex items-center gap-1.5 overflow-x-auto no-scrollbar">
-                      <span className="text-[10px] uppercase font-black tracking-wider text-slate-400 mr-1 shrink-0">
+                    <div className="pt-2.5 border-t border-slate-800/80 flex items-center gap-1.5 overflow-x-auto no-scrollbar py-0.5">
+                      <span className="text-[10px] uppercase font-bold tracking-wider text-slate-400 mr-2 shrink-0">
                         {proposedPlanner.unit_name}s:
                       </span>
                       {activeMod.days.map((d: any) => {
@@ -2499,17 +2572,17 @@ export default function FacultyStudioPage() {
                             key={d.day_number}
                             type="button"
                             onClick={() => setExpandedPeriodId(isExpanded ? null : d.day_number)}
-                            className={`px-2.5 py-1 rounded-lg text-xs font-extrabold transition-all cursor-pointer border flex items-center gap-1 shrink-0 ${
+                            className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer border flex items-center gap-1 shrink-0 ${
                               isExpanded
-                                ? 'bg-amber-400 text-slate-950 border-amber-300 shadow-md shadow-amber-400/20 scale-105'
+                                ? 'bg-blue-600 text-white border-blue-400 shadow-sm scale-105'
                                 : isMilestone
                                 ? 'bg-slate-800 border-amber-500/40 text-amber-300 hover:bg-slate-700'
-                                : 'bg-slate-800/80 hover:bg-slate-700 text-slate-200 border-slate-700/80 hover:text-white'
+                                : 'bg-slate-800 hover:bg-slate-700 text-slate-300 border-slate-700 hover:text-white'
                             }`}
                           >
-                            <span className="text-[9px] opacity-75 font-semibold">{proposedPlanner.unit_name.slice(0, 1)}</span>
+                            <span className="text-[9px] opacity-70 font-semibold">{proposedPlanner.unit_name.slice(0, 1)}</span>
                             <span>{d.day_number}</span>
-                            {isMilestone && <span className="text-[8px] bg-amber-400/30 text-amber-200 px-1 rounded">Q</span>}
+                            {isMilestone && <span className="text-[8px] bg-amber-400/20 text-amber-300 px-1 rounded font-bold">Quiz</span>}
                           </button>
                         );
                       })}
@@ -2524,27 +2597,19 @@ export default function FacultyStudioPage() {
                 if (!activeMod) return null;
 
                 return (
-                  <div className="p-4 sm:p-5 space-y-3">
+                  <div className="p-5 space-y-3">
                     <div className="flex items-center justify-between pb-1">
                       <div className="flex items-center gap-2">
-                        <span className="w-2.5 h-2.5 rounded-full bg-blue-600" />
-                        <h4 className="text-xs font-bold text-slate-900 uppercase tracking-wider flex items-center gap-2">
-                          <span>Module {activeMod.moduleNumber} Period Breakdown</span>
+                        <span className="w-2 h-2 rounded-full bg-blue-600" />
+                        <h4 className="text-xs font-bold text-slate-900 tracking-tight flex items-center gap-2">
+                          <span>Module {activeMod.moduleNumber} Detailed Breakdown</span>
                           <span className="text-slate-400 font-normal">({activeMod.startUnit} to {activeMod.endUnit} • ~{activeMod.approxWeeks} Weeks)</span>
                         </h4>
                       </div>
                       <div className="flex items-center gap-2">
-                        <button
-                          type="button"
-                          onClick={() => setCoPilotPrompt(`Add an assessment checkpoint milestone at period ${activeMod.endUnit}`)}
-                          className="text-[11px] text-blue-700 font-bold bg-blue-50 hover:bg-blue-100 px-2.5 py-1 rounded-lg border border-blue-200 transition-colors cursor-pointer flex items-center gap-1"
-                        >
-                          <Target className="w-3 h-3 text-blue-600" />
-                          <span>+ Milestone Assessment</span>
-                        </button>
                         {isEditingPlanner && (
-                          <span className="text-[11px] text-amber-700 font-semibold bg-amber-50 px-2 py-0.5 rounded border border-amber-200">
-                            ✏️ Edit enabled: modify topics directly
+                          <span className="text-[11px] text-amber-700 font-semibold bg-amber-50 px-2.5 py-1 rounded-md border border-amber-200">
+                            ✏️ Editing enabled: modify topics directly in rows
                           </span>
                         )}
                       </div>
@@ -2552,15 +2617,14 @@ export default function FacultyStudioPage() {
 
                     <div className="border border-slate-200 rounded-xl overflow-hidden shadow-2xs">
                       <table className="w-full text-left text-xs">
-                        <thead className="bg-slate-50 border-b border-slate-200 text-slate-500 font-bold uppercase text-[10px] tracking-wider">
+                        <thead className="bg-slate-50 border-b border-slate-200 text-slate-500 font-semibold text-[11px]">
                           <tr>
-                            <th className="py-2.5 px-3 w-8 text-center"></th>
-                            <th className="py-2.5 px-3 w-24">{proposedPlanner.unit_name}</th>
-                            <th className="py-2.5 px-3 w-16">Time</th>
-                            <th className="py-2.5 px-3">Lesson Topic / Linguistic Target</th>
-                            <th className="py-2.5 px-3 w-28 hidden sm:table-cell">LSRW Focus</th>
-                            <th className="py-2.5 px-3 w-32 text-right">Interactive Drills</th>
-                            {isEditingPlanner && <th className="py-2.5 px-3 w-36">Notes</th>}
+                            <th className="py-3 px-4 w-28">{proposedPlanner.unit_name}</th>
+                            <th className="py-3 px-3 w-20">Duration</th>
+                            <th className="py-3 px-4">Lesson Topic / Linguistic Target</th>
+                            <th className="py-3 px-3 w-32 hidden sm:table-cell text-center">Skills Covered</th>
+                            <th className="py-3 px-4 w-28 text-right">Details</th>
+                            {isEditingPlanner && <th className="py-3 px-3 w-36">Notes</th>}
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-100 bg-white">
@@ -2576,65 +2640,55 @@ export default function FacultyStudioPage() {
                               <React.Fragment key={d.day_number}>
                                 <tr
                                   onClick={() => setExpandedPeriodId(isExpanded ? null : d.day_number)}
-                                  className={`hover:bg-blue-50/50 transition-colors cursor-pointer ${isExpanded ? 'bg-blue-50/40' : ''} ${isMilestone ? 'bg-amber-50/30' : ''}`}
+                                  className={`hover:bg-slate-50/80 transition-colors cursor-pointer ${isExpanded ? 'bg-slate-50/90 font-medium' : ''} ${isMilestone ? 'bg-amber-50/20' : ''}`}
                                 >
-                                  <td className="py-2.5 px-2 text-center text-slate-400">
-                                    <ChevronDown className={`w-3.5 h-3.5 mx-auto transition-transform ${isExpanded ? 'rotate-180 text-blue-600' : ''}`} />
-                                  </td>
-                                  <td className="py-2.5 px-3 font-mono font-bold text-blue-700 whitespace-nowrap">
-                                    <div className="flex items-center gap-1.5">
-                                      <span>{proposedPlanner.unit_name} {d.day_number}</span>
+                                  <td className="py-3 px-4 font-mono font-bold text-slate-900 whitespace-nowrap">
+                                    <div className="flex items-center gap-2">
+                                      <span className="text-slate-900">{proposedPlanner.unit_name} {d.day_number}</span>
                                       {isMilestone && (
-                                        <span className="text-[9px] font-bold bg-amber-200 text-amber-900 px-1 rounded">Quiz</span>
+                                        <span className="text-[10px] font-bold bg-amber-100 text-amber-800 px-1.5 py-0.2 rounded border border-amber-200">Quiz</span>
                                       )}
                                     </div>
                                   </td>
-                                  <td className="py-2.5 px-3 whitespace-nowrap">
-                                    <span className="px-2 py-0.5 rounded bg-slate-100 text-slate-700 font-medium text-[11px]">
+                                  <td className="py-3 px-3 whitespace-nowrap">
+                                    <span className="px-2 py-0.5 rounded bg-slate-100 text-slate-600 font-medium text-[11px]">
                                       {proposedPlanner.period_duration_minutes}m
                                     </span>
                                   </td>
-                                  <td className="py-2.5 px-3">
+                                  <td className="py-3 px-4">
                                     {isEditingPlanner ? (
                                       <input
                                         type="text"
                                         value={cleanTopic}
                                         onClick={(e) => e.stopPropagation()}
                                         onChange={(e) => updateDayInPlanner(d.day_number, 'day_topic', `${proposedPlanner.unit_name} ${d.day_number}: ${e.target.value}`)}
-                                        className="w-full px-2 py-1 bg-white border border-slate-300 rounded text-xs font-semibold text-slate-900 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                                        className="w-full px-2.5 py-1 bg-white border border-slate-300 rounded-lg text-xs font-semibold text-slate-900 focus:outline-none focus:ring-1 focus:ring-blue-500"
                                       />
                                     ) : (
                                       <div title={cleanTopic}>
-                                        <span className="font-bold text-slate-900 text-xs block truncate max-w-[280px] sm:max-w-[420px]">
+                                        <span className="font-semibold text-slate-800 text-xs block truncate max-w-[280px] sm:max-w-[480px]">
                                           {cleanTopic}
                                         </span>
                                       </div>
                                     )}
                                   </td>
-                                  <td className="py-2.5 px-3 hidden sm:table-cell">
-                                    <div className="flex items-center gap-1 font-mono text-[9px] font-bold">
-                                      <span className="bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded" title="Listening Drill">L</span>
-                                      <span className="bg-emerald-100 text-emerald-700 px-1.5 py-0.5 rounded" title="Speaking Situational Task">S</span>
-                                      <span className="bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded" title="Reading Comprehension">R</span>
-                                      <span className="bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded" title="Writing Grammar Practice">W</span>
+                                  <td className="py-3 px-3 hidden sm:table-cell text-center">
+                                    <div className="inline-flex items-center gap-1 font-mono text-[10px] font-semibold text-slate-600">
+                                      <span className="w-5 h-5 rounded flex items-center justify-center bg-slate-100 border border-slate-200" title="Listening Drill">L</span>
+                                      <span className="w-5 h-5 rounded flex items-center justify-center bg-slate-100 border border-slate-200" title="Speaking Situational Task">S</span>
+                                      <span className="w-5 h-5 rounded flex items-center justify-center bg-slate-100 border border-slate-200" title="Reading Comprehension">R</span>
+                                      <span className="w-5 h-5 rounded flex items-center justify-center bg-slate-100 border border-slate-200" title="Writing Grammar Practice">W</span>
                                     </div>
                                   </td>
-                                  <td className="py-2.5 px-3 text-right">
+                                  <td className="py-3 px-4 text-right">
                                     <div className="flex items-center justify-end gap-1.5" onClick={(e) => e.stopPropagation()}>
                                       <button
                                         type="button"
-                                        onClick={() => setCoPilotPrompt(`Revamp Period ${d.day_number} (${cleanTopic}) with custom conversational speaking activities`)}
-                                        className="p-1 rounded text-slate-400 hover:text-blue-600 hover:bg-blue-50 transition-colors"
-                                        title="Prompt AI for this Period"
-                                      >
-                                        <Sparkles className="w-3.5 h-3.5" />
-                                      </button>
-                                      <button
-                                        type="button"
                                         onClick={() => setExpandedPeriodId(isExpanded ? null : d.day_number)}
-                                        className="inline-flex items-center gap-1 text-[11px] font-semibold text-blue-600 bg-blue-50 hover:bg-blue-100 px-2.5 py-0.5 rounded-full border border-blue-200 transition-colors cursor-pointer"
+                                        className="inline-flex items-center gap-1 text-[11px] font-semibold text-slate-600 hover:text-slate-900 bg-white hover:bg-slate-100 px-2.5 py-1 rounded-lg border border-slate-200 transition-colors cursor-pointer"
                                       >
-                                        <span>{isExpanded ? 'Collapse' : 'Inspect'}</span>
+                                        <span>{isExpanded ? 'Hide' : 'Inspect'}</span>
+                                        <ChevronDown className={`w-3.5 h-3.5 transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
                                       </button>
                                     </div>
                                   </td>
@@ -2751,48 +2805,50 @@ export default function FacultyStudioPage() {
               })()}
 
               {/* Bottom Simple Action Bar */}
-              <div className="p-3.5 bg-slate-50 border-t border-slate-200 flex flex-wrap items-center justify-between gap-3 text-xs">
-                <span className="text-slate-500">
+              <div className="p-4 bg-slate-50 border-t border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+                <span className="text-slate-500 font-medium">
                   Ready to proceed? Confirm to generate all teaching guides, slides, and student worksheets.
                 </span>
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 flex-wrap">
                   <button
                     type="button"
                     onClick={() => {
+                      setIsFullScreen(false);
                       setProposedPlanner(null);
                       setIsEditingPlanner(false);
                       setTimeout(() => {
                         formContainerRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
                       }, 50);
                     }}
-                    className="px-3 py-1.5 bg-white hover:bg-slate-100 text-slate-700 font-semibold rounded-lg border border-slate-200 transition-colors cursor-pointer text-xs"
+                    className="px-3.5 py-2 bg-white hover:bg-slate-100 text-slate-700 font-semibold rounded-xl border border-slate-300 transition-colors cursor-pointer text-xs flex items-center gap-1.5 shadow-2xs"
                   >
-                    Back to Setup
+                    <ArrowLeft className="w-3.5 h-3.5" />
+                    <span>Back to Setup Form</span>
                   </button>
                   <button
                     type="button"
                     onClick={() => handleDownloadFullCurriculumDocx()}
                     disabled={downloadingFullDocx}
-                    className="px-3.5 py-1.5 bg-gradient-to-r from-blue-600 via-indigo-600 to-blue-700 hover:from-blue-700 hover:to-indigo-700 text-white font-bold rounded-xl text-xs shadow-md transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                    className="px-3.5 py-2 bg-slate-800 hover:bg-slate-700 text-white font-semibold rounded-xl text-xs shadow-2xs transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
                   >
                     {downloadingFullDocx ? (
                       <>
                         <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                        <span>Exporting All {proposedPlanner.total_days}...</span>
+                        <span>Exporting {proposedPlanner.total_days} {proposedPlanner.unit_name}s...</span>
                       </>
                     ) : (
                       <>
-                        <Download className="w-3.5 h-3.5 text-amber-300" />
-                        <span>Download All {proposedPlanner.total_days} {proposedPlanner.unit_name}s</span>
+                        <Download className="w-3.5 h-3.5 text-blue-400" />
+                        <span>Download All {proposedPlanner.total_days}</span>
                       </>
                     )}
                   </button>
                   <button
                     type="button"
                     onClick={handleGenerate}
-                    className="px-4 py-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-bold rounded-xl text-xs shadow-md transition-all flex items-center gap-1.5 cursor-pointer"
+                    className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-xl text-xs shadow-md shadow-blue-600/20 transition-all flex items-center gap-1.5 cursor-pointer"
                   >
-                    <Sparkles className="w-3.5 h-3.5" />
+                    <Sparkles className="w-3.5 h-3.5 text-white" />
                     <span>Confirm & Generate Package</span>
                   </button>
                 </div>
@@ -2800,48 +2856,86 @@ export default function FacultyStudioPage() {
             </div>
           )}
 
-          {/* 2. Ready State (Before Planner or Package) */}
-          {!proposedPlanner && !sessionPackage && !loading && (
-            <div className="bg-white rounded-3xl border border-slate-200/90 p-8 sm:p-14 text-center text-slate-500 shadow-sm">
-              <div className="max-w-md mx-auto space-y-4">
-                <div className="w-16 h-16 rounded-2xl bg-blue-50 border border-blue-200 flex items-center justify-center mx-auto text-blue-600 shadow-sm">
-                  <CalendarDays className="w-8 h-8" />
+          {/* 1.1 Autonomous Planner Blueprint Compilation Loader Animation */}
+          {plannerLoading && (
+            <div className="bg-slate-900 text-white rounded-3xl border border-slate-800 p-8 sm:p-14 shadow-2xl relative overflow-hidden animate-in fade-in duration-300">
+              {/* Subtle ambient lighting */}
+              <div className="absolute -right-20 -top-20 w-80 h-80 bg-blue-600/15 rounded-full blur-3xl pointer-events-none" />
+              <div className="absolute -left-20 -bottom-20 w-80 h-80 bg-indigo-600/15 rounded-full blur-3xl pointer-events-none" />
+
+              <div className="max-w-lg mx-auto text-center space-y-6 relative z-10">
+                {/* Pulsing Central Agent Icon */}
+                <div className="relative inline-block">
+                  <div className="w-18 h-18 rounded-3xl bg-gradient-to-tr from-blue-600 to-indigo-600 flex items-center justify-center mx-auto shadow-2xl shadow-blue-500/30 border border-blue-400/30">
+                    <Bot className="w-9 h-9 text-white animate-pulse" />
+                  </div>
+                  <span className="absolute -top-1 -right-1 flex h-4 w-4">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
+                    <span className="relative inline-flex rounded-full h-4 w-4 bg-amber-500"></span>
+                  </span>
                 </div>
-                <div>
-                  <h3 className="text-lg font-black text-slate-900 tracking-tight">Lesson Planner & Studio Ready</h3>
-                  <p className="text-xs text-slate-500 mt-1 leading-relaxed">
-                    Set up your institution parameters on the left. Click <strong>Review & Confirm Lesson Planner</strong> to inspect the day-wise grammar and topic distribution before synthesizing the full kit.
+
+                <div className="space-y-2">
+                  <div className="inline-flex items-center gap-2 bg-white/10 px-3 py-1 rounded-full text-[11px] font-mono text-cyan-300 border border-white/10">
+                    <span className="w-2 h-2 rounded-full bg-cyan-400 animate-ping" />
+                    <span>Compiling Curriculum Blueprint • {selectedLanguage}</span>
+                  </div>
+                  <h3 className="text-xl sm:text-2xl font-black text-white tracking-tight">
+                    Autonomous Lesson Planner Agent
+                  </h3>
+                  <p className="text-xs text-slate-300 max-w-md mx-auto leading-relaxed">
+                    Structuring period-wise grammar anchors, LSRW communicative balance, and CEFR milestone distribution...
                   </p>
                 </div>
 
-                <div className="pt-2 flex flex-wrap items-center justify-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setTopic('Self-Introduction & Formal Greetings');
-                    }}
-                    className="px-3 py-1.5 rounded-xl bg-slate-50 hover:bg-blue-50 border border-slate-200 hover:border-blue-300 text-[11px] text-blue-700 font-semibold transition-colors cursor-pointer"
-                  >
-                    ⚡ &quot;Self-Introduction & Greetings&quot;
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setTopic('Campus Life & Academic Discussions');
-                    }}
-                    className="px-3 py-1.5 rounded-xl bg-slate-50 hover:bg-indigo-50 border border-slate-200 hover:border-indigo-300 text-[11px] text-indigo-800 font-semibold transition-colors cursor-pointer"
-                  >
-                    ⚡ &quot;Campus Life & Academic Discussions&quot;
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setTopic('Professional Interviews & Business Etiquette');
-                    }}
-                    className="px-3 py-1.5 rounded-xl bg-slate-50 hover:bg-emerald-50 border border-slate-200 hover:border-emerald-300 text-[11px] text-emerald-800 font-semibold transition-colors cursor-pointer"
-                  >
-                    ⚡ &quot;Professional Interviews & Business Etiquette&quot;
-                  </button>
+                {/* Progress bar animation */}
+                <div className="space-y-2 max-w-sm mx-auto">
+                  <div className="w-full h-2 bg-slate-800 rounded-full overflow-hidden border border-slate-700">
+                    <div className="h-full bg-gradient-to-r from-blue-500 via-indigo-500 to-cyan-400 rounded-full animate-pulse w-3/4 transition-all duration-500" />
+                  </div>
+                  <div className="flex items-center justify-between text-[10px] font-mono text-slate-400">
+                    <span>Synthesizing Period Matrix</span>
+                    <span className="text-cyan-300">Live Studio Engine</span>
+                  </div>
+                </div>
+
+                {/* Micro Steps Indicator */}
+                <div className="grid grid-cols-3 gap-2 pt-2 text-left">
+                  <div className="bg-slate-800/80 border border-slate-700/60 p-2.5 rounded-xl">
+                    <div className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Step 1</div>
+                    <div className="text-xs font-bold text-white mt-0.5 flex items-center gap-1">
+                      <span className="text-emerald-400">✓</span> Module Cadence
+                    </div>
+                  </div>
+                  <div className="bg-slate-800/80 border border-slate-700/60 p-2.5 rounded-xl">
+                    <div className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Step 2</div>
+                    <div className="text-xs font-bold text-cyan-300 mt-0.5 flex items-center gap-1">
+                      <Loader2 className="w-3 h-3 animate-spin text-cyan-300" /> Grammar Rules
+                    </div>
+                  </div>
+                  <div className="bg-slate-800/80 border border-slate-700/60 p-2.5 rounded-xl">
+                    <div className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Step 3</div>
+                    <div className="text-xs font-bold text-slate-400 mt-0.5 flex items-center gap-1">
+                      <span>•</span> Milestone Drills
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* 2. Ready State (Before Planner or Package) */}
+          {!proposedPlanner && !plannerLoading && !sessionPackage && !loading && (
+            <div className="bg-white rounded-2xl border border-slate-200/90 p-8 sm:p-12 text-center shadow-sm">
+              <div className="max-w-lg mx-auto space-y-4">
+                <div className="w-14 h-14 rounded-2xl bg-slate-900 text-white flex items-center justify-center mx-auto shadow-md">
+                  <CalendarDays className="w-7 h-7 text-indigo-300" />
+                </div>
+                <div>
+                  <h3 className="text-base sm:text-lg font-black text-slate-900 tracking-tight">Lesson Planner & Studio Ready</h3>
+                  <p className="text-xs text-slate-500 mt-1.5 leading-relaxed">
+                    Set up your institutional parameters in the left panel. Click <strong>Review & Confirm Lesson Planner</strong> to inspect the day-wise syllabus distribution before generating the full teaching kit.
+                  </p>
                 </div>
               </div>
             </div>
@@ -3327,7 +3421,27 @@ export default function FacultyStudioPage() {
                         rawDay,
                         sessionPackage
                       );
-                      allDays.push(dayItem);
+                      const customOverride = periodOverrides[d];
+                      if (customOverride) {
+                        allDays.push({
+                          ...dayItem,
+                          ...customOverride,
+                          day_topic: customOverride.day_topic || dayItem.day_topic,
+                          grammar_rules_detail: customOverride.grammar_rules_detail || dayItem.grammar_rules_detail,
+                          study_notes_markdown: customOverride.study_notes_markdown || dayItem.study_notes_markdown,
+                          vocabulary_bank: customOverride.vocabulary_bank || dayItem.vocabulary_bank,
+                          classroom_dialogues: customOverride.classroom_dialogues || dayItem.classroom_dialogues,
+                          homework_tasks: customOverride.homework_tasks || dayItem.homework_tasks,
+                          in_class_exercises: customOverride.in_class_exercises || dayItem.in_class_exercises,
+                          exercise_solutions: customOverride.exercise_solutions || dayItem.exercise_solutions,
+                          student_lsrw_practice: {
+                            ...(dayItem.student_lsrw_practice || {}),
+                            ...(customOverride.student_lsrw_practice || {})
+                          }
+                        });
+                      } else {
+                        allDays.push(dayItem);
+                      }
                     }
 
                     // Build Module Blocks (e.g. Module 1: Periods 1-10, Module 2: Periods 11-20...)
@@ -3508,6 +3622,15 @@ export default function FacultyStudioPage() {
                             }
                           }}
                           onToggleOutputMode={setOutputMode}
+                          onApplyPeriodUpdate={(dayNum: number, updates: any) => {
+                            setPeriodOverrides(prev => ({
+                              ...prev,
+                              [dayNum]: {
+                                ...(prev[dayNum] || {}),
+                                ...updates
+                              }
+                            }));
+                          }}
                         />
                       </div>
                     );
@@ -3517,6 +3640,184 @@ export default function FacultyStudioPage() {
           )}
         </div>
       </div>
+
+      {/* 🤖 Chat AI Drawer: Opens when tutor clicks 'Chat AI' in the top bar */}
+      {isChatOpen && (
+        <div
+          className={`fixed z-50 bg-white shadow-2xl border border-slate-200 overflow-hidden flex flex-col transition-all duration-300 animate-in ${
+            isChatFullscreen
+              ? 'inset-2 sm:inset-6 rounded-2xl h-auto max-h-none'
+              : 'bottom-4 right-4 w-full max-w-lg rounded-2xl h-[620px] max-h-[88vh] slide-in-from-bottom-5'
+          }`}
+        >
+          {/* Header */}
+          <div className="p-3.5 bg-slate-900 text-white flex items-center justify-between border-b border-slate-800 shrink-0">
+            <div className="flex items-center gap-2.5">
+              <div className="w-8 h-8 rounded-lg bg-slate-800 border border-slate-700 flex items-center justify-center text-white shadow-xs">
+                <Bot className="w-4 h-4 text-slate-200" />
+              </div>
+              <div>
+                <div className="flex items-center gap-1.5">
+                  <h3 className="text-xs font-bold text-white">Curriculum AI Assistant</h3>
+                  <span className="text-[10px] bg-emerald-500/10 text-emerald-400 font-mono px-1.5 py-0.2 rounded border border-emerald-500/20">
+                    Grounded Memory
+                  </span>
+                </div>
+                <p className="text-[10px] text-slate-400 truncate max-w-[260px]">
+                  {activeSavedSession ? (activeSavedSession.title || activeSavedSession.topic) : `${sessionPackage?.language || proposedPlanner?.language || selectedLanguage} • ${sessionPackage?.level || proposedPlanner?.level || selectedLevel}`}
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-1">
+              <button
+                type="button"
+                onClick={() => setIsChatFullscreen(!isChatFullscreen)}
+                className="p-1.5 text-slate-400 hover:text-slate-200 rounded-lg hover:bg-white/10 text-xs transition-colors cursor-pointer"
+                title={isChatFullscreen ? "Restore Window Size" : "Maximize Full-Screen"}
+              >
+                {isChatFullscreen ? (
+                  <Minimize2 className="w-3.5 h-3.5" />
+                ) : (
+                  <Maximize2 className="w-3.5 h-3.5" />
+                )}
+              </button>
+              <button
+                type="button"
+                onClick={() => setCurriculumChatMessages([
+                  {
+                    role: 'assistant',
+                    content: 'Chat memory reset. How can I assist you with today\'s curriculum or lesson exercises?'
+                  }
+                ])}
+                className="p-1.5 text-slate-400 hover:text-slate-200 rounded-lg hover:bg-white/10 text-xs transition-colors cursor-pointer"
+                title="Clear Chat History"
+              >
+                <RotateCw className="w-3.5 h-3.5" />
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setIsChatOpen(false);
+                  setIsChatFullscreen(false);
+                }}
+                className="p-1.5 text-slate-400 hover:text-white rounded-lg hover:bg-white/10 text-xs font-bold transition-colors cursor-pointer"
+                title="Close Chat"
+              >
+                ✕
+              </button>
+            </div>
+          </div>
+
+          {/* Context grounding badge with Switch Session button */}
+          <div className="bg-slate-50 border-b border-slate-200 px-4 py-2 flex items-center justify-between text-[11px] text-slate-700 shrink-0">
+            <span className="flex items-center gap-1.5 font-medium truncate">
+              <Brain className="w-3.5 h-3.5 text-slate-500 shrink-0" />
+              <span className="truncate">Active Context: <strong className="text-slate-900">{activeSavedSession?.title || activeSavedSession?.topic || sessionPackage?.topic || proposedPlanner?.topic || topic || 'Curriculum Syllabus'}</strong></span>
+            </span>
+            <div className="flex items-center gap-1.5 shrink-0 ml-2">
+              <button
+                type="button"
+                onClick={() => setShowSelectSessionModal(true)}
+                className="text-[10px] bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold px-2 py-0.5 rounded border border-indigo-200 transition-colors cursor-pointer"
+                title="Switch curriculum session"
+              >
+                Switch Session ⇄
+              </button>
+              <span className="text-[10px] bg-slate-200/80 text-slate-700 font-mono px-2 py-0.5 rounded">100% Grounded</span>
+            </div>
+          </div>
+
+          {/* Multi-turn Chat Messages Scroll Area */}
+          <div className="flex-1 p-4 overflow-y-auto space-y-3.5 bg-slate-50/40">
+            {curriculumChatMessages.map((msg, idx) => (
+              <div
+                key={idx}
+                className={`flex gap-3 ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
+              >
+                {msg.role === 'assistant' && (
+                  <div className="w-7 h-7 rounded-lg bg-slate-900 flex items-center justify-center text-white shrink-0 mt-0.5 text-xs shadow-xs">
+                    <Bot className="w-4 h-4 text-slate-300" />
+                  </div>
+                )}
+                <div
+                  className={`max-w-[85%] rounded-2xl px-4 py-3 text-xs leading-relaxed shadow-2xs ${
+                    msg.role === 'user'
+                      ? 'bg-slate-900 text-white rounded-tr-xs font-normal'
+                      : 'bg-white border border-slate-200 text-slate-800 rounded-tl-xs whitespace-pre-wrap font-normal'
+                  }`}
+                >
+                  {msg.content}
+                </div>
+              </div>
+            ))}
+
+            {curriculumChatLoading && (
+              <div className="flex items-center gap-2 text-xs text-slate-600 bg-white border border-slate-200 rounded-2xl px-4 py-2.5 w-fit shadow-2xs">
+                <Loader2 className="w-3.5 h-3.5 animate-spin text-slate-700" />
+                <span className="font-medium">Querying curriculum memory & grounded materials...</span>
+              </div>
+            )}
+            <div ref={chatMessagesEndRef} />
+          </div>
+
+          {/* Context-Aware Quick Prompt Chips */}
+          <div className="px-3.5 py-2 bg-slate-50 border-t border-slate-150 flex items-center gap-1.5 overflow-x-auto no-scrollbar shrink-0">
+            <span className="text-[10px] font-bold text-slate-400 shrink-0 uppercase tracking-wider">Quick:</span>
+            <button
+              type="button"
+              onClick={() => handleSendCurriculumChat(undefined, `Summarize the vocabulary and anchor grammar for Period ${activeDayDetail || 1}`)}
+              disabled={curriculumChatLoading}
+              className="text-[11px] font-medium bg-white hover:bg-slate-100 text-slate-700 border border-slate-200 px-2.5 py-1 rounded-lg shrink-0 transition-colors shadow-2xs cursor-pointer disabled:opacity-50"
+            >
+              📖 Period {activeDayDetail || 1} Vocab & Grammar
+            </button>
+            <button
+              type="button"
+              onClick={() => handleSendCurriculumChat(undefined, `Generate 3 interactive speaking roleplay drills for today's session based on our uploaded materials.`)}
+              disabled={curriculumChatLoading}
+              className="text-[11px] font-medium bg-white hover:bg-slate-100 text-slate-700 border border-slate-200 px-2.5 py-1 rounded-lg shrink-0 transition-colors shadow-2xs cursor-pointer disabled:opacity-50"
+            >
+              🗣️ 3 Speaking Roleplays
+            </button>
+            <button
+              type="button"
+              onClick={() => handleSendCurriculumChat(undefined, `What are the student homework and LSRW exercises for this period?`)}
+              disabled={curriculumChatLoading}
+              className="text-[11px] font-medium bg-white hover:bg-slate-100 text-slate-700 border border-slate-200 px-2.5 py-1 rounded-lg shrink-0 transition-colors shadow-2xs cursor-pointer disabled:opacity-50"
+            >
+              ✍️ Homework & Exercises
+            </button>
+          </div>
+
+          {/* Chat Input Box */}
+          <form
+            onSubmit={(e) => handleSendCurriculumChat(e)}
+            className="p-3.5 bg-white border-t border-slate-200 flex items-center gap-2 shrink-0"
+          >
+            <input
+              type="text"
+              value={curriculumChatInput}
+              onChange={(e) => setCurriculumChatInput(e.target.value)}
+              disabled={curriculumChatLoading}
+              placeholder="Ask anything about this session, drills, or vocabulary..."
+              className="flex-1 bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-xs text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-900 focus:bg-white transition-all"
+            />
+            <button
+              type="submit"
+              disabled={curriculumChatLoading || !curriculumChatInput.trim()}
+              className="px-4 py-2.5 bg-slate-900 hover:bg-slate-800 text-white font-semibold text-xs rounded-xl shadow-xs transition-all flex items-center gap-1.5 disabled:opacity-40 cursor-pointer shrink-0"
+            >
+              {curriculumChatLoading ? (
+                <Loader2 className="w-3.5 h-3.5 animate-spin text-white" />
+              ) : (
+                <Send className="w-3.5 h-3.5 text-white" />
+              )}
+              <span className="hidden sm:inline">Send</span>
+            </button>
+          </form>
+        </div>
+      )}
     </div>
   );
 }
