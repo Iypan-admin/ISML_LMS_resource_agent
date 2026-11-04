@@ -90,9 +90,16 @@ export async function fetchWithEndpointFallback(path: string, options: RequestIn
   for (const url of endpoints) {
     try {
       const resp = await fetch(url, options);
-      if (resp.ok || resp.status === 400 || resp.status === 403 || resp.status === 404) {
+      // Return immediately on success OR on any client business error (400, 422, 403) so the caller can process the error details!
+      if (resp.ok || resp.status === 400 || resp.status === 422 || resp.status === 403) {
         return resp;
       }
+      // If 404, only keep looking if there are more endpoints
+      if (resp.status === 404) {
+        lastError = new Error(`Endpoint ${url} returned 404 Not Found`);
+        continue;
+      }
+      return resp;
     } catch (err: any) {
       lastError = err;
     }
@@ -108,9 +115,14 @@ export async function fetchBackendWithFallback(path: string, options: RequestIni
   for (const url of endpoints) {
     try {
       const resp = await fetch(url, options);
-      if (resp.ok || resp.status === 400 || resp.status === 403 || resp.status === 404) {
+      if (resp.ok || resp.status === 400 || resp.status === 422 || resp.status === 403) {
         return resp;
       }
+      if (resp.status === 404 || resp.status === 500 || resp.status === 502) {
+        lastError = new Error(`Backend ${url} returned status ${resp.status}`);
+        continue;
+      }
+      return resp;
     } catch (err: any) {
       lastError = err;
     }
