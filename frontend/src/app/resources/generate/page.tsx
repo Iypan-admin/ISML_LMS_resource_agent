@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useRef, useEffect } from 'react';
+import { getAiEndpoints } from '@/utils/apiConfig';
 import { useResources } from '@/context/ResourceContext';
 import { 
   Sparkles, 
@@ -796,12 +797,7 @@ export default function GenerateResourcePage() {
       additional_requirements: `Generate comprehensive ${activeLang} ${activeLvl} learning material for ${activeSkl}`,
     };
 
-    const generateEndpoints = [
-      '/api/v1/ai/generate',
-      process.env.NEXT_PUBLIC_API_URL ? `${process.env.NEXT_PUBLIC_API_URL}/ai/generate` : null,
-      'http://localhost:8000/api/v1/ai/generate',
-      'http://localhost:4000/api/v1/ai/generate',
-    ].filter(Boolean) as string[];
+    const generateEndpoints = getAiEndpoints('/api/v1/ai/generate');
 
     for (const ep of generateEndpoints) {
       try {

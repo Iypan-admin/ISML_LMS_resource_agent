@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useMemo } from 'react';
+import { getAiEndpoints } from '@/utils/apiConfig';
 import { useResources } from '@/context/ResourceContext';
 import SearchableSelect from '@/components/common/SearchableSelect';
 import {
@@ -182,11 +183,7 @@ export default function InternalResourceAiPage() {
     setSavedSuccess(false);
 
     try {
-      const endpoints = [
-        '/api/v1/ai/scrape-analyze',
-        'http://localhost:8000/api/v1/ai/scrape-analyze',
-        'http://localhost:4000/api/v1/ai/scrape-analyze',
-      ];
+      const endpoints = getAiEndpoints('/api/v1/ai/scrape-analyze');
 
       let resp: Response | null = null;
       for (const endpointUrl of endpoints) {

@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState } from 'react';
+import { getAiEndpoints } from '@/utils/apiConfig';
 import AcademicContextSelector from '@/components/academic/AcademicContextSelector';
 import { AcademicContext } from '@/types/academic';
 import { DiscoveryTab, DiscoveryResultItem, DiscoveryStep, QuizQuestion } from '@/types/discovery';
@@ -139,11 +140,7 @@ export default function FindResourcesPage() {
         limit: 10,
       };
 
-      const endpoints = [
-        '/api/v1/ai/discover',
-        'http://localhost:8000/api/v1/ai/discover',
-        'http://localhost:4000/api/v1/ai/discover',
-      ];
+      const endpoints = getAiEndpoints('/api/v1/ai/discover');
 
       let resp: Response | null = null;
       for (const endpointUrl of endpoints) {

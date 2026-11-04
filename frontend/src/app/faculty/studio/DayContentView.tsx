@@ -26,6 +26,7 @@ import {
   ChevronDown
 } from 'lucide-react';
 import { DayCurriculumItem } from './curriculumProgression';
+import { fetchWithEndpointFallback } from '@/utils/apiConfig';
 
 interface DayContentProps {
   activeDay: DayCurriculumItem;
@@ -149,7 +150,7 @@ export function DayContentView({
 
     // Fallback: Backend TTS Server
     try {
-      const response = await fetch('http://localhost:8000/api/v1/sessions/synthesize-speech', {
+      const response = await fetchWithEndpointFallback('/api/v1/sessions/synthesize-speech', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -1334,7 +1335,7 @@ export function DayContentView({
                     try {
                       const refinedPrompt = chatInput.trim();
 
-                      const res = await fetch('http://localhost:8000/api/v1/sessions/refine-blueprint', {
+                      const res = await fetchWithEndpointFallback('/api/v1/sessions/refine-blueprint', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({
@@ -1425,7 +1426,7 @@ export function DayContentView({
                         setChatInput('');
                       } else {
                         // Fallback call
-                        const chatRes = await fetch('http://localhost:8000/api/v1/sessions/chat-curriculum', {
+                        const chatRes = await fetchWithEndpointFallback('/api/v1/sessions/chat-curriculum', {
                           method: 'POST',
                           headers: { 'Content-Type': 'application/json' },
                           body: JSON.stringify({

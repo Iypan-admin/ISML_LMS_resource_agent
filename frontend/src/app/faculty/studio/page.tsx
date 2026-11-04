@@ -73,6 +73,7 @@ import {
   getSchoolSchedule,
   getCollegeSchedule
 } from './institutionalSchedules';
+import { fetchBackendWithFallback, fetchWithEndpointFallback } from '@/utils/apiConfig';
 
 export default function FacultyStudioPage() {
   // Institutional Stream Switcher: SCHOOL vs COLLEGE
@@ -286,7 +287,7 @@ export default function FacultyStudioPage() {
     const effectiveTopic = activeSavedSession?.title || activeSavedSession?.topic || sessionPackage?.topic || proposedPlanner?.topic || topic || 'Curriculum Blueprint';
 
     try {
-      const res = await fetch('http://localhost:8000/api/v1/sessions/chat-curriculum', {
+      const res = await fetchWithEndpointFallback('/api/v1/sessions/chat-curriculum', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -332,7 +333,7 @@ export default function FacultyStudioPage() {
     setLoadingHistory(true);
     let dbSessions: any[] = [];
     try {
-      const res = await fetch('http://localhost:3001/api/sessions');
+      const res = await fetchBackendWithFallback('/api/sessions', { method: 'GET' });
       if (res.ok) {
         const data = await res.json();
         dbSessions = Array.isArray(data) ? data : [];
@@ -448,7 +449,7 @@ export default function FacultyStudioPage() {
 
     // 2. Persist to Backend NestJS / Prisma Database
     try {
-      const res = await fetch('http://localhost:3001/api/sessions/save', {
+      const res = await fetchBackendWithFallback('/api/sessions/save', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -721,7 +722,7 @@ export default function FacultyStudioPage() {
         validUrls.forEach(url => formData.append('source_urls', url));
         uploadedFiles.forEach(file => formData.append('tutor_files', file));
 
-        const valRes = await fetch('http://localhost:8000/api/v1/sessions/validate-materials', {
+        const valRes = await fetchWithEndpointFallback('/api/v1/sessions/validate-materials', {
           method: 'POST',
           body: formData,
         });
@@ -906,7 +907,7 @@ export default function FacultyStudioPage() {
     setCoPilotResponse(null);
 
     try {
-      const res = await fetch('http://localhost:8000/api/v1/sessions/refine-blueprint', {
+      const res = await fetchWithEndpointFallback('/api/v1/sessions/refine-blueprint', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -1090,7 +1091,7 @@ export default function FacultyStudioPage() {
 
     try {
       // Connect to Python AI Service
-      const res = await fetch('http://localhost:8000/api/v1/sessions/generate-package', {
+      const res = await fetchWithEndpointFallback('/api/v1/sessions/generate-package', {
         method: 'POST',
         body: formData,
       });
@@ -1153,7 +1154,7 @@ export default function FacultyStudioPage() {
 
       // Save to Backend Database (NestJS / Prisma)
       try {
-        await fetch('http://localhost:3001/api/sessions/save', {
+        await fetchBackendWithFallback('/api/sessions/save', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -1226,7 +1227,7 @@ export default function FacultyStudioPage() {
     setSyncStatus('syncing');
 
     try {
-      const res = await fetch(`http://localhost:3001/api/sessions/${sessionPackage.session_id}/export-lms`, {
+      const res = await fetchBackendWithFallback(`/api/sessions/${sessionPackage.session_id}/export-lms`, {
         method: 'POST',
       });
       if (res.ok) {
@@ -1248,7 +1249,7 @@ export default function FacultyStudioPage() {
     if (!sessionPackage) return;
     setDownloadingDocx(true);
     try {
-      const response = await fetch('http://localhost:8000/api/v1/sessions/download/day-doc', {
+      const response = await fetchWithEndpointFallback('/api/v1/sessions/download/day-doc', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -1309,7 +1310,7 @@ export default function FacultyStudioPage() {
 
     setDownloadingFullDocx(true);
     try {
-      const response = await fetch('http://localhost:8000/api/v1/sessions/download/full-curriculum-doc', {
+      const response = await fetchWithEndpointFallback('/api/v1/sessions/download/full-curriculum-doc', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
