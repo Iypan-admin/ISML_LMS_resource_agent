@@ -9,6 +9,7 @@ from pydantic import BaseModel
 from app.services.extractor import ContentExtractor
 from app.agents.session_planner_agent import SessionPlannerAgent
 from app.models.session_package import FullSessionPackageResult
+from app.graph.pipeline import run_content_pipeline
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/v1/sessions", tags=["Session Planner & Teaching Studio"])
@@ -780,3 +781,94 @@ YOUR ROLE & CRITICAL INSTRUCTIONS:
 
 
 
+
+
+# =============================================================================
+# PER-PERIOD GENERATION ENDPOINT (LangGraph Pipeline)
+# =============================================================================
+
+class GeneratePeriodsRequest(BaseModel):
+    """Request to generate specific periods using the LangGraph pipeline."""
+    session_id: str
+    language: str
+    level: str
+    topic: str
+    track_mode: str = "STANDARD"
+    institution_type: str = "COLLEGE"
+    course_duration_hours: Optional[int] = None
+    period_duration_minutes: Optional[int] = None
+    periods_per_week: Optional[int] = None
+    total_periods: Optional[int] = None
+    assessments_count: Optional[int] = None
+    source_context: Optional[str] = ""
+    periods_to_generate: Optional[List[int]] = None
+    user_prompt: Optional[str] = ""
+
+
+@router.post("/generate-periods")
+async def generate_periods_langgraph(req: GeneratePeriodsRequest):
+    """
+    Generates specific period content using the LangGraph intelligent pipeline.
+    
+    This endpoint allows generating content for specific periods (e.g., periods 11-20)
+    after the initial batch has been generated. Each period gets its own dedicated
+    LLM call with unique source evidence partitioning.
+    
+    Pipeline: enhance_prompt → analyze_sources → partition → generate → validate → assemble
+    """
+    try:
+        result = await run_content_pipeline(
+            session_id=req.session_id,
+            language=req.language.strip().capitalize(),
+            level=req.level.strip().upper(),
+            topic=req.topic.strip(),
+            source_context=req.source_context or "",
+            track_mode=req.track_mode.strip().upper(),
+            institution_type=req.institution_type or "COLLEGE",
+            course_duration_hours=req.course_duration_hours,
+            period_duration_minutes=req.period_duration_minutes,
+            periods_per_week=req.periods_per_week,
+            total_periods=req.total_periods,
+            assessments_count=req.assessments_count,
+            user_prompt=req.user_prompt or req.topic,
+            periods_to_generate=req.periods_to_generate,
+        )
+        return {
+            "status": "success",
+            "session_plan": result.get("session_plan", {}),
+            "teacher_materials": result.get("teacher_materials", {}),
+            "student_lsrw": result.get("student_lsrw", {}),
+            "pipeline_metadata": result.get("pipeline_metadata", {}),
+        }
+    except Exception as e:
+        logger.error(f"LangGraph period generation failed: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Period generation failed: {str(e)}"
+        )
+
+
+@router.get("/pipeline-info")
+async def pipeline_info():
+    """Returns information about the LangGraph pipeline configuration."""
+    from app.config.settings import settings
+    return {
+        "pipeline": "LangGraph Intelligent Content Pipeline v1.0",
+        "nodes": [
+            "enhance_prompt — Master Prompt Engineering",
+            "analyze_sources — Deep Source Evidence Analysis",
+            "partition_sources — Intelligent Content Distribution",
+            "generate_periods — Per-Period Content Generation",
+            "validate_quality — Quality Validation & Retry",
+            "assemble_package — Final Package Assembly",
+        ],
+        "features": [
+            "Per-period dedicated LLM calls (no token limit sharing)",
+            "Dynamic prompt enhancement (ChatGPT/Claude-style)",
+            "Source evidence partitioning (unique content per period)",
+            "Quality validation with automatic retry",
+            "Golden-ratio vocabulary distribution (anti-repetition)",
+        ],
+        "llm_model": settings.LLM_MODEL,
+        "has_api_key": bool(settings.GEMINI_API_KEY and not settings.GEMINI_API_KEY.startswith("AQ.placeholder")),
+    }

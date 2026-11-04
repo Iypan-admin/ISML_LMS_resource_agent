@@ -378,8 +378,10 @@ Language: **${language}** • Certified CEFR **${level}** • Topic: **${baseTop
     phaseFocus = 'Spontaneous oral production, precise stylistic register, complex reasoning, and formal assessment review.';
   }
 
-  // Derive unit anchors dynamically
-  const activeGrammarIndex = (dayNumber - 1) % analyzedGrammar.length;
+  // Derive unit anchors dynamically — v2: OFFSET-BASED distribution to minimize repetition
+  const activeGrammarIndex = analyzedGrammar.length > totalDays
+    ? (dayNumber - 1)
+    : (dayNumber - 1) % analyzedGrammar.length;
   const currentGrammarFocus = analyzedGrammar[activeGrammarIndex] || comprehensiveSyllabus.grammarFocus;
 
   const activeObjectiveIndex = (dayNumber - 1) % collectedObjectives.length;
@@ -387,12 +389,34 @@ Language: **${language}** • Certified CEFR **${level}** • Topic: **${baseTop
     ? collectedObjectives[activeObjectiveIndex]
     : comprehensiveSyllabus.pedagogicalObjective;
 
-  // Select dynamic vocabulary items for this unit (using wide rotation so it never repeats)
-  const v1 = analyzedVocab[(dayNumber - 1) % analyzedVocab.length] || comprehensiveSyllabus.vocabulary[0];
-  const v2 = analyzedVocab[(dayNumber * 2 - 1) % analyzedVocab.length] || comprehensiveSyllabus.vocabulary[1] || v1;
-  const v3 = analyzedVocab[(dayNumber * 3 - 1) % analyzedVocab.length] || comprehensiveSyllabus.vocabulary[2] || v2;
+  // Select dynamic vocabulary items — v2: NON-OVERLAPPING golden-ratio stride distribution
+  const vocabPoolSize = analyzedVocab.length;
+  const vocabStartIdx = ((dayNumber - 1) * 3) % Math.max(vocabPoolSize, 1);
+  const goldenStride = Math.max(1, Math.floor(vocabPoolSize * 0.618));
+  const v1 = analyzedVocab[vocabStartIdx % vocabPoolSize] || comprehensiveSyllabus.vocabulary[0];
+  const v2raw = analyzedVocab[(vocabStartIdx + goldenStride) % vocabPoolSize] || comprehensiveSyllabus.vocabulary[1] || v1;
+  const v3raw = analyzedVocab[(vocabStartIdx + goldenStride * 2) % vocabPoolSize] || comprehensiveSyllabus.vocabulary[2] || v2raw;
 
-  const currentVocabList = [v1, v2, v3].filter(Boolean).map((v, i) => ({
+  // Deduplicate vocabulary picks
+  const usedWords = new Set([v1?.word]);
+  const pickUnique = (preferred: any, fallbackIdx: number): any => {
+    if (preferred && !usedWords.has(preferred.word)) {
+      usedWords.add(preferred.word);
+      return preferred;
+    }
+    for (let offset = 1; offset <= vocabPoolSize; offset++) {
+      const candidate = analyzedVocab[(fallbackIdx + offset) % vocabPoolSize];
+      if (candidate && !usedWords.has(candidate.word)) {
+        usedWords.add(candidate.word);
+        return candidate;
+      }
+    }
+    return preferred;
+  };
+  const finalV2 = pickUnique(v2raw, vocabStartIdx + goldenStride);
+  const finalV3 = pickUnique(v3raw, vocabStartIdx + goldenStride * 2);
+
+  const currentVocabList = [v1, finalV2, finalV3].filter(Boolean).map((v, i) => ({
     word: v.word,
     meaning: v.meaning || `Contextual usage in ${baseTopic}`,
     pronunciation: v.pronunciation || `/${v.word.toLowerCase()}/`,

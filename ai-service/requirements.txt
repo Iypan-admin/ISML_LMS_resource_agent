@@ -15,4 +15,7 @@ pypdf>=4.0.0
 python-multipart>=0.0.9
 pytest>=8.0.0
 pytest-asyncio>=0.23.0
-
+# LangChain + LangGraph AI Agent Pipeline
+langchain-core>=0.3.0
+langchain-google-genai>=2.1.0
+langgraph>=0.4.0

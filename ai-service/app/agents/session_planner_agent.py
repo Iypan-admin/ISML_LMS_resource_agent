@@ -48,6 +48,7 @@ from app.agents.instruction_designer import InstructionDesignerAgent
 from app.agents.evidence_validator import EvidenceValidator, QualityEvaluator
 from app.prompts.academic_prompts import build_synthesis_prompt
 from app.services.ppt_generator import PPTGenerator
+from app.graph.pipeline import run_content_pipeline
 
 logger = logging.getLogger(__name__)
 
@@ -207,6 +208,160 @@ class SessionPlannerAgent:
             combined_text_length=len(combined),
         )
 
+    async def generate_with_langgraph(
+        self,
+        session_id: str,
+        language: str,
+        level: str,
+        topic: str,
+        track_mode: str = "STANDARD",
+        custom_days: Optional[int] = None,
+        institution_type: str = "COLLEGE",
+        course_duration_hours: Optional[int] = None,
+        period_duration_minutes: Optional[int] = None,
+        periods_per_week: Optional[int] = None,
+        total_periods: Optional[int] = None,
+        assessments_count: Optional[int] = None,
+        source_context: str = "",
+        pptx_output_dir: str = "static/presentations",
+    ) -> FullSessionPackageResult:
+        """
+        NEW: LangGraph-powered intelligent pipeline.
+        Runs: enhance_prompt → analyze_sources → partition → generate_periods → validate → assemble
+        Each period gets its own dedicated LLM call with unique source evidence.
+        """
+        import datetime
+
+        total_days = total_periods or custom_days or (60 if institution_type == "SCHOOL" else 80)
+        unit_term = "Period" if institution_type == "SCHOOL" else "Session"
+        hours_str = f"{course_duration_hours} Teaching Hours" if course_duration_hours else f"{total_days} {unit_term}s"
+        cadence = periods_per_week or (3 if institution_type == "SCHOOL" else 2)
+        slot_mins = period_duration_minutes or (40 if institution_type == "SCHOOL" else 60)
+        cadence_str = f"{cadence} {unit_term}s/week"
+        slot_str = f"{slot_mins}m/{unit_term.lower()}"
+        track_label = f"{institution_type.title()} Matrix: {hours_str} ({total_days} {unit_term}s • {cadence_str} • {slot_str})"
+
+        logger.info(f"🚀 LangGraph pipeline starting: session={session_id}, lang={language}, level={level}")
+
+        # Run the LangGraph pipeline
+        pipeline_result = await run_content_pipeline(
+            session_id=session_id,
+            language=language,
+            level=level,
+            topic=topic,
+            source_context=source_context,
+            track_mode=track_mode,
+            institution_type=institution_type,
+            course_duration_hours=course_duration_hours,
+            period_duration_minutes=period_duration_minutes,
+            periods_per_week=periods_per_week,
+            total_periods=total_days,
+            assessments_count=assessments_count,
+            user_prompt=topic,
+        )
+
+        parsed_data = {
+            "session_plan": pipeline_result["session_plan"],
+            "teacher_materials": pipeline_result["teacher_materials"],
+            "student_lsrw": pipeline_result["student_lsrw"],
+        }
+
+        # Generate PPTX
+        pptx_filename = f"{session_id}_{language}_{level}.pptx".replace(" ", "_")
+        pptx_filepath = f"{pptx_output_dir}/{pptx_filename}"
+        try:
+            slides = [s if isinstance(s, dict) else s.dict() for s in parsed_data["teacher_materials"]["slides"]]
+            PPTGenerator.create_presentation(
+                title=parsed_data["teacher_materials"]["presentation_title"],
+                subtitle=parsed_data["teacher_materials"]["subtitle"],
+                slides_data=slides,
+                output_path=pptx_filepath,
+            )
+            download_url = f"/api/v1/sessions/download/pptx/{pptx_filename}"
+            parsed_data["teacher_materials"]["pptx_download_url"] = download_url
+        except Exception as e:
+            logger.error(f"Failed to generate PPTX: {e}")
+
+        # Teacher Lesson Guide
+        allocated_mins = period_duration_minutes or 60
+        phases = [
+            {"phase": "1. Phonetic Warm-up & Auditory Priming", "duration_minutes": max(5, int(allocated_mins * 0.15)),
+             "instruction": f"Conduct choral repetition of target phonemes and vocabulary in {language}."},
+            {"phase": "2. Structural Concept & Grammar Presentation", "duration_minutes": max(15, int(allocated_mins * 0.35)),
+             "instruction": f"Demonstrate word order, conjugation matrices, and register nuance for {topic}."},
+            {"phase": "3. Guided Interactive Drills & Pair Discourse", "duration_minutes": max(15, int(allocated_mins * 0.30)),
+             "instruction": f"Facilitate role-play dialogues between students using authentic {language} markers."},
+            {"phase": "4. Formative Wrap-up & Homework Orientation", "duration_minutes": max(5, int(allocated_mins * 0.20)),
+             "instruction": "Summarize key takeaway patterns, assign the daily worksheet, and explain homework."}
+        ]
+        teacher_guide = TeacherLessonGuide(
+            allocated_duration_minutes=allocated_mins,
+            pedagogical_pacing_tier="Standard Balanced Academic Track" if (course_duration_hours or 80) <= 80 else "Elaborated In-Depth Academic Track",
+            teaching_phases=phases,
+            board_work_notes=f"Key Formula for {topic}: [Subject/Theme] + [Grammar Focus] + [Object] in {language}.",
+            remedial_activity=f"Students struggling with syntax should practice 3 minimal pair substitutions in {language}.",
+            extension_activity=f"Advanced learners compose a 60-second monologue analyzing {topic}.",
+            common_student_gotchas=[
+                f"L1 phonetic interference in {language}.",
+                f"Register confusion between formal and informal address in {topic}."
+            ]
+        )
+
+        # Evaluation metadata
+        eval_metadata = EvaluationTaskMetadata(
+            task_id=f"EVAL_{session_id[:8]}",
+            target_skill="LSRW",
+            evaluation_agent="LSRW Evaluation Agent",
+            max_score=100,
+            rubric_criteria=[
+                WritingEvaluationRubric(criteria_name="Grammatical Accuracy", weight_percentage=40, grading_prompt_instructions="Check syntax."),
+                WritingEvaluationRubric(criteria_name="Lexical Range", weight_percentage=30, grading_prompt_instructions="Verify vocabulary usage."),
+                WritingEvaluationRubric(criteria_name="Task Completion", weight_percentage=30, grading_prompt_instructions="Assess goal achievement."),
+            ],
+            grading_instructions=f"Evaluate responses for {topic} ({language} {level}) based on 100-point rubric.",
+            prerequisites=[f"Basic CEFR {level} comprehension in {language}"]
+        )
+
+        # Content lineage
+        pipeline_meta = pipeline_result.get("pipeline_metadata", {})
+        content_lineage = ContentLineageMetadata(
+            source_attribution_ids=[f"LANGGRAPH_PIPELINE"],
+            source_rights_status="ISML Original Synthesis (Fair Educational Use / Non-Derivative)",
+            ai_synthesis_model=f"LangGraph Multi-Agent Pipeline ({pipeline_meta.get('total_llm_calls', 0)} LLM calls)",
+            generation_timestamp=datetime.datetime.utcnow().isoformat() + "Z",
+            lineage_audit=(
+                f"Generated via LangGraph intelligent pipeline. "
+                f"{pipeline_meta.get('periods_generated', 0)} periods uniquely generated. "
+                f"Source analysis: {pipeline_meta.get('source_analysis_summary', 'N/A')}. "
+                f"Pipeline stage: {pipeline_meta.get('pipeline_stage', 'unknown')}."
+            ),
+            review_status="AI_VALIDATED",
+            reviewer_notes="Generated by LangGraph pipeline. Ready for academic manager verification."
+        )
+
+        return FullSessionPackageResult(
+            session_id=session_id,
+            topic=topic,
+            language=language,
+            level=level,
+            track_mode=track_mode.upper(),
+            track_duration_label=track_label,
+            institution_type=institution_type or "COLLEGE",
+            target_days_number=total_days,
+            session_plan=SessionPlanResult(**parsed_data["session_plan"]),
+            teacher_materials=TeacherMaterialResult(**parsed_data["teacher_materials"]),
+            student_lsrw=StudentLSRWPackage(**parsed_data["student_lsrw"]),
+            extracted_source_summary=(
+                f"LangGraph Pipeline: {pipeline_meta.get('periods_generated', 0)} periods generated, "
+                f"{pipeline_meta.get('total_llm_calls', 0)} LLM calls. "
+                f"Source: {pipeline_meta.get('source_analysis_summary', 'N/A')}"
+            ),
+            teacher_lesson_guide=teacher_guide,
+            evaluation_task_metadata=eval_metadata,
+            content_lineage=content_lineage,
+            raw_source_context=source_context or "",
+        )
+
     async def generate_full_package(
         self,
         session_id: str,
@@ -224,8 +379,28 @@ class SessionPlannerAgent:
         source_context: str = "",
         pptx_output_dir: str = "static/presentations",
     ) -> FullSessionPackageResult:
-        """Orchestrates the full dynamic pipeline:
-        Extract → Analyze → Plan → Synthesize → Validate → Evaluate."""
+        """Orchestrates content generation. Tries LangGraph pipeline first, falls back to legacy."""
+        # Try LangGraph pipeline first
+        try:
+            logger.info("Attempting LangGraph intelligent pipeline...")
+            return await self.generate_with_langgraph(
+                session_id=session_id,
+                language=language,
+                level=level,
+                topic=topic,
+                track_mode=track_mode,
+                custom_days=custom_days,
+                institution_type=institution_type,
+                course_duration_hours=course_duration_hours,
+                period_duration_minutes=period_duration_minutes,
+                periods_per_week=periods_per_week,
+                total_periods=total_periods,
+                assessments_count=assessments_count,
+                source_context=source_context,
+                pptx_output_dir=pptx_output_dir,
+            )
+        except Exception as e:
+            logger.warning(f"LangGraph pipeline failed, falling back to legacy: {e}")
 
         # ── Institutional Track & Duration Configuration ───────────────────
         unit_term = "Period" if institution_type == "SCHOOL" else "Session"
