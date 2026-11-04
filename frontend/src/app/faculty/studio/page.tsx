@@ -1360,7 +1360,7 @@ export default function FacultyStudioPage() {
   }
 
   return (
-    <div className="min-h-screen bg-[#F8FAFC] text-slate-900 p-3 sm:p-5 md:p-8 space-y-4 sm:space-y-6 max-w-[1700px] mx-auto">
+    <div className={`min-h-screen bg-[#F8FAFC] text-slate-900 ${isFullScreen ? "p-2 sm:p-4 max-w-full" : "p-3 sm:p-5 md:p-8 max-w-[1700px]"} space-y-4 sm:space-y-6 mx-auto transition-all duration-300`}>
       {/* Clean Light-Theme Agent Control Bar */}
       <div className="bg-white border border-slate-200 rounded-xl p-3 sm:p-3.5 shadow-2xs flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-3">
@@ -3176,6 +3176,25 @@ export default function FacultyStudioPage() {
                       <>
                         <Download className="w-4 h-4 text-amber-300" />
                         <span>Download Full Kit (All Pages)</span>
+                      </>
+                    )}
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setIsFullScreen(!isFullScreen)}
+                    className="flex items-center gap-1.5 px-3.5 py-2.5 bg-white/10 hover:bg-white/20 text-white rounded-xl text-xs font-bold transition-all border border-white/20 cursor-pointer shadow-sm"
+                    title={isFullScreen ? "Restore Split View" : "Maximize Fullscreen Workspace"}
+                  >
+                    {isFullScreen ? (
+                      <>
+                        <Minimize2 className="w-3.5 h-3.5 text-cyan-300" />
+                        <span>Exit Fullscreen</span>
+                      </>
+                    ) : (
+                      <>
+                        <Maximize2 className="w-3.5 h-3.5 text-cyan-300" />
+                        <span>Full Screen Workspace</span>
                       </>
                     )}
                   </button>
