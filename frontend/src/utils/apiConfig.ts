@@ -13,14 +13,10 @@ export function getAiEndpoints(path: string): string[] {
     endpoints.push(`${base}${cleanPath}`);
   }
 
-  // 2. Configured Backend API URL env var
-  if (process.env.NEXT_PUBLIC_API_URL) {
-    const base = process.env.NEXT_PUBLIC_API_URL.replace(/\/+$/, '');
-    const suffix = cleanPath.replace(/^\/api\/v1/, '');
-    endpoints.push(`${base}${suffix}`);
-  }
+  // 2. Production fallback to Python AI microservice on Railway if env var not yet baked
+  endpoints.push(`https://ismllmsresourceagent-production.up.railway.app${cleanPath}`);
 
-  // 3. Relative path (Same-origin Next.js serverless route - works 100% on Vercel & Mobile)
+  // 3. Relative path (Same-origin Next.js serverless route - works on Next rewrite)
   endpoints.push(cleanPath);
 
   // 4. Local dev & LAN fallbacks (automatically adapt to current device / mobile IP or domain)
@@ -29,11 +25,9 @@ export function getAiEndpoints(path: string): string[] {
     const protocol = window.location.protocol;
     if (hostname === 'localhost' || hostname === '127.0.0.1') {
       endpoints.push(`http://localhost:8000${cleanPath}`);
-      endpoints.push(`http://localhost:4000${cleanPath}`);
-    } else {
+    } else if (!hostname.includes('railway.app') && !hostname.includes('vercel.app')) {
       // Running on mobile / external laptop accessing via LAN IP or custom port:
       endpoints.push(`${protocol}//${hostname}:8000${cleanPath}`);
-      endpoints.push(`${protocol}//${hostname}:4000${cleanPath}`);
     }
   }
 
@@ -45,7 +39,7 @@ export function getBackendEndpoints(path: string): string[] {
   const endpoints: string[] = [];
   const cleanPath = path.startsWith('/') ? path : `/${path}`;
 
-  // 1. Configured Backend API URL (e.g. https://api.isml.edu/api/v1 or http://localhost:4000/api/v1)
+  // 1. Configured Backend API URL (e.g. https://api.isml.edu/api/v1 or https://isml-resource-backend-production.up.railway.app/api/v1)
   if (process.env.NEXT_PUBLIC_API_URL) {
     const base = process.env.NEXT_PUBLIC_API_URL.replace(/\/+$/, '');
     // If cleanPath starts with /api/v1, strip prefix if base already contains /api/v1
@@ -59,13 +53,18 @@ export function getBackendEndpoints(path: string): string[] {
     }
   }
 
-  // 2. Relative Next.js rewrite/proxy or serverless route
-  endpoints.push(cleanPath);
+  // 2. Production fallback to NestJS Backend on Railway
+  const railwayBackend = 'https://isml-resource-backend-production.up.railway.app/api/v1';
   if (cleanPath.startsWith('/api/sessions')) {
-    endpoints.push(`/api/v1${cleanPath.replace(/^\/api/, '')}`);
+    endpoints.push(`${railwayBackend}/sessions${cleanPath.replace(/^\/api\/sessions/, '')}`);
+  } else if (cleanPath.startsWith('/api/v1')) {
+    endpoints.push(`${railwayBackend}${cleanPath.replace(/^\/api\/v1/, '')}`);
   }
 
-  // 3. Localhost / LAN fallback (ports 3001, 4000)
+  // 3. Relative Next.js rewrite/proxy or serverless route
+  endpoints.push(cleanPath);
+
+  // 4. Localhost / LAN fallback (ports 3001, 4000)
   if (typeof window !== 'undefined') {
     const hostname = window.location.hostname;
     const protocol = window.location.protocol;
@@ -73,7 +72,7 @@ export function getBackendEndpoints(path: string): string[] {
       endpoints.push(`http://localhost:3001${cleanPath}`);
       endpoints.push(`http://localhost:4000/api/v1${cleanPath.replace(/^\/api\/v1/, '').replace(/^\/api/, '')}`);
       endpoints.push(`http://localhost:4000${cleanPath}`);
-    } else {
+    } else if (!hostname.includes('railway.app') && !hostname.includes('vercel.app')) {
       // Running on mobile / external laptop accessing via LAN IP or domain:
       endpoints.push(`${protocol}//${hostname}:3001${cleanPath}`);
       endpoints.push(`${protocol}//${hostname}:4000/api/v1${cleanPath.replace(/^\/api\/v1/, '').replace(/^\/api/, '')}`);
