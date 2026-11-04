@@ -237,12 +237,20 @@ Language: **${language}** • Certified CEFR **${level}** • Topic: **${baseTop
       }
     });
 
-    // 3. Extract distinct vocabulary tokens from source material
+    // 3. Extract distinct high-value vocabulary tokens and key linguistic constructs from source material
+    const stopWords = new Set([
+      'this', 'that', 'with', 'from', 'have', 'video', 'lesson', 'learn', 'words', 'about', 'your', 'will',
+      'what', 'there', 'their', 'which', 'would', 'could', 'should', 'today', 'first', 'second', 'these',
+      'those', 'where', 'when', 'into', 'just', 'more', 'some', 'them', 'then', 'than', 'other', 'only',
+      'also', 'back', 'after', 'used', 'using', 'here', 'make', 'well', 'over', 'even', 'most', 'such',
+      'reference', 'upload', 'transcript', 'insights', 'audio', 'notes', 'content', 'channel', 'creator', 'tutor'
+    ]);
+
     const words = sourceContext
-      .replace(/[^\p{L}\s\-']/gu, ' ')
+      .replace(/[\[\]\(\)\{\}<>\"\/\\\|#@*~_+=0-9]/g, ' ')
       .split(/\s+/)
       .map((w: string) => w.trim())
-      .filter((w: string) => w.length >= 4 && w.length <= 16);
+      .filter((w: string) => w.length >= 3 && w.length <= 22 && !stopWords.has(w.toLowerCase()));
 
     const freq: Record<string, number> = {};
     words.forEach((w: string) => {
@@ -250,15 +258,20 @@ Language: **${language}** • Certified CEFR **${level}** • Topic: **${baseTop
       freq[lower] = (freq[lower] || 0) + 1;
     });
 
-    // Filter top authentic source words
+    // Extract rich contextual sentences for each word from source context
+    const sourceSentences = sourceContext.split(/[\n\.!?]+/).map((s: string) => s.trim()).filter((s: string) => s.length > 15);
+
     Object.entries(freq)
       .sort((a, b) => b[1] - a[1])
-      .slice(0, 40)
+      .slice(0, 50)
       .forEach(([w, count]) => {
+        const matchingSentence = sourceSentences.find((s: string) => s.toLowerCase().includes(w)) || 
+          `Target application of ${w} derived directly from uploaded source materials.`;
         parsedSourceVocab.push({
           word: w.charAt(0).toUpperCase() + w.slice(1),
-          meaning: 'Domain vocabulary extracted from source material (' + count + ' mentions in video/document)',
-          example_sentence: 'Authentic pattern derived from uploaded video/material context.'
+          meaning: `Domain vocabulary extracted from verified source materials (Frequency: ${count}x)`,
+          pronunciation: `/${w.toLowerCase()}/`,
+          example_sentence: matchingSentence.slice(0, 140)
         });
       });
   }
@@ -320,244 +333,20 @@ Language: **${language}** • Certified CEFR **${level}** • Topic: **${baseTop
     }
   });
 
-  // Pedagogically authentic syllabus topics keyed by language and CEFR level
-  const LEVEL_CURRICULUM_BANK: Record<string, Record<string, string[]>> = {
-    spanish: {
-      'a1.1': [
-        "Alfabeto, sonidos fonéticos y pronunciación española básica",
-        "Saludos formales e informales y fórmulas de cortesía cotidiana",
-        "Presentación personal: nombres, nacionalidad y origen (Ser + de)",
-        "Números cardinales del 0 al 100 y datos de contacto",
-        "Artículos determinados e indeterminados (el, la, los, las / un, una)",
-        "Género y número de los sustantivos y adjetivos descriptivos",
-        "Pronombres personales y el verbo 'Ser' para descripciones esenciales",
-        "El verbo 'Estar' y la ubicación de personas y objetos en el aula",
-        "Diferencia fundamental entre 'Ser' y 'Estar' en contextos prácticos",
-        "Verbos regulares en presente de indicativo: terminaciones en -AR",
-        "Verbos regulares en presente: terminaciones en -ER y -IR",
-        "Interrogativos esenciales (qué, quién, cómo, dónde, de dónde, por qué)",
-        "La familia y relaciones personales: adjetivos posesivos (mi, tu, su)",
-        "Profesiones, ocupaciones y lugares de trabajo habituales",
-        "Días de la semana, meses del año y expresiones de tiempo",
-        "La hora y horarios cotidianos (¿Qué hora es? / A las...)",
-        "Rutina diaria y verbos reflexivos (llamarse, levantarse, ducharse)",
-        "El verbo 'Gustar' y estructuras afines para expresar preferencias",
-        "Comida, bebidas y vocabulario esencial del restaurante y mercado",
-        "Pedir en un café o restaurante: fórmulas comunicativas funcionales",
-        "El clima, estaciones y expresiones meteorológicas (Hace frío/calor)",
-        "La ciudad, transporte público y pedir indicaciones de dirección",
-        "Colores, ropa y compras: el verbo 'Llevar' y precios",
-        "Adjetivos demostrativos (este, ese, aquel) y concordancia",
-        "Verbos irregulares de alta frecuencia (Tener, Ir, Hacer, Poder, Querer)",
-        "Expresar planes inmediatos con la perífrasis 'Ir a + infinitivo'",
-        "La casa, habitaciones y descripción del espacio vital (Hay vs Está)",
-        "Actividades de ocio, deportes y pasatiempos favoritos",
-        "Salud básica, partes del cuerpo y el verbo 'Doler' (Me duele...)",
-        "Repaso comunicativo integrador y evaluación del bloque A1.1"
-      ],
-      'a1.2': [
-        "Repaso y consolidación de estructuras del presente de indicativo",
-        "Verbos con cambio vocálico (e->ie, o->ue, e->i) en presente",
-        "Preposiciones de lugar complejas (encima de, debajo de, al lado de)",
-        "Vida cotidiana y frecuencia: adverbios (siempre, a veces, nunca)",
-        "El barrio y servicios comunitarios (banco, farmacia, correos)",
-        "Compras de comestibles: cantidades y envases (un kilo, una botella)",
-        "Pronombres de objeto directo (lo, la, los, las) en la comunicación",
-        "Pronombres de objeto indirecto (me, te, le, nos, os, les)",
-        "Introducción al Pretérito Perfecto Compuesto: morfología de haber",
-        "Participios regulares e irregulares (-ado, -ido, hecho, dicho, visto)",
-        "Hablar de experiencias pasadas recientes y marcadores temporales (hoy, ya, todavía no)",
-        "Diferenciar presente de acciones completadas en el día",
-        "Expresar obligación personal e impersonal (Tener que + inf / Hay que + inf)",
-        "El trabajo y el entorno laboral: entrevistas breves y formalidad",
-        "Viajes y reservas de hotel: vocabulario y llamadas telefónicas",
-        "Geografía, países hispanohablantes y costumbres culturales",
-        "Comparativos de superioridad, inferioridad e igualdad (más... que, tan... como)",
-        "Superlativos regulares e irregulares (el más, el mejor)",
-        "Dar consejos e instrucciones sencillas con imperativo afirmativo (tú/usted)",
-        "Evaluación diagnóstica y síntesis comunicativa de A1.2"
-      ],
-      default: [
-        "Fundamentos fonéticos y arquitectura oracional básica",
-        "Morfología verbal y conjugaciones del presente",
-        "Expresión de necesidades inmediatas y fórmulas sociales",
-        "Léxico temático, sustantivos y concordancia de adjetivos",
-        "Estructuras de interrogación y respuestas contextuales",
-        "Práctica auditiva y discriminación de sonidos nativos",
-        "Interacción guiada en parejas y simulación conversacional",
-        "Composición escrita de oraciones simples y párrafos breves",
-        "Consolidación pragmática y autoevaluación de competencias"
-      ]
-    },
-    french: {
-      'a1.1': [
-        "L'alphabet français, voyelles nasales et phonétique de base",
-        "Les salutations formelles et informelles, politesse (Bonjour, Merci)",
-        "Se présenter : nom, nationalité, profession (Verbe 'Être')",
-        "Les nombres de 0 à 69 et coordonnées personnelles",
-        "Les articles définis et indéfinis (le, la, les / un, une, des)",
-        "Le genre et nombre des noms et adjectifs qualificatifs",
-        "Le verbe 'Avoir' : âge, possessions et expressions de base",
-        "Les verbes réguliers du 1er groupe en -ER au présent",
-        "La négation simple (ne... pas) et l'élision",
-        "Poser des questions : 'Est-ce que', intonation et mots interrogatifs",
-        "La famille et les proches : adjectifs possessifs (mon, ton, son)",
-        "Les jours de la semaine, les mois et donner la date",
-        "L'heure et l'emploi du temps quotidien (Quelle heure est-il ?)",
-        "Les activités quotidiennes et verbes pronominaux (se lever, se coucher)",
-        "Les goûts et préférences : aimer, adorer, détester, préférer",
-        "La nourriture, les repas et les articles partitifs (du, de la, des)",
-        "Au restaurant / au café : commander poliment et payer l'addition",
-        "La ville, les commerces et s'orienter (Où est la gare ?)",
-        "Le climat et la météo (Il fait beau/froid, il pleut)",
-        "Bilan intermédiaire et consolidation des compétences communicatives A1.1"
-      ],
-      'b1.3': [
-        "Le subjonctif présent : expression des sentiments, de la volonté et du doute",
-        "Conjonctions régissant le subjonctif (bien que, pour que, avant que)",
-        "Subjonctif vs Indicatif : nuances sémantiques et verbes d'opinion en négation",
-        "Le conditionnel passé : exprimer le regret, le reproche et l'information non vérifiée",
-        "Les hypothèses et l'irréel du passé avec 'Si' (Si + plus-que-parfait -> conditionnel passé)",
-        "Le discours indirect au passé : concordance des temps et modification des marqueurs temporels",
-        "Exprimer la cause nuancée (étant donné que, faute de, grâce à vs à cause de)",
-        "Exprimer la conséquence et l'intensité (au point de, si bien que, tellement... que)",
-        "Exprimer l'opposition et la concession (alors que, tandis que, pourtant, néanmoins)",
-        "Les pronoms relatifs composés (auquel, de laquelle, avec lesquels, sur lesquelles)",
-        "La mise en relief avancée (C'est... qui/que, Ce dont j'ai besoin c'est...)",
-        "Le gérondif et le participe présent : simultanéité, manière et cause",
-        "La forme passive et les tournures pronominales à sens passif",
-        "Le monde du travail : rédiger un CV européen, lettre de motivation et entretien d'embauche",
-        "Débat sociétal : la transition écologique, développement durable et consommation responsable",
-        "Les médias, fausses informations (fake news) et analyse critique de la presse francophone",
-        "L'art, la littérature francophone et critique de film/spectacle",
-        "Le système éducatif et la vie citoyenne en France et dans l'espace francophone",
-        "Techniques d'argumentation formelle : nuancer, concéder, réfuter et conclure un exposé",
-        "Préparation aux épreuves du DELF B1 : production écrite (lettre formelle / essai argumenté)",
-        "Préparation aux épreuves du DELF B1 : production orale (monologue suivi et débat avec l'examinateur)",
-        "Bilan diagnostique et simulation complète d'examen DELF B1.3"
-      ],
-      'a1': [
-        "L'alphabet français, voyelles nasales et phonétique de base",
-        "Les salutations formelles et informelles, politesse (Bonjour, Merci)",
-        "Se présenter : nom, nationalité, profession (Verbe 'Être')",
-        "Les nombres de 0 à 69 et coordonnées personnelles",
-        "Les articles définis et indéfinis (le, la, les / un, une, des)",
-        "Le genre et nombre des noms et adjectifs qualificatifs",
-        "Le verbe 'Avoir' : âge, possessions et expressions de base",
-        "Les verbes réguliers du 1er groupe en -ER au présent",
-        "La négation simple (ne... pas) et l'élision",
-        "Poser des questions : 'Est-ce que', intonation et mots interrogatifs",
-        "La famille et les proches : adjectifs possessifs (mon, ton, son)",
-        "Les jours de la semaine, les mois et donner la date",
-        "L'heure et l'emploi du temps quotidien (Quelle heure est-il ?)",
-        "Les activités quotidiennes et verbes pronominaux (se lever, se coucher)",
-        "Les goûts et préférences : aimer, adorer, détester, préférer",
-        "La nourriture, les repas et les articles partitifs (du, de la, des)",
-        "Au restaurant / au café : commander poliment et payer l'addition",
-        "La ville, les commerces et s'orienter (Où est la gare ?)",
-        "Le climat et la météo (Il fait beau/froid, il pleut)",
-        "Bilan intermédiaire et consolidation des compétences communicatives A1"
-      ],
-      'b1': [
-        "Le subjonctif présent et expression de la subjectivité",
-        "L'hypothèse au présent et au passé avec 'Si'",
-        "Le discours rapporté au passé et concordance des temps",
-        "Pronoms relatifs simples et composés (dont, où, lequel)",
-        "L'expression de la cause, de la conséquence et du but",
-        "L'opposition et la concession dans le débat d'idées",
-        "Argumentation et prise de parole en public",
-        "Préparation aux compétences DELF B1 (LSRW)"
-      ],
-      default: [
-        "L'alphabet phonétique, voyelles nasales et accents",
-        "Salutations formelles et informelles, politesse",
-        "Identité personnelle, nationalités et verbe Être",
-        "Âge, possessions matérielles et verbe Avoir",
-        "Vie quotidienne et verbes réguliers en -ER",
-        "Négation absolue (ne... pas) et transformation des articles",
-        "Interrogation, mots interrogatifs et intonation",
-        "Au restaurant : commander et payer l'addition",
-        "Orientation dans la ville et prépositions spatiales"
-      ]
-    },
-    german: {
-      'a1': [
-        "Das deutsche Alphabet, Aussprache und Diphtonge (ei, eu, au)",
-        "Begrüßung, Verabschiedung und Höflichkeitsformeln",
-        "Sich und andere vorstellen: Name, Herkunft (Verben 'sein' und 'kommen')",
-        "Zahlen von 0 bis 100, Telefonnummern und Buchstabieren",
-        "Bestimmte und unbestimmte Artikel im Nominativ (der, die, das / ein, eine)",
-        "Substantive: Großschreibung und Pluralbildung im Deutschen",
-        "Präsens der regelmäßigen Verben (wohnen, lernen, arbeiten)",
-        "Die unregelmäßigen Hilfsverben: sein und haben im Präsens",
-        "W-Fragen (Wer, Wie, Wo, Woher, Was) und Satzmelodie",
-        "Ja/Nein-Fragen und die Satzstellung im Hauptsatz (Verb an Position 2)",
-        "Familie und Freunde: Possessivartikel im Nominativ (mein, dein, sein)",
-        "Länder, Sprachen und Nationalitäten",
-        "Berufe und Arbeitsplatz: maskuline und feminine Bezeichnungen",
-        "Tageszeiten, Wochentage, Monate und Zeitangaben",
-        "Uhrzeit: formell und informell (Wie spät ist es?)",
-        "Tagesablauf und trennbare Verben im Präsens (aufstehen, anrufen)",
-        "Essen und Trinken: Wortschatz im Supermarkt und Restaurant",
-        "Der Akkusativ: den, die, das / einen, eine, ein (Möchten Sie...?)",
-        "Die Verneinung mit 'nicht' und 'kein/keine'",
-        "Zusammenfassende Wiederholung und kommunikatives Training A1"
-      ],
-      'a1.1': [
-        "Das deutsche Alphabet, Aussprache und Diphtonge (ei, eu, au)",
-        "Begrüßung, Verabschiedung und Höflichkeitsformeln",
-        "Sich und andere vorstellen: Name, Herkunft (Verben 'sein' und 'kommen')",
-        "Zahlen von 0 bis 100, Telefonnummern und Buchstabieren",
-        "Bestimmte und unbestimmte Artikel im Nominativ (der, die, das / ein, eine)",
-        "Substantive: Großschreibung und Pluralbildung im Deutschen",
-        "Präsens der regelmäßigen Verben (wohnen, lernen, arbeiten)",
-        "Die unregelmäßigen Hilfsverben: sein und haben im Präsens",
-        "W-Fragen (Wer, Wie, Wo, Woher, Was) und Satzmelodie",
-        "Ja/Nein-Fragen und die Satzstellung im Hauptsatz (Verb an Position 2)",
-        "Familie und Freunde: Possessivartikel im Nominativ (mein, dein, sein)",
-        "Länder, Sprachen und Nationalitäten",
-        "Berufe und Arbeitsplatz: maskuline und feminine Bezeichnungen",
-        "Tageszeiten, Wochentage, Monate und Zeitangaben",
-        "Uhrzeit: formell und informell (Wie spät ist es?)",
-        "Tagesablauf und trennbare Verben im Präsens (aufstehen, anrufen)",
-        "Essen und Trinken: Wortschatz im Supermarkt und Restaurant",
-        "Der Akkusativ: den, die, das / einen, eine, ein (Möchten Sie...?)",
-        "Die Verneinung mit 'nicht' und 'kein/keine'",
-        "Zusammenfassende Wiederholung und kommunikatives Training A1.1"
-      ],
-      default: [
-        "Das deutsche Alphabet, Aussprache und Begrüßung",
-        "Sich vorstellen und Verben sein und haben",
-        "Zahlen, Uhrzeit und Tagesablauf",
-        "Artikel im Nominativ und Akkusativ",
-        "Die Satzstellung und W-Fragen",
-        "Essen, Trinken und Einkaufen im Alltag",
-        "Mündliche Interaktion und Rollenspiele"
-      ]
-    }
-  };
-
-  // Resolve curriculum syllabus topics based on selected language & level
-  const langKey = language.toLowerCase();
-  const normalizedLevelKey = level.toLowerCase().split('/')[0].trim(); // e.g. 'a1 / l1' -> 'a1'
-  const langBank = LEVEL_CURRICULUM_BANK[langKey] || LEVEL_CURRICULUM_BANK.spanish;
-  const levelTopics = langBank[normalizedLevelKey] || langBank[level.toLowerCase()] || langBank.default;
-
   // Resolve authentic comprehensive linguistic unit data for language, CEFR level, and session number
   const comprehensiveSyllabus = getLanguageSyllabusItem(language, level, dayNumber, baseTopic, sourceContext);
   const linguisticUnit = getLinguisticUnit(language, level, dayNumber);
 
-  // Integrate source-derived topics and vocabulary dynamically
-  // If user provided video/audio/doc sourceContext or LLM returned concepts, prioritize them
+  // Strictly dynamic topic synthesis directly from parsed video/web/document sources
   const mergedSourceTopics = [...parsedSourceTopics, ...collectedGrammar];
   const analyzedGrammar = mergedSourceTopics.length > 0
     ? mergedSourceTopics
-    : (comprehensiveSyllabus.topic ? [comprehensiveSyllabus.topic, ...levelTopics] : levelTopics);
+    : (comprehensiveSyllabus.topic ? [comprehensiveSyllabus.topic] : [`${baseTopic}: Core Foundations in ${language}`]);
 
   const mergedSourceVocab = [...collectedVocab, ...parsedSourceVocab];
   const analyzedVocab = mergedSourceVocab.length > 0
     ? mergedSourceVocab
-    : (comprehensiveSyllabus.vocabulary.length > 0 ? comprehensiveSyllabus.vocabulary : linguisticUnit.vocabulary);
+    : comprehensiveSyllabus.vocabulary;
 
   // Derive pacing & depth based on total course hours (User request: 40h short, 60h standard, 80h/100h elaborate)
   let depthTier: 'CONDENSED_FAST_TRACK' | 'BALANCED_ACADEMIC' | 'ELABORATED_MASTERY' = 'BALANCED_ACADEMIC';
@@ -591,19 +380,17 @@ Language: **${language}** • Certified CEFR **${level}** • Topic: **${baseTop
 
   // Derive unit anchors dynamically
   const activeGrammarIndex = (dayNumber - 1) % analyzedGrammar.length;
-  const currentGrammarFocus = mergedSourceTopics.length > 0 
-    ? analyzedGrammar[activeGrammarIndex] 
-    : (comprehensiveSyllabus.grammarFocus || levelTopics[activeGrammarIndex] || linguisticUnit.grammarFocus);
+  const currentGrammarFocus = analyzedGrammar[activeGrammarIndex] || comprehensiveSyllabus.grammarFocus;
 
   const activeObjectiveIndex = (dayNumber - 1) % collectedObjectives.length;
   const currentObjective = collectedObjectives.length > 0 && !collectedObjectives[0].startsWith('Master core')
     ? collectedObjectives[activeObjectiveIndex]
-    : (comprehensiveSyllabus.pedagogicalObjective || linguisticUnit.pedagogicalObjective);
+    : comprehensiveSyllabus.pedagogicalObjective;
 
   // Select dynamic vocabulary items for this unit (using wide rotation so it never repeats)
-  const v1 = analyzedVocab[(dayNumber - 1) % analyzedVocab.length] || comprehensiveSyllabus.vocabulary[0] || linguisticUnit.vocabulary[0];
-  const v2 = analyzedVocab[(dayNumber * 2 - 1) % analyzedVocab.length] || comprehensiveSyllabus.vocabulary[1] || linguisticUnit.vocabulary[1] || v1;
-  const v3 = analyzedVocab[(dayNumber * 3 - 1) % analyzedVocab.length] || comprehensiveSyllabus.vocabulary[2] || linguisticUnit.vocabulary[2] || v2;
+  const v1 = analyzedVocab[(dayNumber - 1) % analyzedVocab.length] || comprehensiveSyllabus.vocabulary[0];
+  const v2 = analyzedVocab[(dayNumber * 2 - 1) % analyzedVocab.length] || comprehensiveSyllabus.vocabulary[1] || v1;
+  const v3 = analyzedVocab[(dayNumber * 3 - 1) % analyzedVocab.length] || comprehensiveSyllabus.vocabulary[2] || v2;
 
   const currentVocabList = [v1, v2, v3].filter(Boolean).map((v, i) => ({
     word: v.word,
@@ -612,7 +399,7 @@ Language: **${language}** • Certified CEFR **${level}** • Topic: **${baseTop
     example_sentence: v.example_sentence || `In this unit, students apply "${v.word}" to express key concepts.`
   }));
 
-  const unitTopic = `${unitLabel}: ${mergedSourceTopics.length > 0 ? currentGrammarFocus : (comprehensiveSyllabus.topic || levelTopics[activeGrammarIndex] || linguisticUnit.topic)}`;
+  const unitTopic = `${unitLabel}: ${currentGrammarFocus || comprehensiveSyllabus.topic}`;
 
   // Construct dynamic syntactic formula and paradigm matrix directly derived from inputs
   const dynamicFormula = `Unit ${dayNumber} [${depthTier}] Syntactic Rule in ${language}:\n` +
