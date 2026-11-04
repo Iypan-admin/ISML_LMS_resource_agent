@@ -1,3 +1,5 @@
+
+
 import React from 'react';
 import { LayoutGrid, ChevronDown, Sparkles } from 'lucide-react';
 
@@ -55,11 +57,10 @@ export function PlannerBlueprintSection({
             <button
               type="button"
               onClick={() => setPlannerViewMode('cards')}
-              className={`px-3 py-1.5 rounded-lg font-bold flex items-center gap-1.5 transition-all cursor-pointer ${
-                plannerViewMode === 'cards'
+              className={`px-3 py-1.5 rounded-lg font-bold flex items-center gap-1.5 transition-all cursor-pointer ${plannerViewMode === 'cards'
                   ? 'bg-white text-blue-700 shadow-xs'
                   : 'text-slate-600 hover:text-slate-900'
-              }`}
+                }`}
             >
               <LayoutGrid className="w-3.5 h-3.5" />
               <span>Blueprint Cards</span>
@@ -67,11 +68,10 @@ export function PlannerBlueprintSection({
             <button
               type="button"
               onClick={() => setPlannerViewMode('table')}
-              className={`px-3 py-1.5 rounded-lg font-bold flex items-center gap-1.5 transition-all cursor-pointer ${
-                plannerViewMode === 'table'
+              className={`px-3 py-1.5 rounded-lg font-bold flex items-center gap-1.5 transition-all cursor-pointer ${plannerViewMode === 'table'
                   ? 'bg-white text-blue-700 shadow-xs'
                   : 'text-slate-600 hover:text-slate-900'
-              }`}
+                }`}
             >
               <span>Matrix Table</span>
             </button>
@@ -105,25 +105,22 @@ export function PlannerBlueprintSection({
             return (
               <div
                 key={d.day_number}
-                className={`bg-white rounded-2xl border transition-all duration-200 hover:shadow-md flex flex-col justify-between overflow-hidden ${
-                  isMilestone
+                className={`bg-white rounded-2xl border transition-all duration-200 hover:shadow-md flex flex-col justify-between overflow-hidden ${isMilestone
                     ? 'border-amber-300 ring-2 ring-amber-200/50 shadow-sm'
                     : 'border-slate-200 hover:border-blue-300'
-                }`}
+                  }`}
               >
                 {/* Card Header Bar */}
                 <div
-                  className={`p-3.5 border-b flex items-center justify-between ${
-                    isMilestone
+                  className={`p-3.5 border-b flex items-center justify-between ${isMilestone
                       ? 'bg-gradient-to-r from-amber-50 to-orange-50 border-amber-200'
                       : 'bg-slate-50/70 border-slate-100'
-                  }`}
+                    }`}
                 >
                   <div className="flex items-center gap-2">
                     <span
-                      className={`px-2.5 py-1 rounded-lg text-xs font-black font-mono shadow-2xs ${
-                        isMilestone ? 'bg-amber-400 text-slate-950' : 'bg-slate-900 text-white'
-                      }`}
+                      className={`px-2.5 py-1 rounded-lg text-xs font-black font-mono shadow-2xs ${isMilestone ? 'bg-amber-400 text-slate-950' : 'bg-slate-900 text-white'
+                        }`}
                     >
                       {proposedPlanner.unit_name} {d.day_number}
                     </span>
@@ -282,9 +279,8 @@ export function PlannerBlueprintSection({
                   <tr
                     key={d.day_number}
                     onClick={() => setExpandedPeriodId(isExpanded ? null : d.day_number)}
-                    className={`hover:bg-slate-50/80 transition-colors cursor-pointer ${
-                      isExpanded ? 'bg-slate-50/90 font-medium' : ''
-                    } ${isMilestone ? 'bg-amber-50/20' : ''}`}
+                    className={`hover:bg-slate-50/80 transition-colors cursor-pointer ${isExpanded ? 'bg-slate-50/90 font-medium' : ''
+                      } ${isMilestone ? 'bg-amber-50/20' : ''}`}
                   >
                     <td className="py-3 px-4 font-mono font-bold text-slate-900 whitespace-nowrap">
                       <div className="flex items-center gap-2">

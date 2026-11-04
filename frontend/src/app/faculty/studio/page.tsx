@@ -787,6 +787,8 @@ export default function FacultyStudioPage() {
       institution_type: institutionType,
       school_meta: isSchool ? getSchoolSchedule(schoolLevel, schoolCategory) : undefined,
       college_meta: !isSchool ? getCollegeSchedule(selectedLanguage, selectedLevel, collegeTrack) : undefined,
+      extracted_source_context: extractedSourceContextFromValidation || undefined,
+      raw_source_context: extractedSourceContextFromValidation || undefined,
     };
 
     // Build day items using progressive pedagogical progression

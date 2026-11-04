@@ -200,11 +200,67 @@ Language: **${language}** • Certified CEFR **${level}** • Topic: **${baseTop
 
   // ---------------------------------------------------------------------------
   // 2. DYNAMIC INPUT-GROUNDED SYLLABUS SYNTHESIZER
-  // Completely grounded in LLM analysis findings from user's uploaded videos/materials
+  // Completely grounded in LLM analysis findings and extracted video/source transcripts
   // ---------------------------------------------------------------------------
   const planInfo = sessionPackage?.session_plan;
   const lsrwInfo = sessionPackage?.student_lsrw;
   const rawDays = planInfo?.day_wise_syllabus || [];
+  const sourceContext = sessionPackage?.extracted_source_context || sessionPackage?.raw_source_context || '';
+
+  // Extract dynamic linguistic evidence from user uploaded video transcript / web material
+  const parsedSourceTopics: string[] = [];
+  const parsedSourceVocab: Array<{ word: string; meaning: string; pronunciation?: string; example_sentence?: string }> = [];
+  const parsedSourceDialogues: string[] = [];
+
+  if (sourceContext && sourceContext.trim().length > 30) {
+    // 1. Clean transcript text and split into logical lines
+    const lines = sourceContext
+      .split(/\n+|\.\s+/)
+      .map((l: string) => l.trim())
+      .filter((l: string) => l.length > 10 && !l.startsWith('[Tutor') && !l.startsWith('[YouTube'));
+
+    // 2. Extract potential video concepts / topics from high-information sentences
+    lines.forEach((line: string, idx: number) => {
+      if (line.length >= 15 && line.length <= 95) {
+        // Strip common transcript noise
+        const clean = line.replace(/^[\d\s\.\-\:\*]+/, '').trim();
+        if (clean.length > 12 && !parsedSourceTopics.includes(clean)) {
+          parsedSourceTopics.push(clean);
+        }
+      }
+      // Look for natural dialogue structures (e.g. quotes or conversational phrases)
+      if (line.includes('?') || line.includes('!') || line.includes(':') || line.length < 80) {
+        if (!parsedSourceDialogues.includes(line) && parsedSourceDialogues.length < 30) {
+          parsedSourceDialogues.push(line);
+        }
+      }
+    });
+
+    // 3. Extract distinct vocabulary tokens from source material
+    const words = sourceContext
+      .replace(/[^\p{L}\s\-']/gu, ' ')
+      .split(/\s+/)
+      .map((w: string) => w.trim())
+      .filter((w: string) => w.length >= 4 && w.length <= 16);
+
+    const freq: Record<string, number> = {};
+    words.forEach((w: string) => {
+      const lower = w.toLowerCase();
+      freq[lower] = (freq[lower] || 0) + 1;
+    });
+
+    // Filter top authentic source words
+    Object.entries(freq)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 40)
+      .forEach(([w, count]) => {
+        parsedSourceVocab.push({
+          word: w.charAt(0).toUpperCase() + w.slice(1),
+          meaning: 'Domain vocabulary extracted from source material (' + count + ' mentions in video/document)',
+          example_sentence: 'Authentic pattern derived from uploaded video/material context.'
+        });
+      });
+  }
 
   // Extract all AI-analyzed vocabulary from the session package
   const collectedVocab: Array<{ word: string; meaning: string; pronunciation?: string; example_sentence?: string }> = [];
@@ -489,13 +545,15 @@ Language: **${language}** • Certified CEFR **${level}** • Topic: **${baseTop
   // Resolve authentic linguistic unit data for language, CEFR level, and session number
   const linguisticUnit = getLinguisticUnit(language, level, dayNumber);
 
-  // Fallbacks strictly contextual to user's topic and language
-  const analyzedGrammar = collectedGrammar.length > 0
-    ? collectedGrammar
+  // Integrate source-derived topics and vocabulary dynamically
+  const mergedSourceTopics = [...parsedSourceTopics, ...collectedGrammar];
+  const analyzedGrammar = mergedSourceTopics.length > 0
+    ? mergedSourceTopics
     : levelTopics;
 
-  const analyzedVocab = collectedVocab.length > 0
-    ? collectedVocab
+  const mergedSourceVocab = [...collectedVocab, ...parsedSourceVocab];
+  const analyzedVocab = mergedSourceVocab.length > 0
+    ? mergedSourceVocab
     : linguisticUnit.vocabulary;
 
   // Derive pacing & depth based on total course hours (User request: 40h short, 60h standard, 80h/100h elaborate)
