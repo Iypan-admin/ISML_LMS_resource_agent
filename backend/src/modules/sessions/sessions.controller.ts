@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Body, Param, Query } from '@nestjs/common';
+import { Controller, Get, Post, Delete, Body, Param, Query } from '@nestjs/common';
 import { SessionsService } from './sessions.service';
 
 @Controller('sessions')
@@ -22,6 +22,11 @@ export class SessionsController {
   @Get(':sessionId')
   async getPackage(@Param('sessionId') sessionId: string) {
     return this.sessionsService.getPackageBySessionId(sessionId);
+  }
+
+  @Delete(':sessionId')
+  async deletePackage(@Param('sessionId') sessionId: string) {
+    return this.sessionsService.deletePackage(sessionId);
   }
 
   @Post(':sessionId/export-lms')

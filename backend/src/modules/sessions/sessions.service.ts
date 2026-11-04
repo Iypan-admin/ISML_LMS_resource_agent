@@ -78,6 +78,18 @@ export class SessionsService {
     });
   }
 
+  async deletePackage(sessionId: string) {
+    try {
+      await this.prisma.sessionPackage.delete({
+        where: { sessionId },
+      });
+      return { success: true, message: `Session package '${sessionId}' deleted successfully` };
+    } catch (err) {
+      // If not found in DB, return success anyway so frontend cache can clear smoothly
+      return { success: true, message: `Session '${sessionId}' removed` };
+    }
+  }
+
   async syncToLms(sessionId: string) {
     const pkg = await this.getPackageBySessionId(sessionId);
 

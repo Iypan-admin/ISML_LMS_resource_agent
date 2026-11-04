@@ -428,6 +428,53 @@ export default function FacultyStudioPage() {
   const [autoSaveStatus, setAutoSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
   const [lastAutoSavedTime, setLastAutoSavedTime] = useState<string | null>(null);
 
+  // Delete saved session from backend and local archive
+  const handleDeleteSession = async (sessionIdToDelete: string, e?: React.MouseEvent) => {
+    if (e) {
+      e.stopPropagation();
+    }
+    if (!sessionIdToDelete) return;
+
+    const confirmDelete = window.confirm("Are you sure you want to delete this session?");
+    if (!confirmDelete) return;
+
+    // 1. Remove from local state immediately
+    setSavedSessions(prev => prev.filter(s => (s.sessionId || s.id) !== sessionIdToDelete));
+
+    // If active loaded session is deleted, reset active session
+    if (activeSavedSession && (activeSavedSession.sessionId === sessionIdToDelete || activeSavedSession.id === sessionIdToDelete)) {
+      setActiveSavedSession(null);
+    }
+
+    // 2. Remove from localStorage archive
+    try {
+      const localArchiveStr = localStorage.getItem('isml_saved_sessions_archive');
+      if (localArchiveStr) {
+        const archive: any[] = JSON.parse(localArchiveStr);
+        const updated = archive.filter(item => (item.sessionId || item.id) !== sessionIdToDelete);
+        localStorage.setItem('isml_saved_sessions_archive', JSON.stringify(updated));
+      }
+      const activeBlueprintStr = localStorage.getItem('isml_last_curriculum_blueprint');
+      if (activeBlueprintStr) {
+        const bp = JSON.parse(activeBlueprintStr);
+        if (bp.session_id === sessionIdToDelete) {
+          localStorage.removeItem('isml_last_curriculum_blueprint');
+        }
+      }
+    } catch (lsErr) {
+      console.warn('Error clearing localStorage for deleted session:', lsErr);
+    }
+
+    // 3. Call backend DELETE endpoint
+    try {
+      await fetchBackendWithFallback(`/api/sessions/${sessionIdToDelete}`, {
+        method: 'DELETE',
+      });
+    } catch (backendErr) {
+      console.warn('Backend delete error (offline/local):', backendErr);
+    }
+  };
+
   // Dedicated Auto-Save Handler: One time prompt ketale database + localStorage la auto save aaganum
   const autoSaveCurriculum = async (plannerData: any, promptSummary?: string) => {
     if (!plannerData) return;
@@ -836,7 +883,8 @@ export default function FacultyStudioPage() {
     setProposedPlanner(null);
 
     setTimeout(() => {
-      setProposedPlanner({
+      const newPlanner = {
+        session_id: `session-${Date.now()}`,
         language: selectedLanguage,
         level: effectiveLevel,
         topic: effectiveTopic,
@@ -854,11 +902,15 @@ export default function FacultyStudioPage() {
         source_urls_count: sourceUrls.filter(u => u.trim()).length,
         uploaded_files_count: uploadedFiles.length,
         extracted_source_context: extractedSourceContextFromValidation || undefined,
-      });
+      };
+      setProposedPlanner(newPlanner);
       setPlannerActiveModule(1);
       setPlannerConfirmed(false);
       setIsFullScreen(true);
       setPlannerLoading(false);
+
+      // Auto-save blueprint to database & localStorage so session is stored in chatbot history immediately
+      autoSaveCurriculum(newPlanner, `Initial ${selectedLanguage} ${effectiveLevel} Blueprint`);
     }, 700);
   };
 
@@ -1209,6 +1261,25 @@ export default function FacultyStudioPage() {
 
         // Immediately refresh saved chat history sessions in sidebar
         fetchSavedSessions();
+
+        // Auto-set as active saved session and initialize chatbot memory
+        setActiveSavedSession(fullKitArchiveItem);
+        const NATIVE_GREETINGS: Record<string, string> = {
+          Spanish: '¡Hola!',
+          French: 'Bonjour !',
+          German: 'Hallo!',
+          Japanese: 'こんにちは！',
+          Korean: '안녕하세요!'
+        };
+        const greetingWord = NATIVE_GREETINGS[data.language] || 'Hello!';
+        const periodCount = data.session_plan?.day_wise_syllabus?.length || 0;
+        const periodsText = periodCount > 0 ? ` (${periodCount} periods generated)` : '';
+        setCurriculumChatMessages([
+          {
+            role: 'assistant',
+            content: `${greetingWord} I am your ISML Academic AI Assistant for ${data.language} ${data.level}${periodsText}.\n\nYour curriculum package for **"${data.session_plan.session_title || data.topic}"** has been automatically saved and stored in chat session memory! What would you like to review, drill, or generate next?`
+          }
+        ]);
       } catch (backendErr) {
         console.warn('Backend save offline or running local:', backendErr);
         fetchSavedSessions();
@@ -1614,9 +1685,19 @@ export default function FacultyStudioPage() {
                         <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded bg-blue-100 text-blue-800">
                           {sessionItem.language} • {sessionItem.level}
                         </span>
-                        <span className="text-[10px] text-slate-400 font-mono">
-                          {sessionItem.createdAt ? new Date(sessionItem.createdAt).toLocaleDateString() : 'Archived'}
-                        </span>
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-[10px] text-slate-400 font-mono">
+                            {sessionItem.createdAt ? new Date(sessionItem.createdAt).toLocaleDateString() : 'Archived'}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={(e) => handleDeleteSession(sessionItem.sessionId || sessionItem.id, e)}
+                            className="p-1 rounded text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors"
+                            title="Delete this saved session"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
                       </div>
                       <h4 className="text-xs font-bold text-slate-900 group-hover:text-blue-700 line-clamp-2">
                         {sessionItem.title || sessionItem.topic || 'Curriculum Package'}
@@ -1790,9 +1871,19 @@ export default function FacultyStudioPage() {
                           <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded bg-blue-100 text-blue-800">
                             {sessionItem.language} • {sessionItem.level}
                           </span>
-                          <span className="text-[10px] text-indigo-600 font-bold group-hover:underline flex items-center gap-1">
-                            Load & Chat AI →
-                          </span>
+                          <div className="flex items-center gap-2">
+                            <span className="text-[10px] text-indigo-600 font-bold group-hover:underline flex items-center gap-1">
+                              Load & Chat AI →
+                            </span>
+                            <button
+                              type="button"
+                              onClick={(e) => handleDeleteSession(sessionItem.sessionId || sessionItem.id, e)}
+                              className="p-1 rounded text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors"
+                              title="Delete this saved session"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
                         </div>
                         <h4 className="text-xs font-bold text-slate-900 group-hover:text-indigo-900 line-clamp-1">
                           {sessionItem.title || sessionItem.topic || 'Curriculum Package'}
