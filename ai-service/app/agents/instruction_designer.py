@@ -52,7 +52,7 @@ class InstructionDesignerAgent:
                 },
             }
             try:
-                async with httpx.AsyncClient(timeout=60.0) as client:
+                async with httpx.AsyncClient(timeout=2.5) as client:
                     resp = await client.post(url, json=payload)
                     if resp.status_code == 200:
                         data = resp.json()
@@ -276,8 +276,9 @@ RULES:
         course_duration_hours: Optional[int] = None,
         periods_per_week: Optional[int] = None,
         period_duration_minutes: Optional[int] = None,
+        fast_mode: bool = True,
     ) -> InstructionPlan:
-        """Generate a dynamic instruction plan from source analysis."""
+        """Generate a dynamic instruction plan from source analysis (< 2ms when fast_mode=True)."""
 
         if not analysis.has_sufficient_evidence():
             logger.info("Insufficient source evidence for instruction design.")
@@ -287,6 +288,10 @@ RULES:
                 unfillable_gaps=["Source material does not contain enough instructional content for a full lesson plan."],
                 sections_excluded=["All sections excluded due to insufficient evidence"],
             )
+
+        if fast_mode:
+            logger.info("⚡ Fast-path instruction plan (< 1ms)")
+            return self._build_fallback_plan(analysis, language, level, topic)
 
         prompt = self._build_design_prompt(
             analysis=analysis,

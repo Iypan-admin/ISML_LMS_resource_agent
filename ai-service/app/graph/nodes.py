@@ -41,6 +41,8 @@ def _get_llm(temperature: float = 0.3, max_tokens: int = 8192) -> ChatGoogleGene
         google_api_key=settings.GEMINI_API_KEY,
         temperature=temperature,
         max_output_tokens=max_tokens,
+        timeout=10.0,
+        max_retries=1,
     )
 
 
@@ -51,6 +53,8 @@ def _get_llm_json(temperature: float = 0.2, max_tokens: int = 8192) -> ChatGoogl
         google_api_key=settings.GEMINI_API_KEY,
         temperature=temperature,
         max_output_tokens=max_tokens,
+        timeout=10.0,
+        max_retries=1,
         model_kwargs={"response_mime_type": "application/json"},
     )
 
