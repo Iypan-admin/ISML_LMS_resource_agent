@@ -1,4 +1,5 @@
 "use client";
+import { PlannerBlueprintSection } from './PlannerBlueprintSection';
 
 import React, { useState, useRef, useEffect } from 'react';
 import {
@@ -189,6 +190,7 @@ export default function FacultyStudioPage() {
   const [isEditingPlanner, setIsEditingPlanner] = useState(false);
   const [plannerActiveModule, setPlannerActiveModule] = useState<number>(1);
   const [expandedPeriodId, setExpandedPeriodId] = useState<number | null>(null);
+  const [plannerViewMode, setPlannerViewMode] = useState<'cards' | 'table'>('cards');
   const [coPilotPrompt, setCoPilotPrompt] = useState<string>('');
   const [coPilotLoading, setCoPilotLoading] = useState<boolean>(false);
   const [coPilotResponse, setCoPilotResponse] = useState<string | null>(null);
@@ -2592,218 +2594,18 @@ export default function FacultyStudioPage() {
                 );
               })()}
 
-              {/* Interactive Period Breakdown Matrix */}
-              {(() => {
-                const activeMod = proposedPlanner.modules.find((m: any) => m.moduleNumber === plannerActiveModule) || proposedPlanner.modules[0];
-                if (!activeMod) return null;
-
-                return (
-                  <div className="p-5 space-y-3">
-                    <div className="flex items-center justify-between pb-1">
-                      <div className="flex items-center gap-2">
-                        <span className="w-2 h-2 rounded-full bg-blue-600" />
-                        <h4 className="text-xs font-bold text-slate-900 tracking-tight flex items-center gap-2">
-                          <span>Module {activeMod.moduleNumber} Detailed Breakdown</span>
-                          <span className="text-slate-400 font-normal">({activeMod.startUnit} to {activeMod.endUnit} • ~{activeMod.approxWeeks} Weeks)</span>
-                        </h4>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        {isEditingPlanner && (
-                          <span className="text-[11px] text-amber-700 font-semibold bg-amber-50 px-2.5 py-1 rounded-md border border-amber-200">
-                            ✏️ Editing enabled: modify topics directly in rows
-                          </span>
-                        )}
-                      </div>
-                    </div>
-
-                    <div className="border border-slate-200 rounded-xl overflow-hidden shadow-2xs">
-                      <table className="w-full text-left text-xs">
-                        <thead className="bg-slate-50 border-b border-slate-200 text-slate-500 font-semibold text-[11px]">
-                          <tr>
-                            <th className="py-3 px-4 w-28">{proposedPlanner.unit_name}</th>
-                            <th className="py-3 px-3 w-20">Duration</th>
-                            <th className="py-3 px-4">Lesson Topic / Linguistic Target</th>
-                            <th className="py-3 px-3 w-32 hidden sm:table-cell text-center">Skills Covered</th>
-                            <th className="py-3 px-4 w-28 text-right">Details</th>
-                            {isEditingPlanner && <th className="py-3 px-3 w-36">Notes</th>}
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-slate-100 bg-white">
-                          {activeMod.days.map((d: any) => {
-                            const cleanTopic = d.day_topic.replace(/^(Period|Session)\s*\d+:\s*/i, '');
-                            const isExpanded = expandedPeriodId === d.day_number;
-                            const practiceQ = (d.in_class_exercises && d.in_class_exercises[0]) || d.student_lsrw_practice?.grammar_exercise?.fill_in_blanks?.[0] || 'Complete situational oral drill and target grammar fill-in.';
-                            const speakingCue = d.student_lsrw_practice?.speaking_prompt?.situation || 'Paired dialogue with partner using target phrases';
-                            const audioScript = d.student_lsrw_practice?.listening_audio_script?.comprehension_check || 'Comprehension check of native dialogue snippet';
-                            const isMilestone = d.day_number % 10 === 0;
-
-                            return (
-                              <React.Fragment key={d.day_number}>
-                                <tr
-                                  onClick={() => setExpandedPeriodId(isExpanded ? null : d.day_number)}
-                                  className={`hover:bg-slate-50/80 transition-colors cursor-pointer ${isExpanded ? 'bg-slate-50/90 font-medium' : ''} ${isMilestone ? 'bg-amber-50/20' : ''}`}
-                                >
-                                  <td className="py-3 px-4 font-mono font-bold text-slate-900 whitespace-nowrap">
-                                    <div className="flex items-center gap-2">
-                                      <span className="text-slate-900">{proposedPlanner.unit_name} {d.day_number}</span>
-                                      {isMilestone && (
-                                        <span className="text-[10px] font-bold bg-amber-100 text-amber-800 px-1.5 py-0.2 rounded border border-amber-200">Quiz</span>
-                                      )}
-                                    </div>
-                                  </td>
-                                  <td className="py-3 px-3 whitespace-nowrap">
-                                    <span className="px-2 py-0.5 rounded bg-slate-100 text-slate-600 font-medium text-[11px]">
-                                      {proposedPlanner.period_duration_minutes}m
-                                    </span>
-                                  </td>
-                                  <td className="py-3 px-4">
-                                    {isEditingPlanner ? (
-                                      <input
-                                        type="text"
-                                        value={cleanTopic}
-                                        onClick={(e) => e.stopPropagation()}
-                                        onChange={(e) => updateDayInPlanner(d.day_number, 'day_topic', `${proposedPlanner.unit_name} ${d.day_number}: ${e.target.value}`)}
-                                        className="w-full px-2.5 py-1 bg-white border border-slate-300 rounded-lg text-xs font-semibold text-slate-900 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                                      />
-                                    ) : (
-                                      <div title={cleanTopic}>
-                                        <span className="font-semibold text-slate-800 text-xs block truncate max-w-[280px] sm:max-w-[480px]">
-                                          {cleanTopic}
-                                        </span>
-                                      </div>
-                                    )}
-                                  </td>
-                                  <td className="py-3 px-3 hidden sm:table-cell text-center">
-                                    <div className="inline-flex items-center gap-1 font-mono text-[10px] font-semibold text-slate-600">
-                                      <span className="w-5 h-5 rounded flex items-center justify-center bg-slate-100 border border-slate-200" title="Listening Drill">L</span>
-                                      <span className="w-5 h-5 rounded flex items-center justify-center bg-slate-100 border border-slate-200" title="Speaking Situational Task">S</span>
-                                      <span className="w-5 h-5 rounded flex items-center justify-center bg-slate-100 border border-slate-200" title="Reading Comprehension">R</span>
-                                      <span className="w-5 h-5 rounded flex items-center justify-center bg-slate-100 border border-slate-200" title="Writing Grammar Practice">W</span>
-                                    </div>
-                                  </td>
-                                  <td className="py-3 px-4 text-right">
-                                    <div className="flex items-center justify-end gap-1.5" onClick={(e) => e.stopPropagation()}>
-                                      <button
-                                        type="button"
-                                        onClick={() => setExpandedPeriodId(isExpanded ? null : d.day_number)}
-                                        className="inline-flex items-center gap-1 text-[11px] font-semibold text-slate-600 hover:text-slate-900 bg-white hover:bg-slate-100 px-2.5 py-1 rounded-lg border border-slate-200 transition-colors cursor-pointer"
-                                      >
-                                        <span>{isExpanded ? 'Hide' : 'Inspect'}</span>
-                                        <ChevronDown className={`w-3.5 h-3.5 transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
-                                      </button>
-                                    </div>
-                                  </td>
-                                  {isEditingPlanner && (
-                                    <td className="py-2 px-3" onClick={(e) => e.stopPropagation()}>
-                                      <input
-                                        type="text"
-                                        value={d.grammar_rules_detail || ''}
-                                        onChange={(e) => updateDayInPlanner(d.day_number, 'grammar_rules_detail', e.target.value)}
-                                        placeholder="Note..."
-                                        className="w-full px-2 py-1 bg-white border border-slate-200 rounded text-[11px] text-slate-600 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                                      />
-                                    </td>
-                                  )}
-                                </tr>
-
-                                {/* Expanded Professional Period Breakdown Drawer */}
-                                {isExpanded && (
-                                  <tr className="bg-slate-50/90 border-t border-b border-blue-100">
-                                    <td colSpan={isEditingPlanner ? 7 : 6} className="p-4 space-y-3">
-                                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs">
-                                        {/* Chapter & Grammar Anchor */}
-                                        <div className="bg-white p-3.5 rounded-xl border border-slate-200 space-y-2 shadow-2xs">
-                                          <div className="flex items-center justify-between">
-                                            <div className="flex items-center gap-2">
-                                              <span className="w-2 h-2 rounded-full bg-blue-600" />
-                                              <span className="font-bold uppercase text-[10px] text-slate-500 tracking-wider">Chapter Target & Anchor Grammar</span>
-                                            </div>
-                                            <button
-                                              type="button"
-                                              onClick={() => setCoPilotPrompt(`Enhance grammar rules and structure for Period ${d.day_number}`)}
-                                              className="text-[10px] text-blue-600 font-bold hover:underline flex items-center gap-0.5"
-                                            >
-                                              <Sparkles className="w-2.5 h-2.5" />
-                                              <span>Refine with AI</span>
-                                            </button>
-                                          </div>
-                                          <h5 className="font-black text-slate-900 text-xs">
-                                            {cleanTopic}
-                                          </h5>
-                                          <p className="text-[11px] text-slate-600 leading-relaxed">
-                                            {d.grammar_rules_detail || 'Pedagogical foundation: verb inflections, core syntax paradigms, and phonological repetition.'}
-                                          </p>
-                                          {d.vocabulary_bank && d.vocabulary_bank.length > 0 && (
-                                            <div className="pt-2 border-t border-slate-100 flex flex-wrap items-center gap-1.5">
-                                              <span className="text-[10px] font-bold text-slate-400">Anchor Vocab:</span>
-                                              {d.vocabulary_bank.slice(0, 4).map((v: any, vi: number) => (
-                                                <span key={vi} className="bg-slate-100 text-slate-800 text-[10px] font-bold px-2 py-0.5 rounded-md">
-                                                  {typeof v === 'string' ? v : v.word}
-                                                </span>
-                                              ))}
-                                            </div>
-                                          )}
-                                        </div>
-
-                                        {/* LSRW Questions & Practice Tasks */}
-                                        <div className="bg-white p-3.5 rounded-xl border border-slate-200 space-y-2 shadow-2xs">
-                                          <div className="flex items-center justify-between">
-                                            <div className="flex items-center gap-2">
-                                              <span className="w-2 h-2 rounded-full bg-emerald-600" />
-                                              <span className="font-bold uppercase text-[10px] text-slate-500 tracking-wider">In-Class LSRW Practice Drills</span>
-                                            </div>
-                                            <button
-                                              type="button"
-                                              onClick={() => setCoPilotPrompt(`Add a new situational paired dialogue exercise to Period ${d.day_number}`)}
-                                              className="text-[10px] text-emerald-600 font-bold hover:underline flex items-center gap-0.5"
-                                            >
-                                              <Plus className="w-2.5 h-2.5" />
-                                              <span>Add Drill</span>
-                                            </button>
-                                          </div>
-                                          
-                                          <div className="space-y-1.5 text-[11px]">
-                                            <div className="flex items-start gap-1.5 bg-emerald-50/60 p-2 rounded-lg border border-emerald-100">
-                                              <span className="font-black text-emerald-800 shrink-0 text-[10px]">R/W Drill:</span>
-                                              <span className="text-emerald-950 font-medium">{practiceQ}</span>
-                                            </div>
-                                            <div className="flex items-start gap-1.5 bg-blue-50/60 p-2 rounded-lg border border-blue-100">
-                                              <span className="font-black text-blue-800 shrink-0 text-[10px]">Speaking:</span>
-                                              <span className="text-blue-950 font-medium">{speakingCue}</span>
-                                            </div>
-                                            <div className="flex items-start gap-1.5 bg-purple-50/60 p-2 rounded-lg border border-purple-100">
-                                              <span className="font-black text-purple-800 shrink-0 text-[10px]">Listening:</span>
-                                              <span className="text-purple-950 font-medium">{audioScript}</span>
-                                            </div>
-
-                                            {/* All Additional Day Practice Exercises */}
-                                            {d.in_class_exercises && d.in_class_exercises.length > 1 && (
-                                              <div className="pt-1 space-y-1">
-                                                {d.in_class_exercises.slice(1).map((ex: string, exIdx: number) => (
-                                                  <div key={exIdx} className="flex items-start gap-1.5 bg-slate-50 p-1.5 rounded-lg border border-slate-200/70 text-[10.5px]">
-                                                    <span className="font-black text-slate-600 shrink-0 text-[9px] bg-white px-1 py-0.2 rounded border border-slate-200">
-                                                      Drill {exIdx + 2}
-                                                    </span>
-                                                    <span className="text-slate-800 font-medium">{ex}</span>
-                                                  </div>
-                                                ))}
-                                              </div>
-                                            )}
-                                          </div>
-                                        </div>
-                                      </div>
-                                    </td>
-                                  </tr>
-                                )}
-                              </React.Fragment>
-                            );
-                          })}
-                        </tbody>
-                      </table>
-                    </div>
-                  </div>
-                );
-              })()}
+              {/* Interactive Period Breakdown Matrix & Visual Blueprint Cards */}
+              <PlannerBlueprintSection
+                proposedPlanner={proposedPlanner}
+                plannerActiveModule={plannerActiveModule}
+                plannerViewMode={plannerViewMode}
+                setPlannerViewMode={setPlannerViewMode}
+                isEditingPlanner={isEditingPlanner}
+                expandedPeriodId={expandedPeriodId}
+                setExpandedPeriodId={setExpandedPeriodId}
+                updateDayInPlanner={updateDayInPlanner}
+                setCoPilotPrompt={setCoPilotPrompt}
+              />
 
               {/* Bottom Simple Action Bar */}
               <div className="p-4 bg-slate-50 border-t border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
