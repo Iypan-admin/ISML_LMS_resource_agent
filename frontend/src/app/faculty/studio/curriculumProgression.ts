@@ -633,10 +633,10 @@ Language: **${language}** • Certified CEFR **${level}** • Topic: **${baseTop
 
   const classroomDialogues = (collectedDialogues.length >= 2 && !collectedDialogues[0].includes('Engaging situational dialogue'))
     ? collectedDialogues
-    : linguisticUnit.dialogue;
+    : (comprehensiveSyllabus.dialogue.length > 0 ? comprehensiveSyllabus.dialogue : linguisticUnit.dialogue);
 
   // Dynamic in-class exercises and solutions - Authentic CEFR drills categorized across LSRW
-  const exerciseSolutions = (collectedGrammar.length > 0)
+  const exerciseSolutions = (mergedSourceTopics.length > 0 || currentVocabList.length > 0)
     ? [
         {
           question: `[R - Reading & Syntax] Construct an affirmative clause in ${language} integrating "${primaryWord}" adhering strictly to: "${currentGrammarFocus}".`,
@@ -728,42 +728,50 @@ Conduct structured guided drills where learners actively construct original sent
     // Dual Output Architecture: Populated Dedicated Teacher Breakdown
     teacher_lesson_breakdown: {
       allocated_minutes: unitMinutes,
-      phases: linguisticUnit.teacherPhases.map(p => ({
-        phase: p.phase,
-        minutes: Math.max(5, Math.round(unitMinutes * p.minutesRatio)),
-        instruction: p.instruction
-      })),
-      board_notes: linguisticUnit.boardNotes,
-      remedial_activity: linguisticUnit.remedialActivity,
-      extension_activity: linguisticUnit.extensionActivity,
-      common_gotchas: linguisticUnit.commonGotchas
+      phases: [
+        { phase: '1. Phonetic Warm-Up & Pronunciation', minutes: Math.max(5, Math.round(unitMinutes * 0.15)), instruction: `Auditory discrimination and native repetition for ${primaryWord} and ${secondaryWord} in ${language}.` },
+        { phase: '2. Concept Architecture & Grammar Lecture', minutes: Math.max(15, Math.round(unitMinutes * 0.35)), instruction: `Explicit breakdown of ${currentGrammarFocus} with board paradigm matrix.` },
+        { phase: '3. Guided Pair Discourse & Drills', minutes: Math.max(15, Math.round(unitMinutes * 0.30)), instruction: `Students enact live classroom dialogues practicing oral fluency.` },
+        { phase: '4. Formative Wrap-Up & Retention Task', minutes: Math.max(5, Math.round(unitMinutes * 0.20)), instruction: `Review common L1 pitfalls, assign homework, and conduct rapid exit-ticket Q&A.` }
+      ],
+      board_notes: `Grammar Architecture: [Subject / Topic Focus] + [${currentGrammarFocus}] + [Context: ${primaryWord}] in ${language} (${level}).`,
+      remedial_activity: `Learners struggling with word order construct 3 short affirmative clauses using '${primaryWord}' in ${language}.`,
+      extension_activity: `Advanced learners conduct an unscripted 60-second roleplay incorporating '${secondaryWord}' and complex clauses in ${language}.`,
+      common_gotchas: [
+        `Phonetic interference on silent letters or liaison boundaries in ${language}.`,
+        `Subject-verb inflection mismatch when conjugating around target patterns.`
+      ]
     },
     // Dual Output Architecture: Populated Dedicated Student LSRW Practice
     student_lsrw_practice: {
       vocabulary_drills: currentVocabList.map(v => ({
         word: v.word,
-        practice_prompt: `Compose an authentic contextual sentence using "${v.word}" demonstrating CEFR ${level} production.`
+        practice_prompt: `Compose an authentic contextual sentence using "${v.word}" demonstrating CEFR ${level} production in ${language}.`
       })),
       grammar_exercise: {
-        instruction: `Fill in the blank using the correct structural form for "${currentGrammarFocus}":`,
+        instruction: `Fill in the blank using the correct structural form for "${currentGrammarFocus}" in ${language}:`,
         fill_in_blanks: [
-          `1. Complétez avec la forme correcte : (${primaryWord}) ________.`,
-          `2. Expression en contexte formel : ________ (${secondaryWord}).`
+          `1. [${language}] Complete with target form: (${primaryWord}) ________.`,
+          `2. [${language}] Formal register expression: ________ (${secondaryWord}).`
         ],
-        answer_key: `Conforme à la règle syntaxique : ${currentGrammarFocus}`
+        answer_key: `Conforms to target syntactic rule: ${currentGrammarFocus}`
       },
       listening_audio_script: {
-        scene: `Native Situational Exchange on ${linguisticUnit.topic} (${language})`,
+        scene: `Native Situational Exchange on ${unitTopic} (${language})`,
         dialogue_lines: classroomDialogues,
-        comprehension_check: linguisticUnit.listeningCheck
+        comprehension_check: `What is the communicative function of ${primaryWord} in this ${language} dialogue?`
       },
       speaking_prompt: {
-        situation: linguisticUnit.speakingCue.situation,
-        guiding_cues: linguisticUnit.speakingCue.cues,
-        sample_model: linguisticUnit.speakingCue.sample
+        situation: `Imagine you are interacting with a native speaker using ${currentGrammarFocus} in ${language}.`,
+        guiding_cues: [
+          `Incorporate target term '${primaryWord}' naturally.`,
+          `Apply polite situational register in ${language}.`,
+          `Respond with clear pronunciation and intonation.`
+        ],
+        sample_model: classroomDialogues[0] || `Polite authentic model sentence in ${language}.`
       },
       writing_task: {
-        task: linguisticUnit.writingPrompt,
+        task: `Write a short 50-75 word paragraph in ${language} describing ${unitTopic} using today's target structures and vocabulary (${currentVocabList.map(v => v.word).join(', ')}).`,
         rubric_summary: `Scored out of 100 on Grammatical Accuracy (40%), Lexical Range (30%), and Communicative Task Completion (30%) by the ISML LSRW Evaluation Agent.`
       }
     }
