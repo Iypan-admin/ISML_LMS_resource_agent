@@ -7,6 +7,7 @@
 // =============================================================================
 
 import { getLinguisticUnit } from './curriculumLanguageBanks';
+import { getLanguageSyllabusItem } from './comprehensiveLanguageBanks';
 
 export interface DayCurriculumItem {
   day_number: number;
@@ -542,19 +543,21 @@ Language: **${language}** • Certified CEFR **${level}** • Topic: **${baseTop
   const langBank = LEVEL_CURRICULUM_BANK[langKey] || LEVEL_CURRICULUM_BANK.spanish;
   const levelTopics = langBank[normalizedLevelKey] || langBank[level.toLowerCase()] || langBank.default;
 
-  // Resolve authentic linguistic unit data for language, CEFR level, and session number
+  // Resolve authentic comprehensive linguistic unit data for language, CEFR level, and session number
+  const comprehensiveSyllabus = getLanguageSyllabusItem(language, level, dayNumber, baseTopic, sourceContext);
   const linguisticUnit = getLinguisticUnit(language, level, dayNumber);
 
   // Integrate source-derived topics and vocabulary dynamically
+  // If user provided video/audio/doc sourceContext or LLM returned concepts, prioritize them
   const mergedSourceTopics = [...parsedSourceTopics, ...collectedGrammar];
   const analyzedGrammar = mergedSourceTopics.length > 0
     ? mergedSourceTopics
-    : levelTopics;
+    : (comprehensiveSyllabus.topic ? [comprehensiveSyllabus.topic, ...levelTopics] : levelTopics);
 
   const mergedSourceVocab = [...collectedVocab, ...parsedSourceVocab];
   const analyzedVocab = mergedSourceVocab.length > 0
     ? mergedSourceVocab
-    : linguisticUnit.vocabulary;
+    : (comprehensiveSyllabus.vocabulary.length > 0 ? comprehensiveSyllabus.vocabulary : linguisticUnit.vocabulary);
 
   // Derive pacing & depth based on total course hours (User request: 40h short, 60h standard, 80h/100h elaborate)
   let depthTier: 'CONDENSED_FAST_TRACK' | 'BALANCED_ACADEMIC' | 'ELABORATED_MASTERY' = 'BALANCED_ACADEMIC';
@@ -588,19 +591,19 @@ Language: **${language}** • Certified CEFR **${level}** • Topic: **${baseTop
 
   // Derive unit anchors dynamically
   const activeGrammarIndex = (dayNumber - 1) % analyzedGrammar.length;
-  const currentGrammarFocus = collectedGrammar.length > 0 
+  const currentGrammarFocus = mergedSourceTopics.length > 0 
     ? analyzedGrammar[activeGrammarIndex] 
-    : (levelTopics[activeGrammarIndex] || linguisticUnit.grammarFocus);
+    : (comprehensiveSyllabus.grammarFocus || levelTopics[activeGrammarIndex] || linguisticUnit.grammarFocus);
 
   const activeObjectiveIndex = (dayNumber - 1) % collectedObjectives.length;
   const currentObjective = collectedObjectives.length > 0 && !collectedObjectives[0].startsWith('Master core')
     ? collectedObjectives[activeObjectiveIndex]
-    : linguisticUnit.pedagogicalObjective;
+    : (comprehensiveSyllabus.pedagogicalObjective || linguisticUnit.pedagogicalObjective);
 
-  // Select dynamic vocabulary items for this unit
-  const v1 = analyzedVocab[(dayNumber - 1) % analyzedVocab.length] || linguisticUnit.vocabulary[0];
-  const v2 = analyzedVocab[(dayNumber * 2 - 1) % analyzedVocab.length] || linguisticUnit.vocabulary[1] || v1;
-  const v3 = analyzedVocab[(dayNumber * 3 - 1) % analyzedVocab.length] || linguisticUnit.vocabulary[2] || v2;
+  // Select dynamic vocabulary items for this unit (using wide rotation so it never repeats)
+  const v1 = analyzedVocab[(dayNumber - 1) % analyzedVocab.length] || comprehensiveSyllabus.vocabulary[0] || linguisticUnit.vocabulary[0];
+  const v2 = analyzedVocab[(dayNumber * 2 - 1) % analyzedVocab.length] || comprehensiveSyllabus.vocabulary[1] || linguisticUnit.vocabulary[1] || v1;
+  const v3 = analyzedVocab[(dayNumber * 3 - 1) % analyzedVocab.length] || comprehensiveSyllabus.vocabulary[2] || linguisticUnit.vocabulary[2] || v2;
 
   const currentVocabList = [v1, v2, v3].filter(Boolean).map((v, i) => ({
     word: v.word,
@@ -609,7 +612,7 @@ Language: **${language}** • Certified CEFR **${level}** • Topic: **${baseTop
     example_sentence: v.example_sentence || `In this unit, students apply "${v.word}" to express key concepts.`
   }));
 
-  const unitTopic = `${unitLabel}: ${collectedGrammar.length > 0 ? currentGrammarFocus : (levelTopics[activeGrammarIndex] || linguisticUnit.topic)}`;
+  const unitTopic = `${unitLabel}: ${mergedSourceTopics.length > 0 ? currentGrammarFocus : (comprehensiveSyllabus.topic || levelTopics[activeGrammarIndex] || linguisticUnit.topic)}`;
 
   // Construct dynamic syntactic formula and paradigm matrix directly derived from inputs
   const dynamicFormula = `Unit ${dayNumber} [${depthTier}] Syntactic Rule in ${language}:\n` +
