@@ -7,29 +7,30 @@ export function getAiEndpoints(path: string): string[] {
   // Normalize path format e.g. "/api/v1/ai/scrape-analyze"
   const cleanPath = path.startsWith('/') ? path : `/${path}`;
 
-  // 1. Configured AI Service URL env var
-  if (process.env.NEXT_PUBLIC_AI_SERVICE_URL) {
-    const base = process.env.NEXT_PUBLIC_AI_SERVICE_URL.replace(/\/+$/, '');
-    endpoints.push(`${base}${cleanPath}`);
-  }
-
-  // 2. Production fallback to Python AI microservice on Railway if env var not yet baked
-  endpoints.push(`https://ismllmsresourceagent-production.up.railway.app${cleanPath}`);
-
-  // 3. Relative path (Same-origin Next.js serverless route - works on Next rewrite)
+  // 1. Relative path (Same-origin Next.js serverless route - highest priority)
   endpoints.push(cleanPath);
 
-  // 4. Local dev & LAN fallbacks (automatically adapt to current device / mobile IP or domain)
+  // 2. Local dev & LAN fallbacks
   if (typeof window !== 'undefined') {
     const hostname = window.location.hostname;
     const protocol = window.location.protocol;
     if (hostname === 'localhost' || hostname === '127.0.0.1') {
       endpoints.push(`http://localhost:8000${cleanPath}`);
     } else if (!hostname.includes('railway.app') && !hostname.includes('vercel.app')) {
-      // Running on mobile / external laptop accessing via LAN IP or custom port:
       endpoints.push(`${protocol}//${hostname}:8000${cleanPath}`);
     }
   }
+
+  // 3. Configured AI Service URL env var
+  if (process.env.NEXT_PUBLIC_AI_SERVICE_URL) {
+    const base = process.env.NEXT_PUBLIC_AI_SERVICE_URL.replace(/\/+$/, '');
+    endpoints.push(`${base}${cleanPath}`);
+  }
+
+  // 4. Production fallback to Python AI microservice on Railway
+  endpoints.push(`https://ismllmsresourceagent-production.up.railway.app${cleanPath}`);
+
+
 
   // Return unique list of endpoints
   return Array.from(new Set(endpoints));

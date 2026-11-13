@@ -29,6 +29,25 @@ export class SessionsController {
     return this.sessionsService.deletePackage(sessionId);
   }
 
+  @Post(':sessionId/chunks')
+  async saveChunks(
+    @Param('sessionId') sessionId: string,
+    @Body('chunks') chunks: any[],
+  ) {
+    return this.sessionsService.saveChunks(sessionId, chunks);
+  }
+
+  @Get(':sessionId/chunks')
+  async getChunks(
+    @Param('sessionId') sessionId: string,
+    @Query('query') query?: string,
+  ) {
+    if (query) {
+      return this.sessionsService.searchChunks(sessionId, query);
+    }
+    return this.sessionsService.getChunks(sessionId);
+  }
+
   @Post(':sessionId/export-lms')
   async exportToLms(@Param('sessionId') sessionId: string) {
     return this.sessionsService.syncToLms(sessionId);

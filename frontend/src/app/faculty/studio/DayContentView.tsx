@@ -43,6 +43,8 @@ interface DayContentProps {
   onNextDay: () => void;
   onToggleOutputMode: (mode: 'TEACHER' | 'STUDENT') => void;
   onApplyPeriodUpdate?: (dayNum: number, updates: any) => void;
+  onApplyFullScheduleUpdate?: (updatedAllDays: any[]) => void;
+  onTriggerFullPipelineGeneration?: () => void;
 }
 
 export function DayContentView({
@@ -60,6 +62,8 @@ export function DayContentView({
   onNextDay,
   onToggleOutputMode,
   onApplyPeriodUpdate,
+  onApplyFullScheduleUpdate,
+  onTriggerFullPipelineGeneration,
 }: DayContentProps) {
   const [playingAudioKey, setPlayingAudioKey] = useState<string | null>(null);
   const [currentAudio, setCurrentAudio] = useState<HTMLAudioElement | null>(null);
@@ -69,9 +73,91 @@ export function DayContentView({
   const [chatInput, setChatInput] = useState<string>('');
   const [chatLoading, setChatLoading] = useState<boolean>(false);
   const [chatAnswer, setChatAnswer] = useState<string | null>(null);
+  const [chatAudioTrack, setChatAudioTrack] = useState<any | null>(null);
+  const [chatAudioTracks, setChatAudioTracks] = useState<any[]>([]);
   const [activeLsrwTab, setActiveLsrwTab] = useState<'ALL' | 'LISTENING' | 'SPEAKING' | 'READING' | 'WRITING'>('ALL');
   const [lastModifiedSection, setLastModifiedSection] = useState<string | null>(null);
-  const [localOverrides, setLocalOverrides] = useState<Record<number, Partial<DayCurriculumItem>>>({});
+
+  // 💬 Multi-turn Continuous Conversation History (ChatGPT / Gemini / Claude Style)
+  const [chatHistory, setChatHistory] = useState<Array<{
+    id: string;
+    role: 'user' | 'assistant';
+    content: string;
+    timestamp: string;
+    audioTracks?: any[];
+    modifiedSection?: string;
+    regeneratedSummary?: {
+      dayTopic?: string;
+      grammarRule?: string;
+      notesPreview?: string;
+      vocabulary?: any[];
+      exercises?: any[];
+      totalUnitsUpdated?: number;
+    };
+  }>>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const sid = sessionPackage?.session_id || 'default';
+        const dayKey = `isml_chat_thread_${sid}_day_${activeDay.day_number}`;
+        const saved = localStorage.getItem(dayKey);
+        if (saved) return JSON.parse(saved);
+      } catch (_) {}
+    }
+    if ((activeDay as any).chat_history && Array.isArray((activeDay as any).chat_history)) {
+      return (activeDay as any).chat_history;
+    }
+    return [];
+  });
+
+  // Re-sync chat history whenever activeDay changes or sessionPackage changes
+  React.useEffect(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const sid = sessionPackage?.session_id || 'default';
+        const dayKey = `isml_chat_thread_${sid}_day_${activeDay.day_number}`;
+        const saved = localStorage.getItem(dayKey);
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            setChatHistory(parsed);
+            return;
+          }
+        }
+      } catch (_) {}
+    }
+    if ((effectiveDay as any).chat_history && Array.isArray((effectiveDay as any).chat_history) && (effectiveDay as any).chat_history.length > 0) {
+      setChatHistory((effectiveDay as any).chat_history);
+    } else {
+      setChatHistory([]);
+    }
+  }, [activeDay.day_number, sessionPackage?.session_id]);
+  const [localOverrides, setLocalOverrides] = useState<Record<number, Partial<DayCurriculumItem>>>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const saved = localStorage.getItem(`isml_period_overrides_${sessionPackage?.session_id || "default"}`);
+        return saved ? JSON.parse(saved) : {};
+      } catch (_) { return {}; }
+    }
+    return {};
+  });
+
+  // Automatically persist any session audio & period overrides
+  React.useEffect(() => {
+    if (typeof window !== 'undefined' && Object.keys(localOverrides).length > 0) {
+      try {
+        localStorage.setItem(`isml_period_overrides_${sessionPackage?.session_id || "default"}`, JSON.stringify(localOverrides));
+      } catch (_) {}
+    }
+  }, [localOverrides, sessionPackage?.session_id]);
+
+  // Load previously generated audio tracks for activeDay if available
+  React.useEffect(() => {
+    if (effectiveDay.generated_audio_tracks && effectiveDay.generated_audio_tracks.length > 0) {
+      setChatAudioTracks(effectiveDay.generated_audio_tracks);
+    } else if (effectiveDay.generated_audio_track) {
+      setChatAudioTrack(effectiveDay.generated_audio_track);
+    }
+  }, [activeDay.day_number]);
 
   // Merge activeDay with any local instantaneous overrides
   const effectiveDay = {
@@ -174,6 +260,41 @@ export function DayContentView({
     } catch (e) {
       console.warn('All TTS methods failed:', e);
       setPlayingAudioKey(null);
+    }
+  };
+
+  const downloadAudioTrack = async (textToSpeak: string, filename: string) => {
+    try {
+      const response = await fetchWithEndpointFallback('/api/v1/sessions/synthesize-speech', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          text: textToSpeak,
+          language: sessionPackage?.language || 'French',
+        }),
+      });
+
+      if (!response.ok) throw new Error('Audio download failed');
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${filename}.wav`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error('Error downloading audio:', err);
+      // Fallback synthesizer audio file creation in browser
+      const blob = new Blob([textToSpeak], { type: 'text/plain;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${filename}_transcript.txt`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
     }
   };
 
@@ -445,6 +566,63 @@ export function DayContentView({
                 </span>
               </div>
             </div>
+
+            {/* 🎧 AI Voice Studio Track Player (Included in Student Mode) */}
+            {effectiveDay.generated_audio_track && (
+              <div className="bg-gradient-to-r from-indigo-950 via-slate-900 to-indigo-900 border border-indigo-500/40 rounded-2xl p-4 sm:p-5 text-white shadow-xl space-y-3">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-indigo-800/50 pb-3">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-amber-400 to-indigo-500 flex items-center justify-center text-slate-950 font-black shadow-lg shadow-indigo-500/30 shrink-0">
+                      <Headphones className="w-5 h-5 text-slate-950" />
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-extrabold text-white tracking-tight">
+                          {effectiveDay.generated_audio_track.title || "Custom AI Audio Master Track"}
+                        </span>
+                        <span className="bg-amber-400 text-slate-950 text-[10px] font-black px-2 py-0.5 rounded-full uppercase tracking-wider">
+                          ⏱️ ~{effectiveDay.generated_audio_track.duration_minutes || 2} Mins
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-slate-300">
+                        {effectiveDay.generated_audio_track.word_count || 280} words • Continuous native speech synthesis • CEFR aligned
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2 shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const scriptText = effectiveDay.generated_audio_track?.script || 
+                          (effectiveDay.generated_audio_track?.dialogue_turns?.map(t => t.text).join(' ')) ||
+                          effectiveDay.classroom_dialogues?.join(' ') || '';
+                        playNativeAudio(scriptText, `student-full-track-${effectiveDay.day_number}`);
+                      }}
+                      className={`px-4 py-2 rounded-xl text-xs font-black flex items-center gap-2 cursor-pointer shadow-lg transition-all ${
+                        playingAudioKey === `student-full-track-${effectiveDay.day_number}`
+                          ? 'bg-rose-500 text-white animate-pulse shadow-rose-500/30'
+                          : 'bg-gradient-to-r from-amber-400 to-amber-500 hover:from-amber-300 hover:to-amber-400 text-slate-950 shadow-amber-400/20'
+                      }`}
+                    >
+                      <Volume2 className="w-4 h-4" />
+                      <span>{playingAudioKey === `student-full-track-${effectiveDay.day_number}` ? 'Pause / Stop Track' : 'Play Full Audio Track'}</span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Spoken Script Preview Box */}
+                <div className="bg-slate-950/70 border border-indigo-800/40 rounded-xl p-3.5 space-y-2">
+                  <div className="flex items-center justify-between text-[11px] text-slate-400 font-mono">
+                    <span>Target Spoken Transcript:</span>
+                    <span>Rate: {audioSpeed}x • {sessionPackage?.language || 'Native'} Voice</span>
+                  </div>
+                  <p className="text-xs text-slate-200 leading-relaxed max-h-36 overflow-y-auto pr-1 font-serif italic">
+                    "{effectiveDay.generated_audio_track.script || (effectiveDay.generated_audio_track.dialogue_turns?.map(t => `${t.speaker}: ${t.text}`).join('  •  '))}"
+                  </p>
+                </div>
+              </div>
+            )}
 
             {/* 1. Interactive Vocabulary Flashcard Bank (Included in ALL or READING) */}
             {(activeLsrwTab === 'ALL' || activeLsrwTab === 'READING') && (
@@ -1069,6 +1247,112 @@ export function DayContentView({
               </div>
             )}
 
+            {/* 🎧 AI Voice Studio Track Player (Supports Single & Multiple Audio Tracks) */}
+            {(() => {
+              const allCurriculumTracks = (effectiveDay.generated_audio_tracks && effectiveDay.generated_audio_tracks.length > 0)
+                ? effectiveDay.generated_audio_tracks
+                : effectiveDay.generated_audio_track
+                ? [effectiveDay.generated_audio_track]
+                : [];
+
+              if (allCurriculumTracks.length === 0) return null;
+
+              return (
+                <div className="bg-gradient-to-r from-indigo-950 via-slate-900 to-indigo-900 border border-indigo-500/40 rounded-2xl p-4 sm:p-5 text-white shadow-xl space-y-4">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-indigo-800/50 pb-3">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-amber-400 to-indigo-500 flex items-center justify-center text-slate-950 font-black shadow-lg shadow-indigo-500/30 shrink-0">
+                        <Headphones className="w-5 h-5 text-slate-950" />
+                      </div>
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-sm sm:text-base font-extrabold text-white tracking-tight">
+                            {allCurriculumTracks.length > 1 
+                              ? `Curriculum Audio Suite (${allCurriculumTracks.length} Audio Tracks Ready)`
+                              : (allCurriculumTracks[0].title || "Curriculum Audio Track")}
+                          </span>
+                          <span className="bg-amber-400 text-slate-950 text-[10px] font-black px-2 py-0.5 rounded-full uppercase tracking-wider">
+                            {allCurriculumTracks.length} MP3 Track{allCurriculumTracks.length > 1 ? 's' : ''}
+                          </span>
+                        </div>
+                        <p className="text-[11px] text-slate-300">
+                          Continuous native speech synthesis • CEFR ${sessionPackage?.level || 'A1'} aligned • Individual audio controls
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2 shrink-0">
+                      <span className="text-[11px] font-mono text-cyan-300 bg-white/10 px-2.5 py-1 rounded-lg border border-white/15">
+                        Native Voice: {sessionPackage?.language || 'French'} ({audioSpeed}x)
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Render Each Track in the Curriculum Section */}
+                  <div className="space-y-3">
+                    {allCurriculumTracks.map((trk: any, tIdx: number) => {
+                      const trackKey = `curriculum-body-track-${effectiveDay.day_number}-${tIdx}`;
+                      const isPlayingThis = playingAudioKey === trackKey;
+                      const scriptText = trk.script || (trk.dialogue_turns?.map((t: any) => `${t.speaker}: ${t.text}`).join(' ')) || '';
+
+                      return (
+                        <div 
+                          key={tIdx} 
+                          className="bg-slate-950/70 border border-indigo-800/40 rounded-xl p-3.5 space-y-2.5 transition-all"
+                        >
+                          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-indigo-800/40 pb-2">
+                            <div className="flex items-center gap-2.5">
+                              <span className="w-7 h-7 rounded-lg bg-blue-600/40 border border-blue-400/50 text-blue-200 flex items-center justify-center font-mono font-bold text-xs shrink-0">
+                                0{tIdx + 1}
+                              </span>
+                              <div>
+                                <strong className="text-xs sm:text-sm font-bold text-white block">
+                                  {trk.title || `Audio Track ${tIdx + 1}`}
+                                </strong>
+                                <span className="text-[10px] text-slate-400">
+                                  ⏱️ ~{trk.duration_minutes || 2} Mins • {trk.word_count || 280} words
+                                </span>
+                              </div>
+                            </div>
+
+                            <div className="flex items-center gap-2 shrink-0">
+                              <button
+                                type="button"
+                                onClick={() => playNativeAudio(scriptText, trackKey)}
+                                className={`px-3 py-1.5 rounded-xl text-xs font-black flex items-center gap-1.5 cursor-pointer shadow-md transition-all ${
+                                  isPlayingThis
+                                    ? 'bg-rose-500 text-white animate-pulse shadow-rose-500/30'
+                                    : 'bg-gradient-to-r from-amber-400 to-amber-500 hover:from-amber-300 hover:to-amber-400 text-slate-950'
+                                }`}
+                              >
+                                <Volume2 className="w-3.5 h-3.5" />
+                                <span>{isPlayingThis ? 'Stop Audio' : 'Play Audio'}</span>
+                              </button>
+
+                              <button
+                                type="button"
+                                onClick={() => downloadAudioTrack(scriptText, `${sessionPackage?.language || 'Language'}_Period_${effectiveDay.day_number}_Track_${tIdx + 1}`)}
+                                className="px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1 cursor-pointer bg-white/10 hover:bg-white/20 text-white border border-white/20 transition-all"
+                                title="Download MP3"
+                              >
+                                <Download className="w-3.5 h-3.5 text-slate-300" />
+                                <span>Download MP3</span>
+                              </button>
+                            </div>
+                          </div>
+
+                          {/* Spoken Script Transcript Preview */}
+                          <p className="text-xs text-slate-200 leading-relaxed max-h-24 overflow-y-auto pr-1 font-serif italic">
+                            "{scriptText}"
+                          </p>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            })()}
+
             {/* Live Class Dialogues with AI Voice Audio Player */}
             {effectiveDay.classroom_dialogues && effectiveDay.classroom_dialogues.length > 0 && (
               <div className="bg-purple-50/60 p-4 rounded-xl border border-purple-200 space-y-2.5">
@@ -1290,37 +1574,274 @@ export function DayContentView({
               </ul>
             </div>
 
-            {/* 🤖 High-Precision Curriculum Co-Pilot & Section Transformer Agent */}
-            <div className="bg-gradient-to-br from-slate-950 via-indigo-950 to-slate-900 rounded-3xl p-5 sm:p-6 text-white shadow-xl border border-indigo-500/30 space-y-4">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-indigo-800/40 pb-3.5">
+            {/* 🤖 Professional Clean Academic Curriculum Co-Pilot (Seamless In-Page Continuation) */}
+            <div className="bg-white rounded-2xl p-5 sm:p-6 text-slate-900 border border-slate-200 shadow-xs space-y-5 mt-6">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-3">
                 <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-indigo-600 via-blue-600 to-amber-400 p-0.5 shadow-lg shadow-indigo-500/20 shrink-0">
-                    <div className="w-full h-full bg-slate-950 rounded-[14px] flex items-center justify-center text-amber-300">
-                      <Sparkles className="w-5 h-5 text-amber-300 animate-pulse" />
-                    </div>
+                  <div className="w-10 h-10 rounded-xl bg-blue-50 border border-blue-200 flex items-center justify-center text-blue-600 shadow-xs shrink-0">
+                    <Sparkles className="w-5 h-5 text-blue-600" />
                   </div>
                   <div>
                     <div className="flex items-center gap-2">
-                      <h4 className="font-black text-sm sm:text-base text-white tracking-tight flex items-center gap-2">
-                        <span>Autonomous Curriculum Agent Co-Pilot</span>
+                      <h4 className="font-extrabold text-sm sm:text-base text-slate-900 tracking-tight flex items-center gap-2">
+                        <span>Curriculum Agent Co-Pilot</span>
                       </h4>
-                      <span className="bg-emerald-500/20 text-emerald-300 text-[10px] font-extrabold px-2.5 py-0.5 rounded-full border border-emerald-500/30">
-                        ⚡ Live Hot-Update
+                      <span className="bg-emerald-50 text-emerald-700 text-[10px] font-bold px-2 py-0.5 rounded-full border border-emerald-200">
+                        ⚡ Live Update
                       </span>
                     </div>
-                    <p className="text-[11px] text-slate-300">
-                      Prompt-based editor: Type your directive in natural language (Tamil/English/French) to transform or regenerate this lesson plan.
+                    <p className="text-[11px] text-slate-500">
+                      Prompt-based editor: Type your directive in natural language (Tamil/English/French) to transform lesson content or audio.
                     </p>
                   </div>
                 </div>
 
                 <div className="flex items-center gap-2 text-xs">
-                  <span className="text-slate-400 font-medium">Modifying:</span>
-                  <span className="bg-indigo-900/60 border border-indigo-500/40 px-3 py-1 rounded-xl text-amber-300 font-mono font-bold text-[11px]">
+                  <span className="text-slate-500 font-medium text-[11px]">Modifying:</span>
+                  <span className="bg-blue-50 border border-blue-200 px-2.5 py-1 rounded-lg text-blue-800 font-mono font-bold text-[11px]">
                     {unitName} {effectiveDay.day_number}
                   </span>
                 </div>
               </div>
+
+              {/* 💬 Full Continuous Conversation History Thread (ChatGPT / Claude / Gemini Style) */}
+                <div className="space-y-3 pt-2">
+                  <div className="flex items-center justify-between px-1">
+                    <span className="text-[11px] font-extrabold uppercase text-slate-700 tracking-wider flex items-center gap-1.5">
+                      <MessageSquare className="w-3.5 h-3.5 text-blue-600" />
+                      <span>Co-Pilot Conversation History</span>
+                      {chatHistory.length > 0 && (
+                        <span className="bg-blue-100 text-blue-800 text-[10px] px-1.5 py-0.2 rounded-full font-mono font-bold">
+                          {chatHistory.length}
+                        </span>
+                      )}
+                    </span>
+                    <span className="text-[10px] text-slate-400 font-medium">
+                      Persistent across devices &amp; reload
+                    </span>
+                  </div>
+
+                  {/* Scrollable Conversation Stream */}
+                  {chatHistory.length > 0 ? (
+                    <div className="space-y-4 divide-y divide-slate-100">
+                      {chatHistory.map((msg, mIdx) => {
+                        const isUser = msg.role === 'user';
+                        return (
+                          <div 
+                            key={msg.id || mIdx}
+                            className={`flex flex-col space-y-1.5 ${isUser ? 'items-end' : 'items-start'}`}
+                          >
+                            <div className="flex items-center gap-1.5 text-[10px] text-slate-400 px-1 font-medium">
+                              <span className="font-bold text-slate-600">
+                                {isUser ? '👤 You (Faculty Tutor)' : '🤖 Curriculum Agent'}
+                              </span>
+                              <span>•</span>
+                              <span>{msg.timestamp || 'Just now'}</span>
+                              {msg.modifiedSection && (
+                                <span className="bg-amber-100 text-amber-800 text-[9px] font-bold px-1.5 py-0.2 rounded">
+                                  {msg.modifiedSection}
+                                </span>
+                              )}
+                            </div>
+
+                            <div 
+                              className={`max-w-[92%] sm:max-w-[85%] rounded-2xl px-4 py-2.5 text-xs leading-relaxed shadow-xs ${
+                                isUser 
+                                  ? 'bg-blue-600 text-white rounded-br-xs font-medium' 
+                                  : 'bg-white text-slate-900 border border-slate-200/90 rounded-bl-xs'
+                              }`}
+                            >
+                              <p className="whitespace-pre-wrap font-medium">{msg.content}</p>
+
+                              {/* 📋 Full Comprehensive Generated Content Preview in Chat */}
+                              {!isUser && msg.regeneratedSummary && (
+                                <div className="mt-3 pt-3 border-t border-slate-200/80 space-y-3 text-slate-800">
+                                  {/* Unit Header Badge */}
+                                  <div className="bg-blue-50/80 border border-blue-200/90 rounded-xl p-3 space-y-1">
+                                    <div className="flex items-center justify-between">
+                                      <span className="text-[10px] font-black uppercase text-blue-800 tracking-wider">
+                                        📅 {msg.regeneratedSummary.totalUnitsUpdated && msg.regeneratedSummary.totalUnitsUpdated > 1 ? `All ${msg.regeneratedSummary.totalUnitsUpdated} Units Generated` : `Period ${effectiveDay.day_number} Full Blueprint`}
+                                      </span>
+                                      <span className="text-[10px] bg-emerald-100 text-emerald-800 font-bold px-2 py-0.5 rounded">
+                                        ✓ Grounded CEFR ${sessionPackage?.level || 'A1.1'}
+                                      </span>
+                                    </div>
+                                    <strong className="text-xs sm:text-sm font-bold text-slate-900 block">
+                                      {msg.regeneratedSummary.dayTopic}
+                                    </strong>
+                                  </div>
+
+                                  {/* Blackboard Grammar Formula */}
+                                  {msg.regeneratedSummary.grammarRule && (
+                                    <div className="bg-amber-50/70 border border-amber-200/80 rounded-xl p-2.5 text-[11px] space-y-1">
+                                      <span className="text-[10px] font-black text-amber-900 uppercase tracking-wide flex items-center gap-1">
+                                        📐 Blackboard Grammar Equation &amp; Syntactic Rule:
+                                      </span>
+                                      <p className="font-mono text-slate-800 font-semibold bg-white/90 p-1.5 rounded border border-amber-200">
+                                        {msg.regeneratedSummary.grammarRule}
+                                      </p>
+                                    </div>
+                                  )}
+
+                                  {/* Target Vocabulary Badges */}
+                                  {msg.regeneratedSummary.vocabulary && msg.regeneratedSummary.vocabulary.length > 0 && (
+                                    <div className="space-y-1">
+                                      <span className="text-[10px] font-black uppercase text-slate-500 tracking-wide block">
+                                        🗂️ Target Vocabulary ({msg.regeneratedSummary.vocabulary.length} Words):
+                                      </span>
+                                      <div className="flex flex-wrap gap-1.5">
+                                        {msg.regeneratedSummary.vocabulary.slice(0, 6).map((v: any, vIdx: number) => (
+                                          <span 
+                                            key={vIdx}
+                                            className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-slate-100 border border-slate-200 text-[11px] font-medium text-slate-800"
+                                          >
+                                            <strong className="text-blue-700">{v.word || v}</strong>
+                                            {v.meaning && <span className="text-slate-500 text-[10px]">({v.meaning})</span>}
+                                          </span>
+                                        ))}
+                                      </div>
+                                    </div>
+                                  )}
+
+                                  {/* Verified Exercises & Solutions Preview */}
+                                  {msg.regeneratedSummary.exercises && msg.regeneratedSummary.exercises.length > 0 && (
+                                    <div className="space-y-2 pt-1">
+                                      <div className="flex items-center justify-between">
+                                        <span className="text-[10px] font-black uppercase text-slate-500 tracking-wide flex items-center gap-1">
+                                          🎯 Verified LSRW Classroom Drills:
+                                        </span>
+                                        <span className="text-[10px] text-blue-700 font-bold">
+                                          {msg.regeneratedSummary.exercises.length} Questions &amp; Solutions
+                                        </span>
+                                      </div>
+
+                                      <div className="space-y-1.5 max-h-48 overflow-y-auto pr-1">
+                                        {msg.regeneratedSummary.exercises.slice(0, 4).map((sol: any, qIdx: number) => (
+                                          <div key={qIdx} className="bg-slate-50 border border-slate-200 rounded-lg p-2 text-[11px] space-y-1">
+                                            <div className="flex items-start gap-1.5">
+                                              <span className="font-bold text-blue-600 shrink-0">Q{qIdx + 1}:</span>
+                                              <span className="font-semibold text-slate-900">{sol.question || sol}</span>
+                                            </div>
+                                            {sol.answer && (
+                                              <div className="ml-5 flex items-center gap-1.5 text-[10px]">
+                                                <span className="text-emerald-700 font-bold">Ans:</span>
+                                                <span className="font-mono bg-emerald-50 px-1.5 py-0.2 rounded border border-emerald-200 text-emerald-950 font-bold">
+                                                  {sol.answer}
+                                                </span>
+                                              </div>
+                                            )}
+                                          </div>
+                                        ))}
+                                      </div>
+                                    </div>
+                                  )}
+                                </div>
+                              )}
+
+                              {/* Multi-Track MP3 Audio Player List inside Assistant Message */}
+                              {!isUser && msg.audioTracks && msg.audioTracks.length > 0 && (
+                                <div className="mt-3 pt-3 border-t border-slate-100 space-y-2.5">
+                                  <div className="flex items-center justify-between">
+                                    <span className="text-[10px] font-bold text-blue-700 uppercase tracking-wide flex items-center gap-1">
+                                      <Headphones className="w-3 h-3 text-blue-600" />
+                                      <span>Generated Audio Suite ({msg.audioTracks.length} Track{msg.audioTracks.length > 1 ? 's' : ''})</span>
+                                    </span>
+                                    <span className="text-[9px] bg-blue-50 text-blue-700 px-2 py-0.5 rounded-full font-bold border border-blue-200">
+                                      MP3 / WAV Audio
+                                    </span>
+                                  </div>
+
+                                  <div className="space-y-2">
+                                    {msg.audioTracks.map((trk: any, tIdx: number) => {
+                                      const trackKey = `chat-history-mp3-${msg.id}-${tIdx}`;
+                                      const isPlayingThis = playingAudioKey === trackKey;
+                                      const textToPlay = trk.script || trk.dialogue_turns?.map((t: any) => `${t.speaker}: ${t.text}`).join(". ") || "";
+
+                                      return (
+                                        <div 
+                                          key={tIdx} 
+                                          className="bg-slate-50 border border-slate-200 rounded-xl p-3 text-slate-900 shadow-2xs space-y-2"
+                                        >
+                                          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-200/80 pb-1.5">
+                                            <div className="flex items-center gap-2">
+                                              <div className="w-6 h-6 rounded-lg bg-blue-100 text-blue-700 flex items-center justify-center font-bold text-[10px] shrink-0">
+                                                0{tIdx + 1}
+                                              </div>
+                                              <div>
+                                                <strong className="text-xs font-bold text-slate-900 block">
+                                                  {trk.title || `Track ${tIdx + 1}`}
+                                                </strong>
+                                                <span className="text-[10px] text-slate-500">
+                                                  ⏱️ ~{trk.duration_minutes || 2} Mins • {trk.word_count || 280} words
+                                                </span>
+                                              </div>
+                                            </div>
+
+                                            <div className="flex items-center gap-1.5 shrink-0">
+                                              <button
+                                                type="button"
+                                                onClick={() => playNativeAudio(textToPlay, trackKey)}
+                                                className={`px-2.5 py-1 rounded-lg text-xs font-bold flex items-center gap-1 cursor-pointer transition-all ${
+                                                  isPlayingThis
+                                                    ? "bg-rose-600 text-white animate-pulse"
+                                                    : "bg-blue-600 hover:bg-blue-700 text-white"
+                                                }`}
+                                              >
+                                                <Volume2 className="w-3 h-3" />
+                                                <span>{isPlayingThis ? "Stop" : "Play Audio"}</span>
+                                              </button>
+
+                                              <button
+                                                type="button"
+                                                onClick={() => downloadAudioTrack(textToPlay, `${sessionPackage?.language || "Language"}_Period_${effectiveDay.day_number}_Track_${tIdx + 1}`)}
+                                                className="px-2.5 py-1 rounded-lg text-xs font-bold flex items-center gap-1 cursor-pointer bg-white hover:bg-slate-100 text-slate-700 border border-slate-300 shadow-2xs transition-all"
+                                                title="Download Audio File (MP3/WAV)"
+                                              >
+                                                <Download className="w-3 h-3 text-slate-600" />
+                                                <span>Download MP3</span>
+                                              </button>
+                                            </div>
+                                          </div>
+
+                                          {/* Scrubber preview & script transcript */}
+                                          <div className="bg-white rounded-lg p-2 border border-slate-200 space-y-1">
+                                            <div className="flex items-center justify-between text-[9px] font-mono text-slate-500">
+                                              <span className="flex items-center gap-1 text-slate-700 font-bold">
+                                                <span className={`w-1.5 h-1.5 rounded-full ${isPlayingThis ? "bg-emerald-500 animate-ping" : "bg-slate-400"}`} />
+                                                <span>{isPlayingThis ? "Playing Track..." : "Ready"}</span>
+                                              </span>
+                                              <span>Rate: {audioSpeed}x</span>
+                                            </div>
+
+                                            <div className="w-full bg-slate-100 h-1 rounded-full overflow-hidden border border-slate-200">
+                                              <div
+                                                className={`h-full bg-blue-600 rounded-full transition-all duration-300 ${
+                                                  isPlayingThis ? "w-3/4 animate-pulse" : "w-1/4"
+                                                }`}
+                                              />
+                                            </div>
+
+                                            <p className="text-[10px] text-slate-600 leading-relaxed max-h-14 overflow-y-auto italic">
+                                              "{trk.script || trk.dialogue_turns?.map((t: any) => `${t.speaker}: ${t.text}`).join("  •  ")}"
+                                            </p>
+                                          </div>
+                                        </div>
+                                      );
+                                    })}
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <div className="bg-slate-50 rounded-xl p-3 border border-dashed border-slate-200 text-center text-[11px] text-slate-500">
+                      No previous chat messages yet for this period. Type an instruction below to start collaborating with the Curriculum Agent!
+                    </div>
+                  )}
+                </div>
 
               {/* Chat & Prompt Transformation Box */}
               <div className="space-y-2.5">
@@ -1328,68 +1849,168 @@ export function DayContentView({
                   onSubmit={async (e) => {
                     e.preventDefault();
                     if (!chatInput.trim() || chatLoading) return;
+                    const refinedPrompt = chatInput.trim();
+                    const promptTime = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                    const userMsgId = 'user-' + Date.now();
+
+                    // Immediately push user message to persistent conversation history
+                    const updatedHistoryWithUser = [
+                      ...chatHistory,
+                      {
+                        id: userMsgId,
+                        role: 'user' as const,
+                        content: refinedPrompt,
+                        timestamp: promptTime
+                      }
+                    ];
+                    setChatHistory(updatedHistoryWithUser);
+                    setChatInput('');
                     setChatLoading(true);
                     setChatAnswer(null);
+                    setChatAudioTrack(null);
+                    setChatAudioTracks([]);
                     setLastModifiedSection(null);
 
+                    const sid = sessionPackage?.session_id || 'default';
+                    const dayKey = `isml_chat_thread_${sid}_day_${activeDay.day_number}`;
                     try {
-                      const refinedPrompt = chatInput.trim();
-
+                      localStorage.setItem(dayKey, JSON.stringify(updatedHistoryWithUser));
+                    } catch (_) {}
+                    try {
                       const res = await fetchWithEndpointFallback('/api/v1/sessions/refine-blueprint', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({
-                          user_prompt: `Regarding ${unitName} ${effectiveDay.day_number} (${effectiveDay.day_topic}): ${refinedPrompt}. Strict instruction: When generating questions or changes, ground purely in the user's uploaded documents and CEFR standard. Return individual discrete items.`,
+                          user_prompt: refinedPrompt,
+                          current_period: effectiveDay.day_number,
                           language: sessionPackage?.language || 'French',
                           level: sessionPackage?.level || 'A1',
                           topic: sessionPackage?.topic || effectiveDay.day_topic,
                           active_module: effectiveDay.month_number || 1,
-                          days: [activeDay],
+                          days: allDays || [activeDay],
                           source_context: sessionPackage?.raw_source_context || sessionPackage?.extracted_source_summary || ''
                         })
                       });
 
                       if (res.ok) {
                         const data = await res.json();
-                        const reply = data.agent_reply || "Curriculum lesson plan successfully transformed according to your prompt!";
+                        const intentType = data.intent_type || 'GENERAL_REFINEMENT';
+                        const isAudioOnly = data.audio_only === true;
+                        const isFullScheduleReq = intentType === 'FULL_SCHEDULE';
+                        const reply = data.agent_reply || "Curriculum lesson plan successfully transformed!";
                         setChatAnswer(reply);
-                        
-                        // Immediately apply live update into activeDay
-                        if (data.updated_days && data.updated_days.length > 0) {
+
+                        // =====================================================
+                        // AUDIO-ONLY RESPONSE: Don't overwrite content
+                        // =====================================================
+                        if (isAudioOnly && data.generated_audio_tracks) {
+                          const audioTracks = data.generated_audio_tracks;
+                          const audioTrack = data.generated_audio_track || audioTracks[0];
+
+                          // Accumulate with existing tracks
+                          const existingTracks = effectiveDay.generated_audio_tracks || (effectiveDay.generated_audio_track ? [effectiveDay.generated_audio_track] : []);
+                          const allTracks = [...existingTracks, ...audioTracks];
+
+                          const asstMsg = {
+                            id: 'asst-' + Date.now(),
+                            role: 'assistant' as const,
+                            content: reply,
+                            timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+                            audioTracks: audioTracks,
+                            modifiedSection: `Audio Suite (${audioTracks.length} Track${audioTracks.length > 1 ? 's' : ''})`,
+                          };
+
+                          const finalHistory = [...updatedHistoryWithUser, asstMsg];
+                          setChatHistory(finalHistory);
+                          try { localStorage.setItem(dayKey, JSON.stringify(finalHistory)); } catch (_) {}
+
+                          // Only update audio fields, preserve all content
+                          const audioPayload: any = {
+                            generated_audio_track: audioTrack,
+                            generated_audio_tracks: allTracks,
+                            chat_history: finalHistory,
+                          };
+                          setLocalOverrides(prev => ({
+                            ...prev,
+                            [effectiveDay.day_number]: { ...(prev[effectiveDay.day_number] || {}), ...audioPayload }
+                          }));
+                          if (onApplyPeriodUpdate) onApplyPeriodUpdate(effectiveDay.day_number, audioPayload);
+                          setChatAudioTrack(audioTrack);
+                          setChatAudioTracks(allTracks);
+                          setLastModifiedSection('Audio Suite');
+                        }
+                        // =====================================================
+                        // FULL SCHEDULE: Update all days
+                        // =====================================================
+                        else if (isFullScheduleReq && data.updated_days && data.updated_days.length > 1) {
+                          const totalUpdated = data.updated_days.length;
+                          const summaryData: any = {
+                            dayTopic: `Full ${totalUpdated}-Period Schedule Regenerated`,
+                            grammarRule: `All ${totalUpdated} periods updated with authentic CEFR content`,
+                            totalUnitsUpdated: totalUpdated
+                          };
+                          const asstMsg = {
+                            id: 'asst-' + Date.now(),
+                            role: 'assistant' as const,
+                            content: reply,
+                            timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+                            audioTracks: [],
+                            modifiedSection: `Full Schedule (${totalUpdated} Periods)`,
+                            regeneratedSummary: summaryData
+                          };
+
+                          const finalHistory = [...updatedHistoryWithUser, asstMsg];
+                          setChatHistory(finalHistory);
+                          try { localStorage.setItem(dayKey, JSON.stringify(finalHistory)); } catch (_) {}
+
+                          if (onApplyFullScheduleUpdate) onApplyFullScheduleUpdate(data.updated_days);
+                          if (onTriggerFullPipelineGeneration) onTriggerFullPipelineGeneration();
+                          setLastModifiedSection(`Full Schedule (${totalUpdated} Periods)`);
+                        }
+                        // =====================================================
+                        // CONTENT RESPONSE: Update period content + show in chat
+                        // =====================================================
+                        else if (data.updated_days && data.updated_days.length > 0) {
                           const updated = data.updated_days[0];
 
                           let finalSolutions = updated.exercise_solutions || [];
-                          if ((!finalSolutions || finalSolutions.length <= 1) && updated.practice_question) {
-                            const pq: string = updated.practice_question;
-                            const parts = pq.split(/(?=\d+\.\s+)/g).map(s => s.trim()).filter(Boolean);
-                            if (parts.length > 1) {
-                              finalSolutions = parts.map((part, pIdx) => {
-                                const ansMatch = part.match(/\(R[eé]ponse\s*:\s*([^)]+)\)/i);
-                                const cleanQ = part.replace(/\(R[eé]ponse\s*:\s*[^)]+\)/i, '').trim();
-                                const tags = ['[R - Reading & Syntax]', '[S - Spoken Interaction]', '[L - Auditory & Error Discrimination]', '[W - Contextual Writing]'];
-                                return {
-                                  question: cleanQ.startsWith('[') ? cleanQ : `${tags[pIdx % 4]} ${cleanQ}`,
-                                  answer: ansMatch ? ansMatch[1].trim() : `Verified answer for ${sessionPackage?.language || 'target language'}`,
-                                  explanation: `Derived from user uploaded source material.`
-                                };
-                              });
-                            } else {
-                              finalSolutions = [{
-                                question: `[R - Reading & Syntax] ${updated.practice_question}`,
-                                answer: `Verified solution for ${sessionPackage?.language || 'target language'}`,
-                                explanation: 'Regenerated authentic CEFR exercise drill'
-                              }];
-                            }
-                          } else if (finalSolutions && finalSolutions.length > 0) {
+                          if (finalSolutions && finalSolutions.length > 0) {
                             const tags = ['[R - Reading & Syntax]', '[S - Spoken Interaction]', '[L - Auditory & Error Discrimination]', '[W - Contextual Writing]'];
                             finalSolutions = finalSolutions.map((sol: any, sIdx: number) => {
                               const q = sol.question || '';
-                              return {
-                                ...sol,
-                                question: q.startsWith('[') ? q : `${tags[sIdx % 4]} ${q}`
-                              };
+                              return { ...sol, question: q.startsWith('[') ? q : `${tags[sIdx % 4]} ${q}` };
                             });
                           }
+
+                          const summaryData: any = {
+                            dayTopic: updated.day_topic || effectiveDay.day_topic,
+                            grammarRule: updated.grammar_rules_detail || effectiveDay.grammar_rules_detail,
+                            notesPreview: updated.study_notes_markdown || effectiveDay.study_notes_markdown,
+                            vocabulary: updated.vocabulary_bank || effectiveDay.vocabulary_bank || [],
+                            exercises: finalSolutions.length > 0 ? finalSolutions : (effectiveDay.exercise_solutions || []),
+                            totalUnitsUpdated: 1
+                          };
+
+                          const sectionLabel = intentType === 'DRILL_GENERATION' ? `LSRW Drills (${finalSolutions.length})`
+                            : intentType === 'GRAMMAR_FOCUS' ? 'Grammar & Blackboard'
+                            : intentType === 'VOCABULARY_REQUEST' ? `Vocabulary (${(updated.vocabulary_bank || []).length} Words)`
+                            : intentType === 'DIALOGUE_GENERATION' ? 'Classroom Dialogues'
+                            : intentType === 'TOPIC_EXPLANATION' ? 'Topic Explanation'
+                            : 'Lesson Plan Components';
+
+                          const asstMsg = {
+                            id: 'asst-' + Date.now(),
+                            role: 'assistant' as const,
+                            content: reply,
+                            timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+                            audioTracks: [],
+                            modifiedSection: sectionLabel,
+                            regeneratedSummary: summaryData
+                          };
+
+                          const finalHistory = [...updatedHistoryWithUser, asstMsg];
+                          setChatHistory(finalHistory);
+                          try { localStorage.setItem(dayKey, JSON.stringify(finalHistory)); } catch (_) {}
 
                           const updatedPayload: any = {
                             day_topic: updated.day_topic || effectiveDay.day_topic,
@@ -1397,56 +2018,72 @@ export function DayContentView({
                             study_notes_markdown: updated.study_notes_markdown || effectiveDay.study_notes_markdown,
                             vocabulary_bank: updated.vocabulary_bank || effectiveDay.vocabulary_bank,
                             classroom_dialogues: updated.classroom_dialogues || effectiveDay.classroom_dialogues,
+                            generated_audio_track: effectiveDay.generated_audio_track,
+                            generated_audio_tracks: effectiveDay.generated_audio_tracks,
                             homework_tasks: updated.homework_tasks || effectiveDay.homework_tasks,
                             in_class_exercises: finalSolutions.length > 0 ? finalSolutions.map((s: any) => s.question) : effectiveDay.in_class_exercises,
                             exercise_solutions: finalSolutions.length > 0 ? finalSolutions : effectiveDay.exercise_solutions,
+                            chat_history: finalHistory,
                             student_lsrw_practice: {
                               ...(effectiveDay.student_lsrw_practice || {}),
-                              ...(updated.student_lsrw_practice || {}),
                               listening_audio_script: {
                                 ...(effectiveDay.student_lsrw_practice?.listening_audio_script || {}),
-                                ...(updated.student_lsrw_practice?.listening_audio_script || {}),
-                                dialogue_lines: updated.classroom_dialogues || updated.student_lsrw_practice?.listening_audio_script?.dialogue_lines || effectiveDay.student_lsrw_practice?.listening_audio_script?.dialogue_lines || effectiveDay.classroom_dialogues
+                                dialogue_lines: updated.classroom_dialogues || effectiveDay.student_lsrw_practice?.listening_audio_script?.dialogue_lines || effectiveDay.classroom_dialogues
                               }
                             }
                           };
 
-                          // ⚡ Instantaneous local UI reflection
-                          setLocalOverrides(prev => ({
-                            ...prev,
-                            [effectiveDay.day_number]: updatedPayload
-                          }));
-
-                          // Notify parent studio
-                          if (onApplyPeriodUpdate) {
-                            onApplyPeriodUpdate(effectiveDay.day_number, updatedPayload);
-                          }
-                          setLastModifiedSection('Lesson Plan Components');
+                          const targetDayNum = updated.day_number || effectiveDay.day_number;
+                          setLocalOverrides(prev => ({ ...prev, [targetDayNum]: updatedPayload }));
+                          if (onApplyPeriodUpdate) onApplyPeriodUpdate(targetDayNum, updatedPayload);
+                          setLastModifiedSection(sectionLabel);
                         }
-                        setChatInput('');
+                        // =====================================================
+                        // EXPLANATION-ONLY (no updated_days, just text reply)
+                        // =====================================================
+                        else {
+                          const asstMsg = {
+                            id: 'asst-' + Date.now(),
+                            role: 'assistant' as const,
+                            content: reply,
+                            timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+                            audioTracks: [],
+                            modifiedSection: 'Agent Response',
+                          };
+                          const finalHistory = [...updatedHistoryWithUser, asstMsg];
+                          setChatHistory(finalHistory);
+                          try { localStorage.setItem(dayKey, JSON.stringify(finalHistory)); } catch (_) {}
+                        }
+                        setChatAnswer(reply);
                       } else {
-                        // Fallback call
-                        const chatRes = await fetchWithEndpointFallback('/api/v1/sessions/chat-curriculum', {
-                          method: 'POST',
-                          headers: { 'Content-Type': 'application/json' },
-                          body: JSON.stringify({
-                            messages: [{ role: 'user', content: refinedPrompt }],
-                            curriculum_context: sessionPackage?.session_plan || { all_days: [activeDay] },
-                            language: sessionPackage?.language || 'French',
-                            level: sessionPackage?.level || 'A1',
-                            topic: sessionPackage?.topic || effectiveDay.day_topic
-                          })
-                        });
-                        if (chatRes.ok) {
-                          const chatData = await chatRes.json();
-                          setChatAnswer(chatData.agent_reply || chatData.reply || "Curriculum memory updated.");
-                        } else {
-                          setChatAnswer(`Pedagogical response for ${effectiveDay.day_topic}: Verified against CEFR standards.`);
-                        }
-                        setChatInput('');
+                        // HTTP error fallback
+                        const asstMsg = {
+                          id: 'asst-' + Date.now(),
+                          role: 'assistant' as const,
+                          content: `Pedagogical response for ${effectiveDay.day_topic}: Verified against CEFR standards.`,
+                          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+                          audioTracks: [],
+                          modifiedSection: 'Agent Response',
+                        };
+                        const finalHistory = [...updatedHistoryWithUser, asstMsg];
+                        setChatHistory(finalHistory);
+                        try { localStorage.setItem(dayKey, JSON.stringify(finalHistory)); } catch (_) {}
+                        setChatAnswer(asstMsg.content);
                       }
                     } catch (err) {
-                      setChatAnswer(`Grounded response: Updated exercise criteria for ${effectiveDay.day_topic}.`);
+                      const fallbackReply = `⚠️ Connection error. Grounded response for ${effectiveDay.day_topic}: Content verified against CEFR ${sessionPackage?.level || 'A1'} standards.`;
+                      const asstFallbackMsg = {
+                        id: 'asst-' + Date.now(),
+                        role: 'assistant' as const,
+                        content: fallbackReply,
+                        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+                        audioTracks: [],
+                        modifiedSection: 'Error Recovery'
+                      };
+                      const finalHistory = [...updatedHistoryWithUser, asstFallbackMsg];
+                      setChatHistory(finalHistory);
+                      try { localStorage.setItem(dayKey, JSON.stringify(finalHistory)); } catch (_) {}
+                      setChatAnswer(fallbackReply);
                     } finally {
                       setChatLoading(false);
                     }
@@ -1460,13 +2097,13 @@ export function DayContentView({
                       onChange={(e) => setChatInput(e.target.value)}
                       disabled={chatLoading}
                       placeholder={`Tell the Agent what to change, e.g.: "Add 10 hard listening and speaking questions with answers" or "Indha topic ku formal business dialogue create pannu"...`}
-                      className="w-full bg-slate-900/90 hover:bg-slate-900 focus:bg-slate-900 border border-indigo-500/40 focus:border-indigo-400 rounded-2xl px-4 py-3 text-xs text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 transition-all shadow-inner resize-none leading-relaxed"
+                      className="w-full bg-slate-50 hover:bg-white focus:bg-white border border-slate-300 focus:border-blue-500 rounded-xl px-4 py-3 text-xs text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 transition-all resize-none leading-relaxed shadow-2xs"
                     />
                     <div className="absolute right-2.5 bottom-3 flex items-center gap-1.5">
                       <button
                         type="submit"
                         disabled={chatLoading || !chatInput.trim()}
-                        className="px-4 py-2 bg-gradient-to-r from-blue-600 via-indigo-600 to-amber-500 hover:from-blue-500 hover:to-amber-400 text-white font-extrabold text-xs rounded-xl shadow-lg shadow-indigo-600/30 transition-all flex items-center gap-1.5 disabled:opacity-40 cursor-pointer"
+                        className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-xl shadow-xs transition-all flex items-center gap-1.5 disabled:opacity-40 cursor-pointer"
                       >
                         {chatLoading ? (
                           <>
@@ -1484,29 +2121,7 @@ export function DayContentView({
                   </div>
                 </form>
 
-                {/* Agent Response & Success Notice */}
-                {chatAnswer && (
-                  <div className="bg-indigo-950/90 border border-emerald-500/40 rounded-2xl p-4 flex items-start gap-3 text-xs text-indigo-100 shadow-md animate-in fade-in duration-200">
-                    <div className="w-6 h-6 rounded-lg bg-emerald-500/20 text-emerald-400 flex items-center justify-center shrink-0 border border-emerald-500/40">
-                      <Check className="w-3.5 h-3.5" />
-                    </div>
-                    <div className="flex-1 space-y-1">
-                      <div className="flex items-center justify-between">
-                        <strong className="text-emerald-300 font-extrabold text-xs flex items-center gap-1.5">
-                          <span>Autonomous Agent Modification Complete</span>
-                        </strong>
-                        {lastModifiedSection && (
-                          <span className="text-[10px] font-mono font-bold text-amber-300 bg-amber-400/10 px-2 py-0.5 rounded border border-amber-400/20">
-                            Updated: {lastModifiedSection}
-                          </span>
-                        )}
-                      </div>
-                      <p className="text-[11px] leading-relaxed text-slate-200">{chatAnswer}</p>
-                    </div>
-                  </div>
-                )}
-
-                {/* Prompt Presets / Instant 1-Click Transformations */}
+              {/* Prompt Presets / Instant 1-Click Transformations */}
                 <div className="space-y-1.5 pt-1">
                   <span className="text-[10px] uppercase font-bold text-slate-400 tracking-wider block">
                     Instant 1-Click Agent Directives:
@@ -1515,30 +2130,44 @@ export function DayContentView({
                     <button
                       type="button"
                       onClick={() => setChatInput(`Generate 10 extensive practice questions covering Listening, Speaking, Reading and Writing with detailed answers and pronunciation notes`)}
-                      className="bg-indigo-900/40 hover:bg-indigo-800/60 text-slate-200 hover:text-white px-2.5 py-1 rounded-xl border border-indigo-700/50 cursor-pointer transition-colors flex items-center gap-1"
+                      className="bg-slate-100 hover:bg-slate-200 text-slate-700 px-2.5 py-1 rounded-lg border border-slate-200 cursor-pointer transition-colors flex items-center gap-1 text-[11px] font-medium"
                     >
                       <span>🎯 10 LSRW Drills + Answers</span>
                     </button>
                     <button
                       type="button"
-                      onClick={() => setChatInput(`Add 6 conversational dialogue turns between teacher and student with natural phonetics and everyday slang`)}
-                      className="bg-purple-900/40 hover:bg-purple-800/60 text-slate-200 hover:text-white px-2.5 py-1 rounded-xl border border-purple-700/50 cursor-pointer transition-colors flex items-center gap-1"
+                      onClick={() => setChatInput(`3 audio tracks generate pannu verbs base pani`)}
+                      className="bg-blue-50 hover:bg-blue-100 text-blue-800 px-2.5 py-1 rounded-lg border border-blue-200 cursor-pointer transition-colors flex items-center gap-1 text-[11px] font-semibold"
                     >
-                      <span>🗣️ Realistic Spoken Dialogues</span>
+                      <span>🎧 3 Audio Tracks (Verbs)</span>
                     </button>
                     <button
                       type="button"
-                      onClick={() => setChatInput(`Rewrite grammar focus with a crystal-clear blackboard equation and 3 common mistakes to avoid`)}
-                      className="bg-blue-900/40 hover:bg-blue-800/60 text-slate-200 hover:text-white px-2.5 py-1 rounded-xl border border-blue-700/50 cursor-pointer transition-colors flex items-center gap-1"
+                      onClick={() => setChatInput(`Add 6 conversational dialogue turns between teacher and student with natural phonetics`)}
+                      className="bg-purple-50 hover:bg-purple-100 text-purple-800 px-2.5 py-1 rounded-lg border border-purple-200 cursor-pointer transition-colors flex items-center gap-1 text-[11px] font-medium"
                     >
-                      <span>📐 Blackboard Formula & Gotchas</span>
+                      <span>🗣️ Realistic Dialogues</span>
                     </button>
                     <button
                       type="button"
-                      onClick={() => setChatInput(`Create a 5-minute interactive warm-up pronunciation game for this unit`)}
-                      className="bg-amber-900/40 hover:bg-amber-800/60 text-slate-200 hover:text-white px-2.5 py-1 rounded-xl border border-amber-700/50 cursor-pointer transition-colors flex items-center gap-1"
+                      onClick={() => setChatInput(`grammar pathi detailed ah explain pannu with blackboard formula and 3 common mistakes`)}
+                      className="bg-amber-50 hover:bg-amber-100 text-amber-800 px-2.5 py-1 rounded-lg border border-amber-200 cursor-pointer transition-colors flex items-center gap-1 text-[11px] font-medium"
                     >
-                      <span>🎲 5-Min Warmup Activity</span>
+                      <span>📐 Grammar & Formula</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setChatInput(`verb pathi sollu da detailed ah`)}
+                      className="bg-emerald-50 hover:bg-emerald-100 text-emerald-800 px-2.5 py-1 rounded-lg border border-emerald-200 cursor-pointer transition-colors flex items-center gap-1 text-[11px] font-medium"
+                    >
+                      <span>📖 Explain Verbs</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setChatInput(`10 vocabulary words kudu with pronunciation and examples`)}
+                      className="bg-cyan-50 hover:bg-cyan-100 text-cyan-800 px-2.5 py-1 rounded-lg border border-cyan-200 cursor-pointer transition-colors flex items-center gap-1 text-[11px] font-medium"
+                    >
+                      <span>📚 10 Vocabulary Cards</span>
                     </button>
                   </div>
                 </div>

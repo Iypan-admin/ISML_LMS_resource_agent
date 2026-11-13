@@ -90,6 +90,62 @@ export class SessionsService {
     }
   }
 
+  // 📦 Vector Chunking Services: Store & Retrieve Split Source Evidence
+  async saveChunks(sessionId: string, chunks: Array<{
+    sourceType: string;
+    sourceTitle: string;
+    chunkIndex: number;
+    totalChunks: number;
+    content: string;
+    tokenCount?: number;
+    cefrLevel?: string;
+    language?: string;
+    metadata?: any;
+  }>) {
+    if (!chunks || chunks.length === 0) return { count: 0 };
+    
+    // First remove old chunks for this session to ensure clean sync
+    await this.prisma.sessionVectorChunk.deleteMany({
+      where: { sessionId },
+    });
+
+    const created = await this.prisma.sessionVectorChunk.createMany({
+      data: chunks.map(c => ({
+        sessionId,
+        sourceType: c.sourceType || 'DOCUMENT',
+        sourceTitle: c.sourceTitle || 'Uploaded Material',
+        chunkIndex: c.chunkIndex || 0,
+        totalChunks: c.totalChunks || 1,
+        content: c.content,
+        tokenCount: c.tokenCount || Math.ceil(c.content.length / 4),
+        cefrLevel: c.cefrLevel,
+        language: c.language,
+        metadata: c.metadata || {},
+      })),
+    });
+
+    return { count: created.count };
+  }
+
+  async getChunks(sessionId: string) {
+    return this.prisma.sessionVectorChunk.findMany({
+      where: { sessionId },
+      orderBy: [{ sourceType: 'asc' }, { chunkIndex: 'asc' }],
+    });
+  }
+
+  async searchChunks(sessionId: string, query: string) {
+    const allChunks = await this.getChunks(sessionId);
+    if (!query || !query.trim()) return allChunks;
+
+    const q = query.toLowerCase();
+    // Keyword and term density matching for fast grounded retrieval
+    return allChunks.filter(c => 
+      c.content.toLowerCase().includes(q) || 
+      c.sourceTitle.toLowerCase().includes(q)
+    );
+  }
+
   async syncToLms(sessionId: string) {
     const pkg = await this.getPackageBySessionId(sessionId);
 

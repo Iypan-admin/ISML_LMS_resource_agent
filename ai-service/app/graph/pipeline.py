@@ -16,7 +16,14 @@ import logging
 import math
 from typing import Optional, Any, List, Dict
 
-from langgraph.graph import StateGraph, START, END
+try:
+    from langgraph.graph import StateGraph, START, END
+    HAS_LANGGRAPH = True
+except Exception as e:
+    HAS_LANGGRAPH = False
+    StateGraph = Any
+    START = "START"
+    END = "END"
 
 from app.graph.state import PipelineState
 from app.graph.nodes import (
@@ -32,7 +39,7 @@ from app.graph.nodes import (
 logger = logging.getLogger(__name__)
 
 
-def build_content_pipeline() -> StateGraph:
+def build_content_pipeline() -> Any:
     """
     Constructs the LangGraph StateGraph for the content generation pipeline.
     
@@ -108,6 +115,8 @@ _compiled_pipeline = None
 def get_compiled_pipeline():
     """Get or create the compiled pipeline graph."""
     global _compiled_pipeline
+    if not HAS_LANGGRAPH:
+        return None
     if _compiled_pipeline is None:
         graph = build_content_pipeline()
         _compiled_pipeline = graph.compile()
@@ -196,7 +205,18 @@ async def run_content_pipeline(
     
     try:
         pipeline = get_compiled_pipeline()
-        final_state = await pipeline.ainvoke(initial_state)
+        if pipeline is not None:
+            final_state = await pipeline.ainvoke(initial_state)
+        else:
+            # Sequential pipeline fallback when LangGraph is unavailable
+            s = initial_state
+            s = await enhance_prompt_node(s)
+            s = await analyze_sources_node(s)
+            s = await partition_sources_node(s)
+            s = await generate_periods_node(s)
+            s = await validate_quality_node(s)
+            s = await assemble_package_node(s)
+            final_state = s
         
         logger.info(
             f"✅ Pipeline complete: {len(final_state.get('generated_periods', []))} periods generated, "

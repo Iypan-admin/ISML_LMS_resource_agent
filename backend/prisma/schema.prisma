@@ -603,7 +603,31 @@ model SessionPackage {
   createdAt             DateTime        @default(now())
   updatedAt             DateTime        @updatedAt
 
+  // Vectorized and split chunks for RAG grounding
+  chunks                SessionVectorChunk[]
+
   @@index([language, level, trackMode])
   @@map("session_packages")
+}
+
+model SessionVectorChunk {
+  id                    String          @id @default(uuid())
+  sessionId             String
+  sessionPackage        SessionPackage  @relation(fields: [sessionId], references: [sessionId], onDelete: Cascade)
+  sourceType            String          // DOCUMENT, WEB_SCRAPE, VIDEO_TRANSCRIPT, AUDIO
+  sourceTitle           String          // e.g. "French_Grammar.pdf", "YouTube: Café Dialogue"
+  chunkIndex            Int
+  totalChunks           Int
+  content               String          @db.Text
+  tokenCount            Int             @default(0)
+  cefrLevel             String?         // A1, A2, etc.
+  language              String?         // French, Spanish, etc.
+  metadata              Json?           // keywords, grammar tags, timestamps
+
+  createdAt             DateTime        @default(now())
+
+  @@index([sessionId])
+  @@index([sourceType])
+  @@map("session_vector_chunks")
 }
 

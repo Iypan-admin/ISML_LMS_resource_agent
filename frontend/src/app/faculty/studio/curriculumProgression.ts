@@ -28,6 +28,24 @@ export interface DayCurriculumItem {
   in_class_exercises: string[];
   exercise_solutions?: Array<{ question: string; answer: string; explanation: string }>;
   homework_tasks: string[];
+  // AI Generated Continuous Audio Tracks with precise duration (supports 1, 2, 3 or multiple tracks)
+  generated_audio_track?: {
+    title: string;
+    duration_minutes: number;
+    word_count: number;
+    script: string;
+    dialogue_turns?: Array<{ speaker: string; text: string }>;
+    comprehension_questions?: Array<{ question: string; answer: string }>;
+  };
+  generated_audio_tracks?: Array<{
+    id?: string;
+    title: string;
+    duration_minutes: number;
+    word_count: number;
+    script: string;
+    dialogue_turns?: Array<{ speaker: string; text: string }>;
+    comprehension_questions?: Array<{ question: string; answer: string }>;
+  }>;
   // Dual Output Architecture: Dedicated Teacher & Student Content Fields
   teacher_lesson_breakdown?: {
     allocated_minutes: number;

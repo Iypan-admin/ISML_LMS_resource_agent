@@ -578,16 +578,34 @@ INSTRUCTIONS:
      * Homework tasks (homework_tasks)
      * Teacher lesson breakdown / Blackboard notes (teacher_lesson_breakdown)
    - Accurately apply whatever modification the user requested to the specified period(s).
-3. INDIVIDUAL NUMBERED ITEMS FOR DRILLS:
+3. DURATION-TARGETED AUDIO SCRIPT & DIALOGUE GENERATION:
+   - When the user asks for an audio script, dialogue, or listening passage for a specific duration (e.g., "audio file 2 mins ku kudu", "1 min audio", "3 mins conversation", "5 minutes monologue"):
+     * Calculate script length assuming natural spoken pace of 130-150 words per minute (e.g. 2 mins = ~260-300 target language words; 1 min = ~130-150 words; 3 mins = ~400-450 words).
+     * Produce a rich, multi-turn authentic dialogue or narrative in "generated_audio_track" object:
+       {
+         "title": "[Title of the audio track]",
+         "duration_minutes": [float/int duration e.g. 2.0],
+         "word_count": [actual words count],
+         "script": "[The complete continuous spoken script in target language without speaker labels or markdown, suitable for continuous AI TTS playback]",
+         "dialogue_turns": [
+           {"speaker": "Professeur", "text": "Bonjour à tous..."},
+           {"speaker": "Étudiant", "text": "Bonjour Monsieur..."}
+         ],
+         "comprehension_questions": [
+           {"question": "...", "answer": "..."}
+         ]
+       }
+     * Also synchronize these lines into "classroom_dialogues" and "student_lsrw_practice.listening_audio_script".
+4. INDIVIDUAL NUMBERED ITEMS FOR DRILLS:
    - When practice questions are requested, generate EACH question as a SEPARATE item in "exercise_solutions" array!
    - Each item in "exercise_solutions" must be:
-     {{
+     {
        "question": "1. [Question sentence]",
        "answer": "[Exact verified answer]",
        "explanation": "[Linguistic / grammar explanation]"
-     }}
-4. Return a JSON object with:
-   - "agent_reply": A professional, friendly message (1-2 sentences) explaining what was modified and updated.
+     }
+5. Return a JSON object with:
+   - "agent_reply": A professional, friendly message (1-2 sentences) explaining what was modified and updated (e.g. "Generated a 2-minute native audio dialogue script (~280 words) and synchronized TTS audio track.").
    - "updated_days": An array of modified day objects. Each day object can include:
        - "day_number": integer
        - "day_topic": string (optional, if topic or name changed)
@@ -595,9 +613,10 @@ INSTRUCTIONS:
        - "study_notes_markdown": string (optional, if master notes updated)
        - "vocabulary_bank": array of objects with "word", "meaning", "pronunciation", "example_sentence" (optional, if vocab updated)
        - "classroom_dialogues": array of strings (optional, if dialogues updated)
+       - "generated_audio_track": object with "title", "duration_minutes", "word_count", "script", "dialogue_turns", "comprehension_questions" (optional, if audio requested)
        - "homework_tasks": array of strings (optional, if homework updated)
        - "in_class_exercises": array of strings (the individual exercise questions)
-       - "exercise_solutions": array of objects with {{"question": string, "answer": string, "explanation": string}}
+       - "exercise_solutions": array of objects with {"question": string, "answer": string, "explanation": string}
        - "student_lsrw_practice": object with optional updated listening_audio_script, speaking_prompt, writing_task, grammar_exercise
 
 Return ONLY a valid JSON object without markdown fences, or wrapped in standard ```json ```.
