@@ -26,6 +26,7 @@ interface ClassifiedIntent {
   count: number;          // how many items (audio tracks, questions, etc.)
   duration: number;       // audio duration in minutes
   topicIndex: number;     // matched curriculum unit index
+  navigateToPeriod: number | null; // canonical period for the topic (for navigation)
 }
 
 function classifyUserIntent(prompt: string, currentPeriod: number): ClassifiedIntent {
@@ -59,39 +60,41 @@ function classifyUserIntent(prompt: string, currentPeriod: number): ClassifiedIn
   let topicIndex = (targetPeriod - 1) % FRENCH_CURRICULUM_DATA.length;
 
   // Topic keyword detection (Tamil + English + French)
+  // topicIndex maps to FRENCH_CURRICULUM_DATA array index
+  // canonicalPeriod is the "real" period number for that topic
   if (/verb|action|conjugat|-er\b|verbe|verbs/.test(p)) {
     topicKeyword = 'verbs';
-    topicIndex = 4; // -ER verbs unit
+    topicIndex = 4; // -ER verbs unit → canonical Period 5
   } else if (/alphabet|accent|phonet|lettre|letter/.test(p)) {
     topicKeyword = 'alphabet';
-    topicIndex = 0;
+    topicIndex = 0; // canonical Period 1
   } else if (/salutation|bonjour|greeting|polite|politesse|vanakkam/.test(p)) {
     topicKeyword = 'salutations';
-    topicIndex = 1;
+    topicIndex = 1; // canonical Period 2
   } else if (/[eê]tre|être|identity|profession|national|je suis/.test(p)) {
     topicKeyword = 'être';
-    topicIndex = 2;
+    topicIndex = 2; // canonical Period 3
   } else if (/avoir|age|âge|possess|family|famille/.test(p)) {
     topicKeyword = 'avoir';
-    topicIndex = 3;
+    topicIndex = 3; // canonical Period 4
   } else if (/negat|pas\b|ne\s*\.{0,3}\s*pas/.test(p)) {
     topicKeyword = 'negation';
-    topicIndex = 5;
+    topicIndex = 5; // canonical Period 6
   } else if (/question|interrogat|est-ce que/.test(p)) {
     topicKeyword = 'interrogation';
-    topicIndex = 6;
+    topicIndex = 6; // canonical Period 7
   } else if (/restaurant|caf[eé]|food|nourriture|manger|eat/.test(p)) {
     topicKeyword = 'restaurant';
-    topicIndex = 7;
+    topicIndex = 7; // canonical Period 8
   } else if (/ville|city|direction|transport|travel|voyage/.test(p)) {
     topicKeyword = 'city';
-    topicIndex = 8;
+    topicIndex = 8; // canonical Period 9
   } else if (/number|nombre|chiffre|count/.test(p)) {
     topicKeyword = 'numbers';
-    topicIndex = 3;
+    topicIndex = 3; // canonical Period 4
   } else if (/article|défini|indéfini|le\s*la\s*les/.test(p)) {
     topicKeyword = 'articles';
-    topicIndex = 4;
+    topicIndex = 4; // canonical Period 5
   }
 
   // --- 5. Classify intent type ---
@@ -138,7 +141,11 @@ function classifyUserIntent(prompt: string, currentPeriod: number): ClassifiedIn
     type = 'CONTENT_FOR_PERIOD';
   }
 
-  return { type, targetPeriod, topicKeyword, count, duration, topicIndex };
+  // canonicalPeriod: the "real" period number for the matched topic unit
+  // When user says "verb base pani kudu", they should land on the verb period (5), not Period 1
+  const canonicalPeriod: number | null = topicKeyword ? topicIndex + 1 : null;
+
+  return { type, targetPeriod, topicKeyword, count, duration, topicIndex, navigateToPeriod: canonicalPeriod };
 }
 
 // =============================================================================
@@ -380,6 +387,10 @@ export async function POST(req: Request) {
     const repoUnit = FRENCH_CURRICULUM_DATA[intent.topicIndex] || FRENCH_CURRICULUM_DATA[0];
     const enrichedSyllabus = getLanguageSyllabusItem(language, level, intent.targetPeriod);
 
+    // If topicKeyword matched, use the canonical period number for that topic
+    // so "verb base pani content kudu" always goes to Period 5 (the verb period)
+    const effectivePeriod = intent.navigateToPeriod ?? intent.targetPeriod;
+
     // =======================================================================
     // INTENT HANDLER: TOPIC EXPLANATION ("verb pathi sollu")
     // =======================================================================
@@ -390,10 +401,11 @@ export async function POST(req: Request) {
       return NextResponse.json({
         intent_type: 'TOPIC_EXPLANATION',
         agent_reply: explanation.summary,
+        navigate_to_period: intent.navigateToPeriod,
         explanation_content: explanation,
         // Send updated_days so chat can show structured content
         updated_days: [{
-          day_number: intent.targetPeriod,
+          day_number: effectivePeriod,
           day_topic: `${topicName} — Detailed Explanation`,
           grammar_rules_detail: repoUnit.grammarFocus,
           study_notes_markdown: explanation.fullNotes,
@@ -413,8 +425,9 @@ export async function POST(req: Request) {
       return NextResponse.json({
         intent_type: 'GRAMMAR_FOCUS',
         agent_reply: grammarContent.summary,
+        navigate_to_period: intent.navigateToPeriod,
         updated_days: [{
-          day_number: intent.targetPeriod,
+          day_number: effectivePeriod,
           day_topic: repoUnit.topic,
           grammar_rules_detail: grammarContent.grammarDetail,
           study_notes_markdown: grammarContent.fullNotes,
@@ -434,8 +447,9 @@ export async function POST(req: Request) {
       return NextResponse.json({
         intent_type: 'DRILL_GENERATION',
         agent_reply: `✅ Generated ${drills.length} verified LSRW classroom drills for ${repoUnit.topic} (${language} ${level}). Each question covers Listening, Speaking, Reading & Writing skills with detailed answers and explanations.`,
+        navigate_to_period: intent.navigateToPeriod,
         updated_days: [{
-          day_number: intent.targetPeriod,
+          day_number: effectivePeriod,
           day_topic: repoUnit.topic,
           grammar_rules_detail: repoUnit.grammarFocus,
           study_notes_markdown: `# Practice Drills: ${repoUnit.topic}\n\n${drills.map((d, i) => `### Q${i+1}. ${d.question}\n**Answer:** ${d.answer}\n**Explanation:** ${d.explanation}`).join('\n\n')}`,
@@ -456,8 +470,9 @@ export async function POST(req: Request) {
       return NextResponse.json({
         intent_type: 'DIALOGUE_GENERATION',
         agent_reply: `🗣️ Generated ${dialogues.length} realistic classroom dialogue turns for "${repoUnit.topic}" (${language} ${level}). These dialogues use natural phonetics and everyday expressions.`,
+        navigate_to_period: intent.navigateToPeriod,
         updated_days: [{
-          day_number: intent.targetPeriod,
+          day_number: effectivePeriod,
           day_topic: repoUnit.topic,
           grammar_rules_detail: repoUnit.grammarFocus,
           study_notes_markdown: repoUnit.pedagogicalObjective,
@@ -482,8 +497,9 @@ export async function POST(req: Request) {
       return NextResponse.json({
         intent_type: 'VOCABULARY_REQUEST',
         agent_reply: `📚 Here are ${selectedVocab.length} target vocabulary items for ${language} ${level} covering "${repoUnit.topic}". Each word includes pronunciation guide (IPA), meaning, and contextual example sentence.`,
+        navigate_to_period: intent.navigateToPeriod,
         updated_days: [{
-          day_number: intent.targetPeriod,
+          day_number: effectivePeriod,
           day_topic: repoUnit.topic,
           grammar_rules_detail: repoUnit.grammarFocus,
           study_notes_markdown: `# Vocabulary Bank: ${repoUnit.topic}\n\n${selectedVocab.map((v, i) => `### ${i+1}. ${v.word}\n- **Meaning:** ${v.meaning}\n- **Pronunciation:** ${v.pronunciation}\n- **Example:** _${v.example_sentence}_`).join('\n\n')}`,
@@ -504,26 +520,33 @@ export async function POST(req: Request) {
       explanation: d.explanation
     }));
 
+    // Rich vocabulary from unit + comprehensive bank (avoiding just 3 words)
+    const lKey = language.toLowerCase().trim();
+    const bank = COMPREHENSIVE_LANGUAGE_BANKS[lKey] || COMPREHENSIVE_LANGUAGE_BANKS.french;
+    const combinedVocab = [...repoUnit.vocabulary, ...bank.vocabulary.slice(0, 5)];
+    const uniqueVocab = combinedVocab.filter((v, i, arr) => arr.findIndex(x => x.word.toLowerCase() === v.word.toLowerCase()) === i).slice(0, 8);
+
     const updatedSingleDay: any = {
-      day_number: intent.targetPeriod,
-      day_topic: `Period ${intent.targetPeriod}: ${repoUnit.topic}`,
+      day_number: effectivePeriod,
+      day_topic: `Period ${effectivePeriod}: ${repoUnit.topic}`,
       grammar_rules_detail: repoUnit.grammarFocus,
-      study_notes_markdown: `# Study Notes: Period ${intent.targetPeriod} (${language} ${level})\n\n### Topic Focus:\n**${repoUnit.topic}**\n\n### Pedagogical Objective:\n${repoUnit.pedagogicalObjective}\n\n### Blackboard Paradigm:\n\`${repoUnit.boardNotes}\`\n\n### Remedial & Extension Activities:\n- **Remedial:** ${repoUnit.remedialActivity}\n- **Extension:** ${repoUnit.extensionActivity}\n\n### Common Learner Pitfalls:\n${repoUnit.commonGotchas.map(g => `- ${g}`).join('\n')}`,
-      vocabulary_bank: repoUnit.vocabulary,
+      study_notes_markdown: `# Study Notes: Period ${effectivePeriod} (${language} ${level})\n\n### Topic Focus:\n**${repoUnit.topic}**\n\n### Pedagogical Objective:\n${repoUnit.pedagogicalObjective}\n\n### Blackboard Paradigm:\n\`${repoUnit.boardNotes}\`\n\n### Remedial & Extension Activities:\n- **Remedial:** ${repoUnit.remedialActivity}\n- **Extension:** ${repoUnit.extensionActivity}\n\n### Common Learner Pitfalls:\n${repoUnit.commonGotchas.map(g => `- ${g}`).join('\n')}`,
+      vocabulary_bank: uniqueVocab,
       classroom_dialogues: repoUnit.dialogue,
       in_class_exercises: formattedDrills.map(d => d.question),
       exercise_solutions: formattedDrills,
       homework_tasks: [
-        `Mémoriser les fiches de vocabulaire de la Period ${intent.targetPeriod}.`,
+        `Mémoriser les fiches de vocabulaire de la Period ${effectivePeriod}.`,
         `Compléter l'exercice de production écrite dans le cahier de classe.`
       ]
     };
 
-    const reply = `Vanakkam! ✅ Here is the authentic pedagogical curriculum blueprint for Period ${intent.targetPeriod} — "${repoUnit.topic}" (${language} ${level}). It includes complete blackboard grammar rules, ${repoUnit.vocabulary.length} target vocabulary items, and ${formattedDrills.length} verified LSRW drills.`;
+    const reply = `Vanakkam! ✅ Here is the authentic pedagogical curriculum blueprint for Period ${effectivePeriod} — "${repoUnit.topic}" (${language} ${level}). It includes complete blackboard grammar rules, ${uniqueVocab.length} target vocabulary items, and ${formattedDrills.length} verified LSRW drills.`;
 
     return NextResponse.json({
       intent_type: intent.type,
       agent_reply: reply,
+      navigate_to_period: intent.navigateToPeriod,
       updated_days: [updatedSingleDay]
     });
 

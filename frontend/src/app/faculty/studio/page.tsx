@@ -3496,6 +3496,15 @@ export default function FacultyStudioPage() {
                               }
                             }
                           }}
+                          onSelectDay={(targetPeriodNum: number) => {
+                            if (targetPeriodNum >= 1 && targetPeriodNum <= totalDays) {
+                              setActiveDayDetail(targetPeriodNum);
+                              const targetDayObj = allDays.find(d => d.day_number === targetPeriodNum);
+                              if (targetDayObj && targetDayObj.month_number !== selectedMonthFilter) {
+                                setSelectedMonthFilter(targetDayObj.month_number);
+                              }
+                            }
+                          }}
                           onToggleOutputMode={setOutputMode}
                           onApplyPeriodUpdate={async (dayNum: number, updates: any) => {
                             setPeriodOverrides(prev => {

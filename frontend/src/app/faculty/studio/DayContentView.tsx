@@ -41,6 +41,7 @@ interface DayContentProps {
   allDays?: any[];
   onPrevDay: () => void;
   onNextDay: () => void;
+  onSelectDay?: (dayNum: number) => void;
   onToggleOutputMode: (mode: 'TEACHER' | 'STUDENT') => void;
   onApplyPeriodUpdate?: (dayNum: number, updates: any) => void;
   onApplyFullScheduleUpdate?: (updatedAllDays: any[]) => void;
@@ -60,6 +61,7 @@ export function DayContentView({
   allDays,
   onPrevDay,
   onNextDay,
+  onSelectDay,
   onToggleOutputMode,
   onApplyPeriodUpdate,
   onApplyFullScheduleUpdate,
@@ -1663,7 +1665,7 @@ export function DayContentView({
                                         📅 {msg.regeneratedSummary.totalUnitsUpdated && msg.regeneratedSummary.totalUnitsUpdated > 1 ? `All ${msg.regeneratedSummary.totalUnitsUpdated} Units Generated` : `Period ${effectiveDay.day_number} Full Blueprint`}
                                       </span>
                                       <span className="text-[10px] bg-emerald-100 text-emerald-800 font-bold px-2 py-0.5 rounded">
-                                        ✓ Grounded CEFR ${sessionPackage?.level || 'A1.1'}
+                                        ✓ Grounded CEFR {sessionPackage?.level || 'A1.1'}
                                       </span>
                                     </div>
                                     <strong className="text-xs sm:text-sm font-bold text-slate-900 block">
@@ -1690,7 +1692,7 @@ export function DayContentView({
                                         🗂️ Target Vocabulary ({msg.regeneratedSummary.vocabulary.length} Words):
                                       </span>
                                       <div className="flex flex-wrap gap-1.5">
-                                        {msg.regeneratedSummary.vocabulary.slice(0, 6).map((v: any, vIdx: number) => (
+                                        {msg.regeneratedSummary.vocabulary.map((v: any, vIdx: number) => (
                                           <span 
                                             key={vIdx}
                                             className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-slate-100 border border-slate-200 text-[11px] font-medium text-slate-800"
@@ -1715,8 +1717,8 @@ export function DayContentView({
                                         </span>
                                       </div>
 
-                                      <div className="space-y-1.5 max-h-48 overflow-y-auto pr-1">
-                                        {msg.regeneratedSummary.exercises.slice(0, 4).map((sol: any, qIdx: number) => (
+                                      <div className="space-y-1.5 max-h-80 overflow-y-auto pr-1">
+                                        {msg.regeneratedSummary.exercises.map((sol: any, qIdx: number) => (
                                           <div key={qIdx} className="bg-slate-50 border border-slate-200 rounded-lg p-2 text-[11px] space-y-1">
                                             <div className="flex items-start gap-1.5">
                                               <span className="font-bold text-blue-600 shrink-0">Q{qIdx + 1}:</span>
@@ -2037,6 +2039,11 @@ export function DayContentView({
                           setLocalOverrides(prev => ({ ...prev, [targetDayNum]: updatedPayload }));
                           if (onApplyPeriodUpdate) onApplyPeriodUpdate(targetDayNum, updatedPayload);
                           setLastModifiedSection(sectionLabel);
+
+                          // If the backend indicates navigating to a different canonical period (e.g. Period 5 for verbs)
+                          if (data.navigate_to_period && data.navigate_to_period !== effectiveDay.day_number && onSelectDay) {
+                            onSelectDay(data.navigate_to_period);
+                          }
                         }
                         // =====================================================
                         // EXPLANATION-ONLY (no updated_days, just text reply)
