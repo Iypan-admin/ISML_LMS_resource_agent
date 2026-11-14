@@ -23,7 +23,11 @@ import {
   Mic,
   PenTool,
   Check,
-  ChevronDown
+  ChevronDown,
+  Paperclip,
+  FileText,
+  X,
+  Upload
 } from 'lucide-react';
 import { DayCurriculumItem } from './curriculumProgression';
 import { fetchWithEndpointFallback } from '@/utils/apiConfig';
@@ -79,6 +83,9 @@ export function DayContentView({
   const [chatAudioTracks, setChatAudioTracks] = useState<any[]>([]);
   const [activeLsrwTab, setActiveLsrwTab] = useState<'ALL' | 'LISTENING' | 'SPEAKING' | 'READING' | 'WRITING'>('ALL');
   const [lastModifiedSection, setLastModifiedSection] = useState<string | null>(null);
+  // 📎 Multi-file persistent memory attachment state
+  const [attachedChatFiles, setAttachedChatFiles] = useState<Array<{ name: string; size: number; content?: string }>>([]);
+  const chatFilePickerRef = React.useRef<HTMLInputElement | null>(null);
 
   // 💬 Multi-turn Continuous Conversation History (ChatGPT / Gemini / Claude Style)
   const [chatHistory, setChatHistory] = useState<Array<{
@@ -1599,6 +1606,25 @@ export function DayContentView({
                 </div>
 
                 <div className="flex items-center gap-2 text-xs">
+                  {/* 📎 Add More Materials Button at the TOP of the Chat */}
+                  <button
+                    type="button"
+                    onClick={() => chatFilePickerRef.current?.click()}
+                    disabled={chatLoading}
+                    className="flex items-center gap-1.5 px-3 py-1.5 bg-gradient-to-r from-indigo-50 to-blue-50 hover:from-indigo-100 hover:to-blue-100 text-indigo-700 hover:text-indigo-900 border border-indigo-200/90 rounded-xl font-black text-xs transition-all shadow-2xs cursor-pointer group"
+                    title="Upload additional reference documents, syllabus PDFs, or notes into this active session"
+                  >
+                    <Upload className="w-3.5 h-3.5 text-indigo-600 group-hover:scale-110 transition-transform" />
+                    <span>+ Add More Materials</span>
+                    {attachedChatFiles.length > 0 && (
+                      <span className="bg-indigo-600 text-white text-[10px] px-1.5 py-0.2 rounded-full font-bold ml-0.5">
+                        {attachedChatFiles.length}
+                      </span>
+                    )}
+                  </button>
+
+                  <span className="text-slate-400">|</span>
+
                   <span className="text-slate-500 font-medium text-[11px]">Modifying:</span>
                   <span className="bg-blue-50 border border-blue-200 px-2.5 py-1 rounded-lg text-blue-800 font-mono font-bold text-[11px]">
                     {unitName} {effectiveDay.day_number}
@@ -1850,10 +1876,17 @@ export function DayContentView({
                 <form
                   onSubmit={async (e) => {
                     e.preventDefault();
-                    if (!chatInput.trim() || chatLoading) return;
+                    if (!chatInput.trim() && attachedChatFiles.length === 0) return;
+                    if (chatLoading) return;
                     const refinedPrompt = chatInput.trim();
                     const promptTime = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
                     const userMsgId = 'user-' + Date.now();
+
+                    // Format user prompt with attached materials note if files are uploaded
+                    const attachedFileNote = attachedChatFiles.length > 0 
+                      ? `\n\n[📎 Ingested ${attachedChatFiles.length} Material(s): ${attachedChatFiles.map(f => f.name).join(', ')}]`
+                      : '';
+                    const displayUserText = (refinedPrompt || 'Attached new curriculum materials for analysis') + attachedFileNote;
 
                     // Immediately push user message to persistent conversation history
                     const updatedHistoryWithUser = [
@@ -1861,12 +1894,14 @@ export function DayContentView({
                       {
                         id: userMsgId,
                         role: 'user' as const,
-                        content: refinedPrompt,
+                        content: displayUserText,
                         timestamp: promptTime
                       }
                     ];
                     setChatHistory(updatedHistoryWithUser);
                     setChatInput('');
+                    const filesToProcess = [...attachedChatFiles];
+                    setAttachedChatFiles([]);
                     setChatLoading(true);
                     setChatAnswer(null);
                     setChatAudioTrack(null);
@@ -1878,19 +1913,53 @@ export function DayContentView({
                     try {
                       localStorage.setItem(dayKey, JSON.stringify(updatedHistoryWithUser));
                     } catch (_) {}
+
+                    // Update session-level persistent file refs in localStorage archive
+                    if (filesToProcess.length > 0 && typeof window !== 'undefined') {
+                      try {
+                        const localArchiveStr = localStorage.getItem('isml_saved_sessions_archive');
+                        if (localArchiveStr) {
+                          const archive = JSON.parse(localArchiveStr);
+                          const updatedArchive = archive.map((it: any) => {
+                            if ((it.sessionId || it.id) === sid) {
+                              const existingRefs = it.tutorFileRef ? it.tutorFileRef.split(',').map((s: string) => s.trim()).filter(Boolean) : [];
+                              const newNames = filesToProcess.map(f => f.name);
+                              const combined = Array.from(new Set([...existingRefs, ...newNames])).join(', ');
+                              return { ...it, tutorFileRef: combined };
+                            }
+                            return it;
+                          });
+                          localStorage.setItem('isml_saved_sessions_archive', JSON.stringify(updatedArchive));
+                        }
+                      } catch (_) {}
+                    }
+
                     try {
+                      const filesPayload = filesToProcess.map(f => ({
+                        name: f.name,
+                        size: f.size,
+                        content: f.content || ''
+                      }));
+
+                      const cumulativeSourceContext = [
+                        sessionPackage?.raw_source_context || '',
+                        sessionPackage?.extracted_source_summary || '',
+                        filesToProcess.map(f => `[File: ${f.name}]: ${f.content || ''}`).join('\n\n')
+                      ].filter(Boolean).join('\n\n');
+
                       const res = await fetchWithEndpointFallback('/api/v1/sessions/refine-blueprint', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({
-                          user_prompt: refinedPrompt,
+                          user_prompt: refinedPrompt || 'Incorporate attached materials into curriculum lesson',
                           current_period: effectiveDay.day_number,
                           language: sessionPackage?.language || 'French',
                           level: sessionPackage?.level || 'A1',
                           topic: sessionPackage?.topic || effectiveDay.day_topic,
                           active_module: effectiveDay.month_number || 1,
                           days: allDays || [activeDay],
-                          source_context: sessionPackage?.raw_source_context || sessionPackage?.extracted_source_summary || ''
+                          source_context: cumulativeSourceContext,
+                          attached_files: filesPayload
                         })
                       });
 
@@ -2097,19 +2166,95 @@ export function DayContentView({
                   }}
                   className="space-y-2.5"
                 >
+                  {/* Attached Files Chips Bar */}
+                  {attachedChatFiles.length > 0 && (
+                    <div className="flex flex-wrap items-center gap-1.5 p-2 bg-indigo-50/70 border border-indigo-200/80 rounded-xl">
+                      <span className="text-[10px] font-bold text-indigo-900 flex items-center gap-1 mr-1">
+                        <Paperclip className="w-3 h-3 text-indigo-600" />
+                        <span>Attached Memory ({attachedChatFiles.length}):</span>
+                      </span>
+                      {attachedChatFiles.map((file, fIdx) => (
+                        <div key={fIdx} className="inline-flex items-center gap-1 bg-white border border-indigo-200 px-2 py-0.5 rounded-lg text-[10px] text-slate-800 shadow-2xs font-medium">
+                          <FileText className="w-3 h-3 text-indigo-600 shrink-0" />
+                          <span className="truncate max-w-[120px]">{file.name}</span>
+                          <span className="text-slate-400 font-mono text-[9px]">({(file.size / 1024).toFixed(0)}KB)</span>
+                          <button
+                            type="button"
+                            onClick={() => setAttachedChatFiles(prev => prev.filter((_, idx) => idx !== fIdx))}
+                            className="text-slate-400 hover:text-rose-600 ml-0.5 font-bold cursor-pointer"
+                          >
+                            <X className="w-2.5 h-2.5" />
+                          </button>
+                        </div>
+                      ))}
+                      <button
+                        type="button"
+                        onClick={() => setAttachedChatFiles([])}
+                        className="text-[9px] text-rose-600 hover:underline font-bold ml-auto cursor-pointer"
+                      >
+                        Clear All
+                      </button>
+                    </div>
+                  )}
+
+                  {/* Hidden File Picker Input */}
+                  <input
+                    type="file"
+                    ref={chatFilePickerRef}
+                    multiple
+                    className="hidden"
+                    accept=".pdf,.txt,.docx,.csv,.doc,.xlsx,.pptx,.ppt,audio/*,image/*"
+                    onChange={async (e) => {
+                      if (!e.target.files) return;
+                      const fileList = Array.from(e.target.files);
+                      const processed: Array<{ name: string; size: number; content?: string }> = [];
+                      for (const f of fileList) {
+                        let textContent = '';
+                        try {
+                          if (f.type.includes('text') || f.name.endsWith('.txt') || f.name.endsWith('.csv') || f.name.endsWith('.json')) {
+                            textContent = await f.text();
+                          } else {
+                            textContent = `[Binary Document Attachment: ${f.name}, Size: ${(f.size / 1024).toFixed(1)} KB, Type: ${f.type || 'document'}]`;
+                          }
+                        } catch (_) {
+                          textContent = `[Uploaded File Reference: ${f.name}]`;
+                        }
+                        processed.push({
+                          name: f.name,
+                          size: f.size,
+                          content: textContent
+                        });
+                      }
+                      setAttachedChatFiles(prev => [...prev, ...processed]);
+                      e.target.value = '';
+                    }}
+                  />
+
                   <div className="relative">
                     <textarea
                       rows={2}
                       value={chatInput}
                       onChange={(e) => setChatInput(e.target.value)}
                       disabled={chatLoading}
-                      placeholder={`Tell the Agent what to change, e.g.: "Add 10 hard listening and speaking questions with answers" or "Indha topic ku formal business dialogue create pannu"...`}
-                      className="w-full bg-slate-50 hover:bg-white focus:bg-white border border-slate-300 focus:border-blue-500 rounded-xl px-4 py-3 text-xs text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 transition-all resize-none leading-relaxed shadow-2xs"
+                      placeholder={attachedChatFiles.length > 0 ? "Tell the Agent what to synthesize or transform from these attached materials..." : `Tell the Agent what to change, e.g.: "Add 10 hard listening and speaking questions with answers" or "Indha topic ku formal business dialogue create pannu"...`}
+                      className="w-full bg-slate-50 hover:bg-white focus:bg-white border border-slate-300 focus:border-blue-500 rounded-xl pl-11 pr-48 py-3 text-xs text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 transition-all resize-none leading-relaxed shadow-2xs"
                     />
+
+                    {/* Left: Paperclip Attach Files Button */}
+                    <button
+                      type="button"
+                      onClick={() => chatFilePickerRef.current?.click()}
+                      disabled={chatLoading}
+                      title="Upload new pedagogical files (PDF, DOCX, TXT, CSV, Audio) to ingest into session memory"
+                      className="absolute left-2.5 bottom-3 p-1.5 rounded-lg bg-white hover:bg-indigo-50 border border-slate-200 hover:border-indigo-300 text-indigo-600 transition-all cursor-pointer shadow-2xs flex items-center gap-1 group"
+                    >
+                      <Paperclip className="w-3.5 h-3.5 text-indigo-600 group-hover:scale-110 transition-transform" />
+                    </button>
+
                     <div className="absolute right-2.5 bottom-3 flex items-center gap-1.5">
                       <button
                         type="submit"
-                        disabled={chatLoading || !chatInput.trim()}
+                        disabled={chatLoading || (!chatInput.trim() && attachedChatFiles.length === 0)}
                         className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-xl shadow-xs transition-all flex items-center gap-1.5 disabled:opacity-40 cursor-pointer"
                       >
                         {chatLoading ? (

@@ -2995,6 +2995,22 @@ export default function FacultyStudioPage() {
 
                 {/* Action Controls & LMS Sync */}
                 <div className="flex items-center gap-3">
+                  {/* 📎 Add More Materials Button on Active Workspace Header */}
+                  <button
+                    type="button"
+                    onClick={() => heroFileInputRef.current?.click()}
+                    className="flex items-center gap-1.5 px-3.5 py-2.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white rounded-xl text-xs font-black transition-all border border-emerald-400/50 cursor-pointer shadow-md shadow-emerald-950/20"
+                    title="Upload more study files, PDFs, or audio into this active curriculum session"
+                  >
+                    <Upload className="w-3.5 h-3.5 text-amber-300" />
+                    <span>+ Add More Materials</span>
+                    {uploadedFiles.length > 0 && (
+                      <span className="bg-amber-400 text-slate-950 text-[10px] px-1.5 py-0.2 rounded-full font-black">
+                        {uploadedFiles.length}
+                      </span>
+                    )}
+                  </button>
+
                   <button
                     type="button"
                     onClick={() => handleDownloadFullCurriculumDocx()}
