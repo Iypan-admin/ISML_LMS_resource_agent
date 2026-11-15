@@ -2064,7 +2064,25 @@ export default function FacultyStudioPage() {
                           </option>
                         );
                       })}
-                    </select>
+                                          <option value="CUSTOM">Custom Slot Duration (Enter Any Minutes)</option>
+</select>
+                    {schoolCategory === 'CUSTOM' && (
+                      <div className="mt-2 p-2.5 bg-white border border-blue-200 rounded-xl flex items-center justify-between gap-3 animate-in fade-in">
+                        <span className="text-xs text-slate-700 font-semibold">Custom Period Length:</span>
+                        <div className="flex items-center gap-1.5">
+                          <input
+                            type="number"
+                            min="10"
+                            max="180"
+                            value={customSchoolCategoryMins}
+                            onChange={(e) => setCustomSchoolCategoryMins(e.target.value ? parseInt(e.target.value) : '')}
+                            placeholder="45"
+                            className="w-20 px-2.5 py-1.5 bg-slate-50 border border-slate-300 rounded-lg text-xs font-bold text-slate-900 text-center focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          />
+                          <span className="text-xs font-bold text-slate-500">Mins</span>
+                        </div>
+                      </div>
+                    )}
                   </div>
 
                   {/* School Sub-Levels Dropdown (A1.1 to B1.4) */}
@@ -2087,7 +2105,20 @@ export default function FacultyStudioPage() {
                           Level {sched.level} ({sched.courseDurationHours} Hours Curriculum)
                         </option>
                       ))}
-                    </select>
+                                          <option value="CUSTOM">Custom Grade Level / Term</option>
+</select>
+                    {schoolLevel === 'CUSTOM' && (
+                      <div className="mt-2 p-2.5 bg-white border border-blue-200 rounded-xl flex items-center justify-between gap-3 animate-in fade-in">
+                        <span className="text-xs text-slate-700 font-semibold">Custom Grade Name:</span>
+                        <input
+                          type="text"
+                          value={customSchoolLevelName}
+                          onChange={(e) => setCustomSchoolLevelName(e.target.value)}
+                          placeholder="e.g. Grade 7 / Term 2"
+                          className="w-48 px-2.5 py-1.5 bg-slate-50 border border-slate-300 rounded-lg text-xs font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        />
+                      </div>
+                    )}
                   </div>
 
                   {/* School Dynamic Metric Summary Card (100% Directly Selectable & Editable) */}
