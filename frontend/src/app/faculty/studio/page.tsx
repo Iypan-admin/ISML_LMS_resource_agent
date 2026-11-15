@@ -88,10 +88,11 @@ export default function FacultyStudioPage() {
   const [schoolLevel, setSchoolLevel] = useState<string>('A1.1');
   const [collegeTrack, setCollegeTrack] = useState<CollegeTrackKey>('STANDARD');
 
-  const [selectedLanguage, setSelectedLanguage] = useState<'Spanish' | 'German' | 'French' | 'Japanese' | 'Korean' | ''>('');
+  const [selectedLanguage, setSelectedLanguage] = useState<'Spanish' | 'German' | 'French' | 'Japanese' | 'Korean' | 'English' | ''>('');
   const [selectedLevel, setSelectedLevel] = useState('A1');
   const [selectedTrack, setSelectedTrack] = useState<'STANDARD' | 'INTERNSHIP' | 'SUPER_INTERNSHIP' | 'CUSTOM'>('CUSTOM');
-  const [customDays, setCustomDays] = useState<number | ''>(5);
+  const [customDays, setCustomDays] = useState<number | ''>(2);
+  const [courseDurationMode, setCourseDurationMode] = useState<'INSTITUTIONAL' | 'CUSTOM'>('INSTITUTIONAL');
   const [customDaysMode, setCustomDaysMode] = useState<'TOTAL' | 'MONTHLY'>('TOTAL');
   const [monthlyMonths, setMonthlyMonths] = useState<number>(12);
   const [topic, setTopic] = useState('');
@@ -756,6 +757,10 @@ export default function FacultyStudioPage() {
   // Korean: TOPIK Level 1 -> Level 6 (or TOPIK I / TOPIK II)
   // Spanish, German, French: CEFR A1 -> C2
   const LANGUAGE_LEVEL_MAP: Record<string, { levels: string[]; framework: string }> = {
+    English: {
+      framework: 'Global CEFR / Cambridge (A1–C2)',
+      levels: ['A1', 'A2', 'B1', 'B2', 'C1', 'C2']
+    },
     Spanish: {
       framework: 'CEFR (A1–C2)',
       levels: ['A1', 'A2', 'B1', 'B2', 'C1', 'C2']
@@ -778,7 +783,7 @@ export default function FacultyStudioPage() {
     }
   };
 
-  const handleLanguageChange = (lang: 'Spanish' | 'German' | 'French' | 'Japanese' | 'Korean' | '') => {
+  const handleLanguageChange = (lang: 'Spanish' | 'German' | 'French' | 'Japanese' | 'Korean' | 'English' | '') => {
     setSelectedLanguage(lang);
     setMismatchError(null);
     setProposedPlanner(null);
@@ -2012,7 +2017,8 @@ export default function FacultyStudioPage() {
                   <option value="" disabled className="text-slate-400 font-normal">
                     -- Select Target Language (Required) * --
                   </option>
-                  <option value="Spanish">Spanish (Español) </option>
+                  <option value="English">English (Global / Cambridge / CEFR)</option>
+                    <option value="Spanish">Spanish (Español) </option>
                   <option value="German">German (Deutsch) </option>
                   <option value="French">French (Français) </option>
                   <option value="Korean">Korean (한국어) </option>
@@ -2208,6 +2214,75 @@ export default function FacultyStudioPage() {
                 </div>
               )}
 
+              </div>
+
+              
+              {/* Course Duration Selector (Institutional Standard vs 100% Custom 2 to 365 Days) */}
+              <div className="space-y-2 pt-2 border-t border-slate-100">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-bold text-slate-700 uppercase tracking-wider">
+                    Course Duration Mode
+                  </label>
+                  <div className="flex items-center gap-1 bg-slate-100 p-0.5 rounded-lg border border-slate-200 text-[11px] font-bold">
+                    <button
+                      type="button"
+                      onClick={() => setCourseDurationMode('INSTITUTIONAL')}
+                      className={`px-2 py-0.5 rounded-md transition-all ${
+                        courseDurationMode === 'INSTITUTIONAL' ? 'bg-white text-blue-700 shadow-2xs' : 'text-slate-500'
+                      }`}
+                    >
+                      Institutional
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setCourseDurationMode('CUSTOM')}
+                      className={`px-2 py-0.5 rounded-md transition-all ${
+                        courseDurationMode === 'CUSTOM' ? 'bg-white text-blue-700 shadow-2xs' : 'text-slate-500'
+                      }`}
+                    >
+                      Custom Days
+                    </button>
+                  </div>
+                </div>
+
+                {courseDurationMode === 'CUSTOM' && (
+                  <div className="bg-blue-50/50 border border-blue-200/80 rounded-xl p-3 space-y-2 animate-in fade-in">
+                    <span className="text-[11px] font-bold text-blue-900 block">
+                      Quick Course Presets:
+                    </span>
+                    <div className="grid grid-cols-4 gap-1.5 text-xs font-bold">
+                      {[2, 5, 30, 60, 103, 120, 180, 365].map((preset) => (
+                        <button
+                          key={preset}
+                          type="button"
+                          onClick={() => setCustomDays(preset)}
+                          className={`py-1 px-1.5 rounded-lg border text-center transition-all cursor-pointer ${
+                            customDays === preset
+                              ? 'bg-blue-600 text-white border-blue-600 shadow-xs'
+                              : 'bg-white hover:bg-slate-50 text-slate-700 border-slate-200'
+                          }`}
+                        >
+                          {preset}d
+                        </button>
+                      ))}
+                    </div>
+
+                    <div className="pt-1 flex items-center justify-between gap-2">
+                      <span className="text-xs text-slate-600 font-semibold">Or enter custom count:</span>
+                      <div className="flex items-center gap-1">
+                        <input
+                          type="number"
+                          min="1"
+                          max="365"
+                          value={customDays}
+                          onChange={(e) => setCustomDays(e.target.value ? Math.max(1, Math.min(365, parseInt(e.target.value))) : '')}
+                          className="w-16 px-2 py-1 bg-white border border-slate-300 rounded-lg text-xs font-bold text-slate-900 text-center focus:outline-none focus:ring-1 focus:ring-blue-500"
+                        />
+                        <span className="text-xs font-bold text-slate-500">Days</span>
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* Left Column Controls */}

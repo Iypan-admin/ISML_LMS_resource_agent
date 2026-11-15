@@ -1,18 +1,17 @@
+"use client";
 
-
-import React from 'react';
-import { LayoutGrid, ChevronDown, Sparkles } from 'lucide-react';
+import React, { useState } from 'react';
 
 interface PlannerBlueprintProps {
   proposedPlanner: any;
   plannerActiveModule: number;
-  plannerViewMode: 'cards' | 'table';
-  setPlannerViewMode: (mode: 'cards' | 'table') => void;
+  plannerViewMode: 'cards' | 'table' | 'timetable' | 'calendar';
+  setPlannerViewMode: (mode: any) => void;
   isEditingPlanner: boolean;
   expandedPeriodId: number | null;
   setExpandedPeriodId: (id: number | null) => void;
   updateDayInPlanner: (dayNum: number, field: any, val: any) => void;
-  setCoPilotPrompt: (prompt: string) => void;
+  setCoPilotPrompt?: (prompt: string) => void;
 }
 
 export function PlannerBlueprintSection({
@@ -24,319 +23,383 @@ export function PlannerBlueprintSection({
   expandedPeriodId,
   setExpandedPeriodId,
   updateDayInPlanner,
-  setCoPilotPrompt,
 }: PlannerBlueprintProps) {
+  const [activeTimetableDay, setActiveTimetableDay] = useState<number>(1);
+  const [selectedCalendarWeek, setSelectedCalendarWeek] = useState<number | 'ALL'>('ALL');
+
   const activeMod =
     proposedPlanner?.modules?.find((m: any) => m.moduleNumber === plannerActiveModule) ||
     proposedPlanner?.modules?.[0];
 
-  if (!activeMod) return null;
+  if (!proposedPlanner || !activeMod) return null;
+
+  const totalPeriods = proposedPlanner.total_days || proposedPlanner.all_days?.length || 2;
+  const unitName = proposedPlanner.unit_name || 'Period';
+  const periodDuration = proposedPlanner.period_duration_minutes || 45;
+  const allDays = proposedPlanner.all_days || activeMod.days || [];
 
   return (
-    <div className="p-5 sm:p-6 space-y-4 bg-slate-50/50">
-      {/* View Controls & Module Summary Bar */}
-      <div className="flex flex-wrap items-center justify-between gap-3 pb-2 border-b border-slate-200">
-        <div className="flex items-center gap-2.5">
-          <div className="w-2.5 h-2.5 rounded-full bg-blue-600 animate-pulse" />
-          <div>
-            <h4 className="text-sm font-black text-slate-900 tracking-tight flex items-center gap-2">
-              <span>Module {activeMod.moduleNumber} Pedagogical Blueprint</span>
-              <span className="text-xs font-semibold px-2 py-0.5 rounded-md bg-blue-100/70 text-blue-800 border border-blue-200/60">
-                {proposedPlanner.unit_name}s {activeMod.startUnit} to {activeMod.endUnit}
-              </span>
-            </h4>
-            <p className="text-[11px] text-slate-500 mt-0.5">
-              Structured linguistic progression, grammar paradigms, and communicative drills for ~{activeMod.approxWeeks} weeks of study.
-            </p>
-          </div>
+    <div className="space-y-4 bg-white p-3 sm:p-5 border-t border-slate-200">
+      {/* View Switcher Header Bar (Cards, Timetable, Calendar, Matrix Table) */}
+      <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-slate-100">
+        <div>
+          <h4 className="text-sm font-bold text-slate-900 tracking-tight flex items-center gap-2">
+            <span>Module {activeMod.moduleNumber} Course Blueprint</span>
+            <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-200">
+              {unitName}s {activeMod.startUnit} to {activeMod.endUnit} ({totalPeriods} Total Course {unitName}s)
+            </span>
+          </h4>
+          <p className="text-[11px] text-slate-500 mt-0.5">
+            100% customizable period timetable, structured learning objectives, and vocabulary balance.
+          </p>
         </div>
 
-        {/* Card vs Table View Switcher */}
-        <div className="flex items-center gap-2">
-          <div className="bg-slate-200/80 p-0.5 rounded-xl flex items-center border border-slate-300/80 text-xs shadow-2xs">
-            <button
-              type="button"
-              onClick={() => setPlannerViewMode('cards')}
-              className={`px-3 py-1.5 rounded-lg font-bold flex items-center gap-1.5 transition-all cursor-pointer ${plannerViewMode === 'cards'
-                  ? 'bg-white text-blue-700 shadow-xs'
-                  : 'text-slate-600 hover:text-slate-900'
-                }`}
-            >
-              <LayoutGrid className="w-3.5 h-3.5" />
-              <span>Blueprint Cards</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => setPlannerViewMode('table')}
-              className={`px-3 py-1.5 rounded-lg font-bold flex items-center gap-1.5 transition-all cursor-pointer ${plannerViewMode === 'table'
-                  ? 'bg-white text-blue-700 shadow-xs'
-                  : 'text-slate-600 hover:text-slate-900'
-                }`}
-            >
-              <span>Matrix Table</span>
-            </button>
-          </div>
-
-          {isEditingPlanner && (
-            <span className="text-[11px] text-amber-800 font-bold bg-amber-100/80 px-2.5 py-1.5 rounded-xl border border-amber-300/80">
-              Editing active
-            </span>
-          )}
+        {/* View Mode Switcher Pill */}
+        <div className="flex items-center gap-1.5 bg-slate-100 p-1 rounded-xl border border-slate-200 text-xs">
+          <button
+            type="button"
+            onClick={() => setPlannerViewMode('cards')}
+            className={`px-3 py-1.5 rounded-lg font-bold transition-all cursor-pointer ${
+              plannerViewMode === 'cards'
+                ? 'bg-white text-blue-700 shadow-xs'
+                : 'text-slate-600 hover:text-slate-900'
+            }`}
+          >
+            Period Cards
+          </button>
+          <button
+            type="button"
+            onClick={() => setPlannerViewMode('timetable')}
+            className={`px-3 py-1.5 rounded-lg font-bold transition-all cursor-pointer ${
+              plannerViewMode === 'timetable'
+                ? 'bg-white text-blue-700 shadow-xs'
+                : 'text-slate-600 hover:text-slate-900'
+            }`}
+          >
+            Timetable View
+          </button>
+          <button
+            type="button"
+            onClick={() => setPlannerViewMode('calendar')}
+            className={`px-3 py-1.5 rounded-lg font-bold transition-all cursor-pointer ${
+              plannerViewMode === 'calendar'
+                ? 'bg-white text-blue-700 shadow-xs'
+                : 'text-slate-600 hover:text-slate-900'
+            }`}
+          >
+            Calendar Grid
+          </button>
+          <button
+            type="button"
+            onClick={() => setPlannerViewMode('table')}
+            className={`px-3 py-1.5 rounded-lg font-bold transition-all cursor-pointer ${
+              plannerViewMode === 'table'
+                ? 'bg-white text-blue-700 shadow-xs'
+                : 'text-slate-600 hover:text-slate-900'
+            }`}
+          >
+            Matrix Table
+          </button>
         </div>
       </div>
 
-      {/* 1. VISUAL BLUEPRINT CARD GRID */}
-      {plannerViewMode === 'cards' ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+      {/* ---------------- 1. TIMETABLE VIEW (Period by Period Bell Schedule) ---------------- */}
+      {plannerViewMode === 'timetable' && (
+        <div className="space-y-4">
+          {/* Quick Period Tabs (Day 1, Day 2, etc.) */}
+          <div className="flex items-center gap-1.5 overflow-x-auto pb-2 border-b border-slate-100">
+            <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mr-1 shrink-0">
+              Select {unitName}:
+            </span>
+            {activeMod.days.map((d: any) => (
+              <button
+                key={d.day_number}
+                type="button"
+                onClick={() => setActiveTimetableDay(d.day_number)}
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all shrink-0 cursor-pointer ${
+                  activeTimetableDay === d.day_number
+                    ? 'bg-blue-600 text-white shadow-xs'
+                    : 'bg-slate-50 hover:bg-slate-100 text-slate-700 border border-slate-200'
+                }`}
+              >
+                {unitName} {d.day_number}
+              </button>
+            ))}
+          </div>
+
+          {/* Timetable Detailed Breakdown for the Active Period */}
+          {(() => {
+            const currentDay =
+              activeMod.days.find((d: any) => d.day_number === activeTimetableDay) ||
+              activeMod.days[0];
+            if (!currentDay) return null;
+
+            const cleanTopic = currentDay.day_topic.replace(/^(Period|Session)\s*\d+:\s*/i, '');
+            const warmupMins = Math.max(5, Math.round(periodDuration * 0.15));
+            const lectureMins = Math.max(10, Math.round(periodDuration * 0.4));
+            const practiceMins = Math.max(10, Math.round(periodDuration * 0.3));
+            const wrapupMins = Math.max(5, periodDuration - warmupMins - lectureMins - practiceMins);
+
+            return (
+              <div className="border border-slate-200 rounded-2xl p-4 sm:p-5 space-y-4 bg-slate-50/40">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-slate-200">
+                  <div>
+                    <span className="text-[10px] font-bold uppercase text-blue-700 tracking-wider">
+                      {unitName} {currentDay.day_number} Bell Schedule & Time Breakdown
+                    </span>
+                    <h5 className="text-sm sm:text-base font-bold text-slate-900 mt-0.5">
+                      {cleanTopic}
+                    </h5>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-bold text-slate-700 bg-white border border-slate-200 px-3 py-1 rounded-xl">
+                      {periodDuration} Minutes Slot
+                    </span>
+                    <span className="text-xs font-bold text-blue-700 bg-blue-50 border border-blue-200 px-3 py-1 rounded-xl">
+                      {proposedPlanner.language} ({proposedPlanner.level})
+                    </span>
+                  </div>
+                </div>
+
+                {/* 4-Stage Timetable Schedule Matrix */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                  <div className="bg-white border-l-4 border-blue-500 border border-slate-200 rounded-xl p-3.5 space-y-1">
+                    <div className="flex items-center justify-between text-xs font-bold text-slate-500">
+                      <span>Phase 1 (Warmup)</span>
+                      <span className="font-mono text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded">{warmupMins} Mins</span>
+                    </div>
+                    <h6 className="text-xs font-bold text-slate-900">Pronunciation & Recall</h6>
+                    <p className="text-[11px] text-slate-600 leading-relaxed">
+                      Phonetic drills, previous class review, and communicative greeting.
+                    </p>
+                  </div>
+
+                  <div className="bg-white border-l-4 border-indigo-500 border border-slate-200 rounded-xl p-3.5 space-y-1">
+                    <div className="flex items-center justify-between text-xs font-bold text-slate-500">
+                      <span>Phase 2 (Core Teach)</span>
+                      <span className="font-mono text-indigo-600 bg-indigo-50 px-1.5 py-0.5 rounded">{lectureMins} Mins</span>
+                    </div>
+                    <h6 className="text-xs font-bold text-slate-900">Grammar & Structure</h6>
+                    <p className="text-[11px] text-slate-600 leading-relaxed">
+                      {currentDay.grammar_rules_detail || 'Core morpho-syntactic rule, sentence patterns, and direct teaching.'}
+                    </p>
+                  </div>
+
+                  <div className="bg-white border-l-4 border-sky-500 border border-slate-200 rounded-xl p-3.5 space-y-1">
+                    <div className="flex items-center justify-between text-xs font-bold text-slate-500">
+                      <span>Phase 3 (Practice)</span>
+                      <span className="font-mono text-sky-600 bg-sky-50 px-1.5 py-0.5 rounded">{practiceMins} Mins</span>
+                    </div>
+                    <h6 className="text-xs font-bold text-slate-900">Guided LSRW Drills</h6>
+                    <p className="text-[11px] text-slate-600 leading-relaxed">
+                      Pair dialogue practice, listening audio comprehension, and worksheet activity.
+                    </p>
+                  </div>
+
+                  <div className="bg-white border-l-4 border-slate-600 border border-slate-200 rounded-xl p-3.5 space-y-1">
+                    <div className="flex items-center justify-between text-xs font-bold text-slate-500">
+                      <span>Phase 4 (Exit & Task)</span>
+                      <span className="font-mono text-slate-700 bg-slate-100 px-1.5 py-0.5 rounded">{wrapupMins} Mins</span>
+                    </div>
+                    <h6 className="text-xs font-bold text-slate-900">Wrap-up & Homework</h6>
+                    <p className="text-[11px] text-slate-600 leading-relaxed">
+                      Quick exit quiz question, lesson synthesis, and self-study assignment.
+                    </p>
+                  </div>
+                </div>
+
+                {/* Vocabulary Bank Preview */}
+                {currentDay.vocabulary_bank && currentDay.vocabulary_bank.length > 0 && (
+                  <div className="pt-2 border-t border-slate-200">
+                    <span className="text-[10px] font-bold uppercase text-slate-500 tracking-wider block mb-2">
+                      Target Vocabulary ({currentDay.vocabulary_bank.length} words):
+                    </span>
+                    <div className="flex flex-wrap gap-2">
+                      {currentDay.vocabulary_bank.slice(0, 8).map((v: any, vi: number) => (
+                        <div key={vi} className="bg-white border border-slate-200 rounded-lg px-2.5 py-1 text-xs flex items-center gap-1.5">
+                          <strong className="text-blue-900 font-bold">{v.word}</strong>
+                          <span className="text-slate-400 font-normal">→</span>
+                          <span className="text-slate-600">{v.meaning}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })()}
+        </div>
+      )}
+
+      {/* ---------------- 2. CALENDAR GRID VIEW ---------------- */}
+      {plannerViewMode === 'calendar' && (
+        <div className="space-y-4">
+          <div className="border border-slate-200 rounded-2xl p-4 sm:p-5 bg-white space-y-3">
+            <div className="flex flex-wrap items-center justify-between gap-2 pb-2 border-b border-slate-100">
+              <span className="text-xs font-bold text-slate-700 uppercase tracking-wider">
+                Full Curriculum Calendar Map ({allDays.length} {unitName}s)
+              </span>
+              <span className="text-xs font-bold text-blue-700 bg-blue-50 px-2.5 py-0.5 rounded-full border border-blue-200">
+                Click any period to inspect
+              </span>
+            </div>
+
+            <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8 gap-2">
+              {allDays.map((d: any) => {
+                const isSelected = expandedPeriodId === d.day_number;
+                const isMilestone = d.day_number % 10 === 0;
+                return (
+                  <button
+                    key={d.day_number}
+                    type="button"
+                    onClick={() => setExpandedPeriodId(isSelected ? null : d.day_number)}
+                    className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer flex flex-col justify-between h-20 ${
+                      isSelected
+                        ? 'border-blue-600 bg-blue-50/70 shadow-xs'
+                        : isMilestone
+                        ? 'border-amber-300 bg-amber-50/40 hover:bg-amber-50'
+                        : 'border-slate-200 bg-white hover:border-blue-300'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] font-mono font-bold text-slate-500">
+                        {unitName.slice(0, 1)}{d.day_number}
+                      </span>
+                      {isMilestone && (
+                        <span className="text-[9px] font-bold text-amber-700 bg-amber-100 px-1 py-0.2 rounded">
+                          Test
+                        </span>
+                      )}
+                    </div>
+                    <span className="text-[11px] font-bold text-slate-800 line-clamp-2 leading-tight">
+                      {d.day_topic.replace(/^(Period|Session)\s*\d+:\s*/i, '')}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ---------------- 3. PERIOD CARDS (Visual Blueprint) ---------------- */}
+      {plannerViewMode === 'cards' && (
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
           {activeMod.days.map((d: any) => {
             const cleanTopic = d.day_topic.replace(/^(Period|Session)\s*\d+:\s*/i, '');
             const isMilestone = d.day_number % 10 === 0;
-            const practiceQ =
-              (d.in_class_exercises && d.in_class_exercises[0]) ||
-              d.student_lsrw_practice?.grammar_exercise?.fill_in_blanks?.[0] ||
-              'Target linguistic structure application drill';
-            const phases = d.teacher_lesson_breakdown?.phases || [
-              { phase: 'Phonetic Warm-up', minutes: Math.round(proposedPlanner.period_duration_minutes * 0.15) },
-              { phase: 'Concept & Grammar Lecture', minutes: Math.round(proposedPlanner.period_duration_minutes * 0.35) },
-              { phase: 'Guided Pair Drills', minutes: Math.round(proposedPlanner.period_duration_minutes * 0.3) },
-              { phase: 'Formative Wrap-up', minutes: Math.round(proposedPlanner.period_duration_minutes * 0.2) },
-            ];
 
             return (
               <div
                 key={d.day_number}
-                className={`bg-white rounded-2xl border transition-all duration-200 hover:shadow-md flex flex-col justify-between overflow-hidden ${isMilestone
-                    ? 'border-amber-300 ring-2 ring-amber-200/50 shadow-sm'
-                    : 'border-slate-200 hover:border-blue-300'
-                  }`}
+                className={`bg-white rounded-2xl border transition-all duration-200 p-4 space-y-3 flex flex-col justify-between ${
+                  isMilestone ? 'border-amber-300 bg-amber-50/20' : 'border-slate-200 hover:border-blue-300'
+                }`}
               >
-                {/* Card Header Bar */}
-                <div
-                  className={`p-3.5 border-b flex items-center justify-between ${isMilestone
-                      ? 'bg-gradient-to-r from-amber-50 to-orange-50 border-amber-200'
-                      : 'bg-slate-50/70 border-slate-100'
-                    }`}
-                >
+                <div className="flex items-center justify-between pb-2 border-b border-slate-100">
                   <div className="flex items-center gap-2">
-                    <span
-                      className={`px-2.5 py-1 rounded-lg text-xs font-black font-mono shadow-2xs ${isMilestone ? 'bg-amber-400 text-slate-950' : 'bg-slate-900 text-white'
-                        }`}
-                    >
-                      {proposedPlanner.unit_name} {d.day_number}
+                    <span className="px-2.5 py-1 rounded-lg text-xs font-bold bg-blue-600 text-white font-mono">
+                      {unitName} {d.day_number}
                     </span>
-                    <span className="text-[11px] font-bold text-slate-600 bg-white px-2 py-0.5 rounded-md border border-slate-200 shadow-2xs">
-                      {proposedPlanner.period_duration_minutes} Mins
+                    <span className="text-[11px] font-semibold text-slate-500 bg-slate-100 px-2 py-0.5 rounded-md">
+                      {periodDuration} Mins
                     </span>
                   </div>
-
-                  <div className="flex items-center gap-1.5">
-                    {isMilestone && (
-                      <span className="text-[10px] font-black uppercase tracking-wider bg-amber-500 text-white px-2 py-0.5 rounded-md shadow-xs">
-                        Formal Quiz
-                      </span>
-                    )}
-                    <div className="flex items-center gap-1 font-mono text-[9px] font-bold text-slate-700">
-                      <span className="w-4 h-4 rounded flex items-center justify-center bg-blue-50 text-blue-700 border border-blue-200" title="Listening">L</span>
-                      <span className="w-4 h-4 rounded flex items-center justify-center bg-emerald-50 text-emerald-700 border border-emerald-200" title="Speaking">S</span>
-                      <span className="w-4 h-4 rounded flex items-center justify-center bg-purple-50 text-purple-700 border border-purple-200" title="Reading">R</span>
-                      <span className="w-4 h-4 rounded flex items-center justify-center bg-amber-50 text-amber-700 border border-amber-200" title="Writing">W</span>
-                    </div>
-                  </div>
+                  {isMilestone && (
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-amber-800 bg-amber-100 px-2 py-0.5 rounded-md">
+                      Quiz Day
+                    </span>
+                  )}
                 </div>
 
-                {/* Card Body */}
-                <div className="p-4 space-y-3 flex-1">
-                  {/* Lesson Topic Title */}
+                <div className="space-y-2 flex-1">
                   <div>
-                    <span className="text-[10px] uppercase font-bold tracking-wider text-slate-500 block mb-1">
-                      Session Target
-                    </span>
+                    <span className="text-[10px] uppercase font-bold text-slate-400 block">Lesson Topic</span>
                     {isEditingPlanner ? (
                       <input
                         type="text"
                         value={cleanTopic}
                         onChange={(e) =>
-                          updateDayInPlanner(
-                            d.day_number,
-                            'day_topic',
-                            `${proposedPlanner.unit_name} ${d.day_number}: ${e.target.value}`
-                          )
+                          updateDayInPlanner(d.day_number, 'day_topic', `${unitName} ${d.day_number}: ${e.target.value}`)
                         }
-                        className="w-full px-2.5 py-1 bg-white border border-slate-300 rounded-lg text-xs font-bold text-slate-900 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                        className="w-full px-2 py-1 bg-white border border-slate-300 rounded-lg text-xs font-bold text-slate-900 focus:outline-none focus:ring-1 focus:ring-blue-500"
                       />
                     ) : (
-                      <h5 className="text-xs font-black text-slate-900 leading-snug line-clamp-2">
+                      <h5 className="text-xs font-bold text-slate-900 line-clamp-2 leading-snug">
                         {cleanTopic}
                       </h5>
                     )}
                   </div>
 
-                  {/* Linguistic Grammar Anchor */}
                   <div className="bg-blue-50/60 border border-blue-100 rounded-xl p-2.5 space-y-1 text-xs">
-                    <div className="flex items-center justify-between text-[10px] font-bold text-blue-900">
-                      <span className="flex items-center gap-1.5">
-                        <span className="w-1.5 h-1.5 rounded-full bg-blue-600" />
-                        Grammar & Structure Paradigm
-                      </span>
-                    </div>
+                    <span className="text-[10px] font-bold text-blue-900 block">Grammar Anchor</span>
                     <p className="text-[11px] text-slate-700 leading-relaxed font-medium">
-                      {d.grammar_rules_detail || 'Core sentence patterns, verb structures, and morpho-syntactic agreements.'}
+                      {d.grammar_rules_detail || 'Key grammar patterns, conjugations, and linguistic structures.'}
                     </p>
                   </div>
-
-                  {/* Class Period Phases */}
-                  <div className="space-y-1.5">
-                    <span className="text-[10px] uppercase font-bold tracking-wider text-slate-500 block">
-                      Period Phase Allocation
-                    </span>
-                    <div className="grid grid-cols-2 gap-1.5 text-[10.5px]">
-                      {phases.slice(0, 4).map((ph: any, phi: number) => (
-                        <div
-                          key={phi}
-                          className="bg-slate-50 border border-slate-200/80 rounded-lg p-1.5 flex items-center justify-between gap-1"
-                        >
-                          <span className="truncate text-slate-700 font-semibold" title={ph.phase}>
-                            {ph.phase.replace(/^\d+\.\s*/, '')}
-                          </span>
-                          <span className="font-mono font-bold text-slate-700 shrink-0 text-[10px] bg-white px-1.5 py-0.2 rounded border border-slate-200">
-                            {ph.minutes}m
-                          </span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-
-                  {/* Communicative Practice Task */}
-                  <div className="bg-emerald-50/50 border border-emerald-100 rounded-xl p-2.5 space-y-1 text-xs">
-                    <span className="text-[10px] font-bold text-emerald-900 flex items-center gap-1.5 uppercase tracking-wide">
-                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-600" />
-                      Communicative Drill
-                    </span>
-                    <p className="text-[10.5px] text-emerald-950 font-medium leading-relaxed">
-                      {practiceQ}
-                    </p>
-                  </div>
-
-                  {/* Vocabulary Bank Preview */}
-                  {d.vocabulary_bank && d.vocabulary_bank.length > 0 && (
-                    <div className="pt-1 border-t border-slate-100 flex flex-wrap items-center gap-1">
-                      <span className="text-[9.5px] font-bold text-slate-500 mr-1">Anchor Vocab:</span>
-                      {d.vocabulary_bank.slice(0, 4).map((v: any, vi: number) => (
-                        <span
-                          key={vi}
-                          className="bg-slate-100 text-slate-800 text-[10px] font-bold px-1.5 py-0.5 rounded border border-slate-200/60"
-                        >
-                          {typeof v === 'string' ? v : v.word}
-                        </span>
-                      ))}
-                    </div>
-                  )}
                 </div>
 
-                {/* Card Footer Quick Action */}
-                <div className="p-3 bg-slate-50/80 border-t border-slate-100 flex items-center justify-between text-xs">
+                <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-xs">
+                  <span className="text-[11px] text-slate-400 font-mono">L • S • R • W</span>
                   <button
                     type="button"
-                    onClick={() =>
-                      setCoPilotPrompt(
-                        `Refine and optimize pedagogical drill for ${proposedPlanner.unit_name} ${d.day_number} (${cleanTopic})`
-                      )
-                    }
-                    className="text-[11px] text-blue-700 font-bold hover:underline flex items-center gap-1 cursor-pointer"
+                    onClick={() => {
+                      setActiveTimetableDay(d.day_number);
+                      setPlannerViewMode('timetable');
+                    }}
+                    className="text-xs font-bold text-blue-600 hover:underline cursor-pointer"
                   >
-                    <Sparkles className="w-3 h-3 text-blue-600" />
-                    <span>Refine with AI</span>
+                    View Timetable →
                   </button>
-                  <span className="text-[10px] text-slate-500 font-mono">
-                    CEFR {proposedPlanner.level}
-                  </span>
                 </div>
               </div>
             );
           })}
         </div>
-      ) : (
-        /* 2. TRADITIONAL MATRIX TABLE VIEW */
-        <div className="border border-slate-200 rounded-xl overflow-hidden shadow-2xs">
+      )}
+
+      {/* ---------------- 4. MATRIX TABLE VIEW ---------------- */}
+      {plannerViewMode === 'table' && (
+        <div className="border border-slate-200 rounded-xl overflow-hidden">
           <table className="w-full text-left text-xs">
             <thead className="bg-slate-50 border-b border-slate-200 text-slate-500 font-semibold text-[11px]">
               <tr>
-                <th className="py-3 px-4 w-28">{proposedPlanner.unit_name}</th>
+                <th className="py-3 px-4 w-28">{unitName}</th>
                 <th className="py-3 px-3 w-20">Duration</th>
                 <th className="py-3 px-4">Lesson Topic / Linguistic Target</th>
-                <th className="py-3 px-3 w-32 hidden sm:table-cell text-center">Skills Covered</th>
-                <th className="py-3 px-4 w-28 text-right">Details</th>
-                {isEditingPlanner && <th className="py-3 px-3 w-36">Notes</th>}
+                <th className="py-3 px-3 hidden sm:table-cell text-center">Skills Covered</th>
+                <th className="py-3 px-4 text-right">Action</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 bg-white">
               {activeMod.days.map((d: any) => {
                 const cleanTopic = d.day_topic.replace(/^(Period|Session)\s*\d+:\s*/i, '');
-                const isExpanded = expandedPeriodId === d.day_number;
-                const isMilestone = d.day_number % 10 === 0;
-
                 return (
-                  <tr
-                    key={d.day_number}
-                    onClick={() => setExpandedPeriodId(isExpanded ? null : d.day_number)}
-                    className={`hover:bg-slate-50/80 transition-colors cursor-pointer ${isExpanded ? 'bg-slate-50/90 font-medium' : ''
-                      } ${isMilestone ? 'bg-amber-50/20' : ''}`}
-                  >
+                  <tr key={d.day_number} className="hover:bg-slate-50 transition-colors">
                     <td className="py-3 px-4 font-mono font-bold text-slate-900 whitespace-nowrap">
-                      <div className="flex items-center gap-2">
-                        <span className="text-slate-900">
-                          {proposedPlanner.unit_name} {d.day_number}
-                        </span>
-                        {isMilestone && (
-                          <span className="text-[10px] font-bold bg-amber-100 text-amber-800 px-1.5 py-0.2 rounded border border-amber-200">
-                            Quiz
-                          </span>
-                        )}
-                      </div>
+                      {unitName} {d.day_number}
                     </td>
-                    <td className="py-3 px-3 whitespace-nowrap">
-                      <span className="px-2 py-0.5 rounded bg-slate-100 text-slate-600 font-medium text-[11px]">
-                        {proposedPlanner.period_duration_minutes}m
-                      </span>
+                    <td className="py-3 px-3 text-slate-500 whitespace-nowrap">
+                      {periodDuration} Mins
                     </td>
-                    <td className="py-3 px-4">
-                      <span className="font-bold text-slate-800 text-xs block truncate max-w-[280px] sm:max-w-[480px]">
-                        {cleanTopic}
-                      </span>
+                    <td className="py-3 px-4 font-bold text-slate-800">
+                      {cleanTopic}
                     </td>
-                    <td className="py-3 px-3 hidden sm:table-cell text-center">
-                      <div className="inline-flex items-center gap-1 font-mono text-[10px] font-semibold text-slate-600">
-                        <span className="w-5 h-5 rounded flex items-center justify-center bg-slate-100 border border-slate-200">L</span>
-                        <span className="w-5 h-5 rounded flex items-center justify-center bg-slate-100 border border-slate-200">S</span>
-                        <span className="w-5 h-5 rounded flex items-center justify-center bg-slate-100 border border-slate-200">R</span>
-                        <span className="w-5 h-5 rounded flex items-center justify-center bg-slate-100 border border-slate-200">W</span>
-                      </div>
+                    <td className="py-3 px-3 hidden sm:table-cell text-center text-[10px] font-mono text-slate-500">
+                      LSRW Core
                     </td>
                     <td className="py-3 px-4 text-right">
                       <button
                         type="button"
-                        onClick={() => setExpandedPeriodId(isExpanded ? null : d.day_number)}
-                        className="inline-flex items-center gap-1 text-[11px] font-semibold text-slate-600 hover:text-slate-900 bg-white hover:bg-slate-100 px-2.5 py-1 rounded-lg border border-slate-200 transition-colors cursor-pointer"
+                        onClick={() => {
+                          setActiveTimetableDay(d.day_number);
+                          setPlannerViewMode('timetable');
+                        }}
+                        className="text-xs font-bold text-blue-600 hover:underline cursor-pointer"
                       >
-                        <span>{isExpanded ? 'Hide' : 'Inspect'}</span>
-                        <ChevronDown
-                          className={`w-3.5 h-3.5 transition-transform ${isExpanded ? 'rotate-180' : ''}`}
-                        />
+                        Timetable
                       </button>
                     </td>
-                    {isEditingPlanner && (
-                      <td className="py-2 px-3" onClick={(e) => e.stopPropagation()}>
-                        <input
-                          type="text"
-                          value={d.grammar_rules_detail || ''}
-                          onChange={(e) =>
-                            updateDayInPlanner(d.day_number, 'grammar_rules_detail', e.target.value)
-                          }
-                          placeholder="Note..."
-                          className="w-full px-2 py-1 bg-white border border-slate-200 rounded text-[11px] text-slate-600 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                        />
-                      </td>
-                    )}
                   </tr>
                 );
               })}
