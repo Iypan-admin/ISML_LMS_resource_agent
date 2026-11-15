@@ -1,72 +1,70 @@
-"use client";
+﻿"use client";
 import { PlannerBlueprintSection } from './PlannerBlueprintSection';
 
 import React, { useState, useRef, useEffect } from 'react';
-import {
-  Sparkles,
-  BookOpen,
-  Upload,
-  Video,
-  CheckCircle2,
-  Clock,
-  Send,
-  Loader2,
-  ExternalLink,
-  AlertTriangle,
-  XCircle,
-  RefreshCw,
-  ShieldAlert,
-  Copy,
-  Check,
-  Download,
-  FileText,
-  School,
-  GraduationCap,
-  Bot,
-  Brain,
-  Cpu,
-  Compass,
-  Layers,
-  Zap,
-  Activity,
-  Award,
-  Sparkle,
-  Sliders,
-  CheckCircle,
-  Volume2,
-  Maximize2,
-  Minimize2,
-  PanelLeftClose,
-  ChevronRight,
-  ChevronDown,
-  ArrowLeft,
-  ArrowRight,
-  Headphones,
-  Mic,
-  PenTool,
-  Link2,
-  Plus,
-  Trash2,
-  Files,
-  FileUp,
-  Calendar,
-  CalendarDays,
-  Edit3,
-  Target,
-  LayoutGrid,
-  MessageSquare,
-  History,
-  PanelLeft,
-  Database,
-  Search,
-  RotateCw,
-  Paperclip,
-  Eye,
-  FileSpreadsheet,
-  FileCheck,
-  Split,
-  FolderOpen
-} from 'lucide-react';
+import { Loader2 } from 'lucide-react';
+const Sparkles = ((_props: any) => null) as any;
+const BookOpen = ((_props: any) => null) as any;
+const Upload = ((_props: any) => null) as any;
+const Video = ((_props: any) => null) as any;
+const CheckCircle2 = ((_props: any) => null) as any;
+const Clock = ((_props: any) => null) as any;
+const Send = ((_props: any) => null) as any;
+const ExternalLink = ((_props: any) => null) as any;
+const AlertTriangle = ((_props: any) => null) as any;
+const XCircle = ((_props: any) => null) as any;
+const RefreshCw = ((_props: any) => null) as any;
+const ShieldAlert = ((_props: any) => null) as any;
+const Copy = ((_props: any) => null) as any;
+const Check = ((_props: any) => null) as any;
+const Download = ((_props: any) => null) as any;
+const FileText = ((_props: any) => null) as any;
+const School = ((_props: any) => null) as any;
+const GraduationCap = ((_props: any) => null) as any;
+const Bot = ((_props: any) => null) as any;
+const Brain = ((_props: any) => null) as any;
+const Cpu = ((_props: any) => null) as any;
+const Compass = ((_props: any) => null) as any;
+const Layers = ((_props: any) => null) as any;
+const Zap = ((_props: any) => null) as any;
+const Activity = ((_props: any) => null) as any;
+const Award = ((_props: any) => null) as any;
+const Sparkle = ((_props: any) => null) as any;
+const Sliders = ((_props: any) => null) as any;
+const CheckCircle = ((_props: any) => null) as any;
+const Volume2 = ((_props: any) => null) as any;
+const Maximize2 = ((_props: any) => null) as any;
+const Minimize2 = ((_props: any) => null) as any;
+const PanelLeftClose = ((_props: any) => null) as any;
+const ChevronRight = ((_props: any) => null) as any;
+const ChevronDown = ((_props: any) => null) as any;
+const ArrowLeft = ((_props: any) => null) as any;
+const ArrowRight = ((_props: any) => null) as any;
+const Headphones = ((_props: any) => null) as any;
+const Mic = ((_props: any) => null) as any;
+const PenTool = ((_props: any) => null) as any;
+const Link2 = ((_props: any) => null) as any;
+const Plus = ((_props: any) => null) as any;
+const Trash2 = ((_props: any) => null) as any;
+const Files = ((_props: any) => null) as any;
+const FileUp = ((_props: any) => null) as any;
+const Calendar = ((_props: any) => null) as any;
+const CalendarDays = ((_props: any) => null) as any;
+const Edit3 = ((_props: any) => null) as any;
+const Target = ((_props: any) => null) as any;
+const LayoutGrid = ((_props: any) => null) as any;
+const MessageSquare = ((_props: any) => null) as any;
+const History = ((_props: any) => null) as any;
+const PanelLeft = ((_props: any) => null) as any;
+const Database = ((_props: any) => null) as any;
+const Search = ((_props: any) => null) as any;
+const RotateCw = ((_props: any) => null) as any;
+const Paperclip = ((_props: any) => null) as any;
+const Eye = ((_props: any) => null) as any;
+const FileSpreadsheet = ((_props: any) => null) as any;
+const FileCheck = ((_props: any) => null) as any;
+const Split = ((_props: any) => null) as any;
+const FolderOpen = ((_props: any) => null) as any;
 import { splitTextIntoChunks, SourceChunk } from '@/utils/chunkingEngine';
 import { generateCurriculumDay } from './curriculumProgression';
 import { DayContentView } from './DayContentView';
@@ -406,7 +404,7 @@ export default function FacultyStudioPage() {
           `**📍 Unit Focus & Day Topic:**\n${topicName}\n\n` +
           `**📐 Blackboard Structural Rule & Grammar Equation:**\n${grammarRule}\n\n` +
           `**🗂️ Target Lexicon & Vocabulary Bank (CEFR ${effectiveLevel}):**\n${vocabSample}\n\n` +
-          `**🎯 Prescribed LSRW Practice & Formative Assessment:**\n${exerciseSample}\n\n` +
+          `**Prescribed LSRW Practice & Formative Assessment:**\n${exerciseSample}\n\n` +
           `*Derived directly from your uploaded materials and syllabus timeline with zero hallucination.*`;
 
         const replyTime = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
@@ -438,7 +436,7 @@ export default function FacultyStudioPage() {
         `**📍 Unit Focus & Day Topic:**\n${topicName}\n\n` +
         `**📐 Blackboard Structural Rule & Grammar Equation:**\n${grammarRule}\n\n` +
         `**🗂️ Target Lexicon & Vocabulary Bank (CEFR ${effectiveLevel}):**\n${vocabSample}\n\n` +
-        `**🎯 Prescribed LSRW Practice & Formative Assessment:**\n${exerciseSample}\n\n` +
+        `**Prescribed LSRW Practice & Formative Assessment:**\n${exerciseSample}\n\n` +
         `*Derived directly from your uploaded materials and syllabus timeline with zero hallucination.*`;
 
       const replyTime = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
@@ -1560,43 +1558,38 @@ export default function FacultyStudioPage() {
       <div className="min-h-screen bg-[#F8FAFC] p-4 sm:p-8 flex items-center justify-center">
         <div className="flex items-center gap-2 text-slate-500 text-sm font-semibold">
           <Loader2 className="w-5 h-5 animate-spin text-blue-600" />
-          <span>Initializing ISML AI Academic Agent...</span>
+          <span>Initializing ISML AI Course Studio...</span>
         </div>
       </div>
     );
   }
 
   return (
-    <div className={`min-h-screen bg-[#F8FAFC] text-slate-900 ${isFullScreen ? "p-2 sm:p-4 max-w-full" : "p-3 sm:p-5 md:p-8 max-w-[1700px]"} space-y-4 sm:space-y-6 mx-auto transition-all duration-300`}>
+    <div className={`min-h-screen bg-[#F8FAFC] text-slate-900 p-0 sm:p-4 md:p-6 max-w-full space-y-0 sm:space-y-5 mx-auto transition-all duration-300`}>
       {/* Clean Light-Theme Agent Control Bar */}
-      <div className="bg-white border border-slate-200 rounded-xl p-3 sm:p-3.5 shadow-2xs flex flex-wrap items-center justify-between gap-3">
+      <div className="sticky top-0 z-30 bg-white/95 backdrop-blur-md border-b border-slate-200 px-4 py-3 sm:px-6 flex items-center justify-between gap-3">
         <div className="flex items-center gap-3">
-          <div className="w-9 h-9 rounded-xl bg-slate-900 flex items-center justify-center text-white font-bold shadow-xs shrink-0">
-            <Bot className="w-4 h-4 text-slate-200" />
-          </div>
+          
           <div>
             <div className="flex items-center gap-2">
               <h1 className="text-sm sm:text-base font-bold tracking-tight text-slate-900">
                 ISML AI Academic Agent
               </h1>
-              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200/60">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-ping" />
-                Live Co-Pilot
-              </span>
+              
             </div>
             <p className="text-[11px] text-slate-500 hidden sm:block">
-              Autonomous Pedagogical Resource Synthesis • CEFR/JLPT Common Core Framework
+              AI Course Assistant • Simple Lesson Planning & Materials
             </p>
           </div>
         </div>
 
         {/* Action Controls: + New Chat, Chat History Sidebar, Fullscreen Toggle, Workspace Badge */}
         <div className="flex items-center gap-2">
-          {/* 🌟 "+ New Chat" Button (ChatGPT / Gemini style) */}
+          {/* "+ New Chat" Button (ChatGPT / Gemini style) */}
           <button
             type="button"
             onClick={handleNewChat}
-            className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold shadow-xs transition-all cursor-pointer"
+            className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold shadow-xs transition-all cursor-pointer"
             title="Start a fresh curriculum session"
           >
             <Plus className="w-3.5 h-3.5 text-slate-300" />
@@ -1650,7 +1643,7 @@ export default function FacultyStudioPage() {
         </div>
       </div>
 
-      {/* 📁 ChatGPT / Gemini Style Persistent Sessions Sidebar Drawer */}
+      {/* ChatGPT / Gemini Style Persistent Sessions Sidebar Drawer */}
       {isHistoryOpen && (
         <div className="fixed inset-0 z-50 flex animate-in fade-in duration-200">
           {/* Backdrop overlay */}
@@ -1669,7 +1662,7 @@ export default function FacultyStudioPage() {
                 </div>
                 <div>
                   <h3 className="text-sm font-black text-white">Curriculum Chat Archive</h3>
-                  <p className="text-[10px] text-slate-400">Grounding Database • Zero Hallucination Lineage</p>
+                  <p className="text-[10px] text-slate-400">Saved Chats & Course History</p>
                 </div>
               </div>
               <button
@@ -1837,10 +1830,10 @@ export default function FacultyStudioPage() {
                 <span className="bg-red-600 text-white text-[11px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full">
                   Language Mismatch Warning
                 </span>
-                <span className="text-xs font-bold text-red-900">Pedagogical Alignment Audit</span>
+                <span className="text-xs font-bold text-red-900">Language & Material Check</span>
               </div>
               <h3 className="text-base font-bold text-red-950 mt-1">
-                Curriculum Grounding Conflict: Incorrect Language Material Detected
+                Language Check Warning: Incorrect Language Material Detected
               </h3>
               <p className="text-sm text-red-800 mt-1 leading-relaxed">
                 {mismatchError}
@@ -1881,7 +1874,7 @@ export default function FacultyStudioPage() {
                 <span className="bg-amber-600 text-white text-[11px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full">
                   Security & Accessibility Notice
                 </span>
-                <span className="text-xs font-bold text-amber-900">Zero-Hallucination Safe Mode</span>
+                <span className="text-xs font-bold text-amber-900">Safety Verification</span>
               </div>
               <h3 className="text-base font-bold text-amber-950 mt-1">
                 External Reference Link Analysis Blocked
@@ -1898,10 +1891,10 @@ export default function FacultyStudioPage() {
                 {unreachableLinksPrompt.unreachable_urls.map((item, idx) => (
                   <div key={idx} className="text-xs text-slate-700 flex flex-col sm:flex-row sm:items-center justify-between gap-1 border-b border-amber-100 pb-1.5 last:border-b-0 last:pb-0">
                     <span className="truncate max-w-md font-mono text-[11px] text-blue-700" title={item.url}>
-                      🔗 {item.url}
+                      {item.url}
                     </span>
                     <span className="text-[11px] text-amber-800 font-semibold bg-amber-100/60 px-2 py-0.5 rounded">
-                      ⚠️ {item.reason}
+                      {item.reason}
                     </span>
                   </div>
                 ))}
@@ -1935,18 +1928,16 @@ export default function FacultyStudioPage() {
       </div>
 
       {/* Main Grid: Responsive Split vs Fullscreen View */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 lg:gap-8 items-start">
-        {/* Left Column: Pedagogical Setup Form (Desktop 4 cols, stacks naturally on mobile, hidden on desktop only when viewing active planner/package/loading in fullscreen) */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-0 sm:gap-6 items-start">
+        {/* Left Column: Course Setup Form (Desktop 4 cols, stacks naturally on mobile, hidden on desktop only when viewing active planner/package/loading in fullscreen) */}
         <div ref={formContainerRef} className={`space-y-6 scroll-mt-24 ${(isFullScreen && (Boolean(proposedPlanner) || Boolean(sessionPackage) || plannerLoading)) ? 'hidden' : 'lg:col-span-4'}`}>
-          <div className="bg-white rounded-2xl border border-slate-200/90 shadow-sm p-4 sm:p-5">
+          <div className="bg-white border-b sm:border sm:rounded-2xl border-slate-200 p-4 sm:p-5">
             {/* Unified Form Header */}
             <div className="flex items-center justify-between pb-3.5 mb-4 border-b border-slate-100">
               <div className="flex items-center gap-2">
-                <div className="w-8 h-8 rounded-xl bg-slate-900 text-white flex items-center justify-center font-bold text-xs shadow-xs">
-                  <Sparkles className="w-4 h-4 text-indigo-300" />
-                </div>
+                
                 <div>
-                  <h3 className="text-sm font-black text-slate-900 tracking-tight">Pedagogical Setup</h3>
+                  <h3 className="text-sm font-black text-slate-900 tracking-tight">Course Setup</h3>
                   <p className="text-[10px] text-slate-400 font-medium">Configure stream, language, syllabus & materials</p>
                 </div>
               </div>
@@ -1956,18 +1947,18 @@ export default function FacultyStudioPage() {
             </div>
 
             <form onSubmit={handleGenerate} className="space-y-5">
-              {/* SECTION 1: Institutional Stream & Target Language */}
+              {/* SECTION 1: Institutional Category & Language */}
               <div className="space-y-3.5">
                 <div className="flex items-center gap-1.5 text-xs font-black text-slate-900 uppercase tracking-wider">
                   <span className="w-5 h-5 rounded-full bg-blue-100 text-blue-700 text-[10px] font-bold flex items-center justify-center">1</span>
-                  <span>Stream & Target Language</span>
+                  <span>Category & Language</span>
                 </div>
                   {/* Institutional Stream Switcher: SCHOOL vs COLLEGE */}
               <div>
                 <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5 flex items-center justify-between">
-                  <span>Educational Institution Stream</span>
+                  <span>Select Category</span>
                   <span className="text-[10px] text-blue-600 font-bold bg-blue-50 px-2 py-0.5 rounded">
-                    {institutionType === 'SCHOOL' ? 'K-12 School Matrix' : 'College / Higher Ed Matrix'}
+                    {institutionType === 'SCHOOL' ? 'School (K-12)' : 'College / University'}
                   </span>
                 </label>
                 <div className="grid grid-cols-2 gap-2 p-1 bg-slate-100 rounded-xl border border-slate-200">
@@ -2021,12 +2012,12 @@ export default function FacultyStudioPage() {
                   <option value="" disabled className="text-slate-400 font-normal">
                     -- Select Target Language (Required) * --
                   </option>
-                  <option value="Spanish">Spanish (Español) 🇪🇸</option>
-                  <option value="German">German (Deutsch) 🇩🇪</option>
-                  <option value="French">French (Français) 🇫🇷</option>
-                  <option value="Korean">Korean (한국어) 🇰🇷</option>
+                  <option value="Spanish">Spanish (Español) </option>
+                  <option value="German">German (Deutsch) </option>
+                  <option value="French">French (Français) </option>
+                  <option value="Korean">Korean (한국어) </option>
                   {institutionType === 'COLLEGE' && (
-                    <option value="Japanese">Japanese (日本語 • JLPT) 🇯🇵</option>
+                    <option value="Japanese">Japanese (日本語 • JLPT) </option>
                   )}
                 </select>
               </div>
@@ -2117,7 +2108,7 @@ export default function FacultyStudioPage() {
                         </div>
 
                         <div className="text-[11px] text-slate-600 bg-slate-50 px-2.5 py-1.5 rounded-lg flex items-center justify-between border border-slate-100">
-                          <span>🤖 AI Daily Practice:</span>
+                          <span>AI Daily Practice:</span>
                           <strong className="text-slate-900 font-bold">{activeSchool.aiPracticePerDay} times / day</strong>
                         </div>
                       </div>
@@ -2208,7 +2199,7 @@ export default function FacultyStudioPage() {
                         </div>
 
                         <div className="text-[11px] text-indigo-900 bg-indigo-100/70 px-2.5 py-1.5 rounded-lg flex items-center justify-between">
-                          <span>🤖 AI Daily Speaking Practice:</span>
+                          <span>AI Daily Speaking Practice:</span>
                           <strong className="text-indigo-950">{activeCollege.aiPracticePerDay} times / day</strong>
                         </div>
                       </div>
@@ -2235,7 +2226,7 @@ export default function FacultyStudioPage() {
                   }`}
                 >
                   <CalendarDays className="w-4 h-4 text-slate-200" />
-                  <span>Review & Confirm Lesson Planner</span>
+                  <span>Generate Full Course</span>
                 </button>
 
                 <button
@@ -2254,7 +2245,7 @@ export default function FacultyStudioPage() {
 
                 {!selectedLanguage && (
                   <p className="text-[11px] text-amber-700 font-medium text-center mt-2 flex items-center justify-center gap-1">
-                    <span>⚠️</span> Please select a target language above to proceed
+                    <span></span> Please select a target language above to proceed
                   </p>
                 )}
               </div>
@@ -2267,7 +2258,7 @@ export default function FacultyStudioPage() {
           {/* 1. Proposed Lesson Planner Review & Confirmation Card (Strictly blocked if mismatch error exists) */}
           {proposedPlanner && !sessionPackage && !loading && !mismatchError && proposedPlanner.language === selectedLanguage && (
             <div className="bg-white rounded-2xl border border-blue-200/90 shadow-md overflow-hidden animate-in fade-in slide-in-from-top-3 duration-300">
-              {/* 🎯 Interactive Academic Lesson Planner Agent Studio Header */}
+              {/* Course Lesson Planner Header */}
               <div className="p-4 sm:p-5 bg-slate-900 border-b border-slate-800 text-white">
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-slate-800">
                   <div className="space-y-1.5">
@@ -2555,21 +2546,17 @@ export default function FacultyStudioPage() {
 
           {/* 2. Ready State (Before Planner or Package) - Conversational AI Assistant Workspace with Instant Upload & Prompting */}
           {!proposedPlanner && !plannerLoading && !sessionPackage && !loading && (
-            <div className="bg-white rounded-3xl border border-slate-200/90 shadow-xl overflow-hidden flex flex-col">
+            <div className="bg-white border-y sm:border sm:rounded-2xl border-slate-200 overflow-hidden flex flex-col">
               {/* Header Bar */}
-              <div className="p-4 sm:p-5 bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 text-white flex items-center justify-between border-b border-slate-800">
+              <div className="p-4 sm:p-5 bg-white text-slate-900 flex items-center justify-between border-b border-slate-200">
                 <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-blue-600 to-indigo-600 flex items-center justify-center text-white shadow-md">
-                    <Bot className="w-5 h-5 text-indigo-100" />
-                  </div>
+                  
                   <div>
                     <div className="flex items-center gap-2">
                       <h3 className="text-sm sm:text-base font-extrabold text-white tracking-tight">
-                        Academic AI Assistant & Workspace
+                        AI Course Assistant
                       </h3>
-                      <span className="text-[10px] bg-emerald-500/20 text-emerald-300 font-mono font-bold px-2 py-0.5 rounded-full border border-emerald-500/30">
-                        Live Agent
-                      </span>
+                      
                     </div>
                     <p className="text-[11px] text-slate-300">
                       Upload your study files, drop video/web links, or describe your curriculum to start synthesis immediately.
@@ -2578,35 +2565,33 @@ export default function FacultyStudioPage() {
                 </div>
 
                 <div className="hidden sm:flex items-center gap-2">
-                  <span className="text-[10px] bg-white/10 text-slate-300 px-2.5 py-1 rounded-lg font-mono">
+                  <span className="text-[10px] bg-slate-100 text-slate-700 border border-slate-200 px-3 py-1 rounded-lg font-medium text-xs">
                     {selectedLanguage ? `${selectedLanguage} • ${selectedLevel}` : 'Select Language'}
                   </span>
                 </div>
               </div>
 
               {/* Chat-Like Interactive Body */}
-              <div className="p-6 sm:p-8 space-y-6 bg-slate-50/50">
+              <div className="p-4 sm:p-6 space-y-4 bg-white">
                 {/* AI Welcome Message Bubble */}
                 <div className="flex gap-3 items-start max-w-2xl">
-                  <div className="w-8 h-8 rounded-xl bg-slate-900 text-white flex items-center justify-center shrink-0 shadow-sm mt-0.5">
-                    <Sparkles className="w-4 h-4 text-indigo-300" />
-                  </div>
-                  <div className="bg-white border border-slate-200/90 rounded-2xl p-4 text-xs text-slate-800 shadow-2xs space-y-2 leading-relaxed">
+                  
+                  <div className="py-2 text-xs text-slate-800 space-y-2 leading-relaxed w-full">
                     <p className="font-semibold text-slate-900">
-                      👋 Welcome to ISML Academic Studio! I am your Autonomous Curriculum Agent.
+                      Welcome to ISML Academic Studio! I am your Autonomous Curriculum Agent.
                     </p>
                     <p className="text-slate-600">
-                      You can drop your lesson materials (PDF, Word doc, audio/video links) below, or type your pedagogical goals. I will vectorize and split your content into semantic chunks for zero-hallucination lesson plans and LSRW kits.
+                      You can drop your lesson materials (PDF, Word doc, audio/video links) below, or type your teaching goals. I will organize your materials and create ready-to-teach daily lesson plans.
                     </p>
                     <div className="flex flex-wrap gap-1.5 pt-1">
                       <span className="text-[10px] font-bold bg-blue-50 text-blue-700 px-2 py-0.5 rounded border border-blue-200">
-                        📄 Multi-Doc PDF/DOCX
+                        Multi-Doc PDF/DOCX
                       </span>
                       <span className="text-[10px] font-bold bg-red-50 text-red-700 px-2 py-0.5 rounded border border-red-200">
-                        🎥 Video Transcripts
+                        Video Transcripts
                       </span>
                       <span className="text-[10px] font-bold bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded border border-emerald-200">
-                        🌐 Web Article Scraper
+                        Web Article Scraper
                       </span>
                     </div>
                   </div>
@@ -2635,9 +2620,7 @@ export default function FacultyStudioPage() {
                   onClick={() => heroFileInputRef.current?.click()}
                 >
                   <div className="flex flex-col items-center gap-2">
-                    <div className="w-10 h-10 rounded-xl bg-indigo-50 group-hover:bg-indigo-100 text-indigo-600 flex items-center justify-center transition-colors">
-                      <Upload className="w-5 h-5" />
-                    </div>
+                    
                     <div>
                       <p className="text-xs font-bold text-slate-800">
                         Drop curriculum files here or <span className="text-indigo-600 underline">browse</span>
@@ -2688,7 +2671,7 @@ export default function FacultyStudioPage() {
                 )}
 
                 {/* Quick Topic / Goal Input Box with Direct Action */}
-                <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm space-y-4">
+                <div className="border-t border-slate-200 pt-4 space-y-3">
                   <input
                     type="text"
                     value={topic}
@@ -2697,8 +2680,8 @@ export default function FacultyStudioPage() {
                     className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-xs text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-600 focus:bg-white transition-all"
                   />
 
-                  {/* 🌐 YouTube Video & Web Reference Links Ingestion */}
-                  <div className="p-3.5 bg-slate-50 border border-slate-200/90 rounded-xl space-y-2.5">
+                  {/* YouTube Video & Web Reference Links Ingestion */}
+                  <div className="py-2 border-t border-slate-100 space-y-2">
                     <div className="flex items-center justify-between">
                       <span className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
                         <Video className="w-3.5 h-3.5 text-red-600" />
@@ -2752,7 +2735,7 @@ export default function FacultyStudioPage() {
                       className="w-full sm:flex-1 py-3 px-4 bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs rounded-xl shadow-md transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-40"
                     >
                       <CalendarDays className="w-4 h-4 text-slate-200" />
-                      <span>Review & Confirm Lesson Planner</span>
+                      <span>Generate Full Course</span>
                     </button>
 
                     <button
@@ -2768,7 +2751,7 @@ export default function FacultyStudioPage() {
 
                   {!selectedLanguage && (
                     <div className="bg-amber-50 border border-amber-200 rounded-xl p-2.5 text-center text-xs text-amber-800 font-medium flex items-center justify-center gap-1.5 animate-in fade-in">
-                      <span>⚠️</span>
+                      <span></span>
                       <span>Please select a target language in the left panel to proceed with generation.</span>
                     </div>
                   )}
@@ -2799,7 +2782,7 @@ export default function FacultyStudioPage() {
                       <span>ISML Multi-Pipeline Academic AI Synthesis Engine</span>
                     </h3>
                     <p className="text-xs text-indigo-300 font-medium mt-0.5">
-                      Autonomous CEFR Rigor Verification • DB Evidence Grounding • Zero-Hallucination Safe Mode
+                      Autonomous CEFR Rigor Verification • DB Evidence Grounding • Safety Verification
                     </p>
                   </div>
                 </div>
@@ -2970,7 +2953,7 @@ export default function FacultyStudioPage() {
 
           {sessionPackage && !loading && (
             <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-              {/* Senior Agent Studio Header Bar with Pedagogical Audit Seal */}
+              {/* Senior Agent Studio Header Bar with Quality & Accuracy Check */}
               <div className="p-5 sm:p-6 bg-gradient-to-r from-slate-900 via-indigo-950 to-blue-950 text-white border-b border-slate-200 flex flex-wrap items-center justify-between gap-4">
                 <div className="space-y-1.5">
                   <div className="flex flex-wrap items-center gap-2">
@@ -3081,7 +3064,7 @@ export default function FacultyStudioPage() {
                     <Award className="w-4 h-4 text-blue-700" />
                   </div>
                   <div>
-                    <span className="text-[10px] uppercase font-bold text-slate-500 block tracking-wider">Pedagogical Audit Seal</span>
+                    <span className="text-[10px] uppercase font-bold text-slate-500 block tracking-wider">Quality & Accuracy Check</span>
                     <strong className="text-slate-900 text-xs">CEFR Level Rigor: 99.2% Aligned</strong>
                   </div>
                 </div>
@@ -3092,7 +3075,7 @@ export default function FacultyStudioPage() {
                   </div>
                   <div>
                     <span className="text-[10px] uppercase font-bold text-slate-500 block tracking-wider">Evidence Grounding</span>
-                    <strong className="text-slate-900 text-xs">100% Zero-Hallucination Safe Mode</strong>
+                    <strong className="text-slate-900 text-xs">100% Safety Verification</strong>
                   </div>
                 </div>
 
@@ -3183,7 +3166,7 @@ export default function FacultyStudioPage() {
                           <div>
                             <span className="text-blue-200 block text-[10px] uppercase font-semibold">Speaking Drill:</span>
                             <strong className="text-amber-300 font-bold">{sessionPackage.school_meta.humanPracticeMinutesPer2Weeks}m / 2 wks</strong>
-                            <span className="text-[9px] text-blue-200 block">🤖 {sessionPackage.school_meta.aiPracticePerDay}x AI/day</span>
+                            <span className="text-[9px] text-blue-200 block">{sessionPackage.school_meta.aiPracticePerDay}x AI/day</span>
                           </div>
                         </div>
                       </div>
@@ -3215,7 +3198,7 @@ export default function FacultyStudioPage() {
                           <div>
                             <span className="text-blue-200 block text-[10px] uppercase font-semibold">Human Speaking:</span>
                             <strong className="text-amber-300 font-bold">{sessionPackage.college_meta.humanPracticeMinutesPerWeek}m / week</strong>
-                            <span className="text-[9px] text-blue-200 block">🤖 {sessionPackage.college_meta.aiPracticePerDay}x AI/day</span>
+                            <span className="text-[9px] text-blue-200 block">{sessionPackage.college_meta.aiPracticePerDay}x AI/day</span>
                           </div>
                         </div>
                       </div>
@@ -3532,7 +3515,7 @@ export default function FacultyStudioPage() {
                                 }
                               };
                               
-                              // 🌐 Cross-Device Global Database & Cloud Sync
+                              // Cross-Device Global Database & Cloud Sync
                               if (sessionPackage?.session_id) {
                                 const sid = sessionPackage.session_id;
                                 const updatedPlan = {
@@ -3569,7 +3552,7 @@ export default function FacultyStudioPage() {
         </div>
       </div>
 
-      {/* 📁 Modal: View All Files & Links Ingested in this Active Session */}
+      {/* Modal: View All Files & Links Ingested in this Active Session */}
       {showChatFilesModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm animate-in fade-in duration-200">
           <div className="bg-white w-full max-w-lg rounded-2xl shadow-2xl border border-slate-200 overflow-hidden flex flex-col max-h-[85vh] animate-in zoom-in-95 duration-200">

@@ -1,34 +1,32 @@
-"use client";
+﻿"use client";
 
 import React, { useState } from 'react';
-import { 
-  BookOpen, 
-  GraduationCap, 
-  Clock, 
-  CheckCircle2, 
-  Video, 
-  Download, 
-  Loader2,
-  Send,
-  Volume2,
-  Sparkles,
-  Award,
-  ShieldAlert,
-  Cpu,
-  Layers,
-  Bot,
-  MessageSquare,
-  RotateCw,
-  Headphones,
-  Mic,
-  PenTool,
-  Check,
-  ChevronDown,
-  Paperclip,
-  FileText,
-  X,
-  Upload
-} from 'lucide-react';
+import { Loader2 } from 'lucide-react';
+const BookOpen = ((_props: any) => null) as any;
+const GraduationCap = ((_props: any) => null) as any;
+const Clock = ((_props: any) => null) as any;
+const CheckCircle2 = ((_props: any) => null) as any;
+const Video = ((_props: any) => null) as any;
+const Download = ((_props: any) => null) as any;
+const Send = ((_props: any) => null) as any;
+const Volume2 = ((_props: any) => null) as any;
+const Sparkles = ((_props: any) => null) as any;
+const Award = ((_props: any) => null) as any;
+const ShieldAlert = ((_props: any) => null) as any;
+const Cpu = ((_props: any) => null) as any;
+const Layers = ((_props: any) => null) as any;
+const Bot = ((_props: any) => null) as any;
+const MessageSquare = ((_props: any) => null) as any;
+const RotateCw = ((_props: any) => null) as any;
+const Headphones = ((_props: any) => null) as any;
+const Mic = ((_props: any) => null) as any;
+const PenTool = ((_props: any) => null) as any;
+const Check = ((_props: any) => null) as any;
+const ChevronDown = ((_props: any) => null) as any;
+const Paperclip = ((_props: any) => null) as any;
+const FileText = ((_props: any) => null) as any;
+const X = ((_props: any) => null) as any;
+const Upload = ((_props: any) => null) as any;
 import { DayCurriculumItem } from './curriculumProgression';
 import { fetchWithEndpointFallback } from '@/utils/apiConfig';
 
@@ -1583,7 +1581,7 @@ export function DayContentView({
               </ul>
             </div>
 
-            {/* 🤖 Professional Clean Academic Curriculum Co-Pilot (Seamless In-Page Continuation) */}
+            {/* 🤖 Professional Clean Academic Curriculum Assistant (Seamless In-Page Continuation) */}
             <div className="bg-white rounded-2xl p-5 sm:p-6 text-slate-900 border border-slate-200 shadow-xs space-y-5 mt-6">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-3">
                 <div className="flex items-center gap-3">
@@ -1593,7 +1591,7 @@ export function DayContentView({
                   <div>
                     <div className="flex items-center gap-2">
                       <h4 className="font-extrabold text-sm sm:text-base text-slate-900 tracking-tight flex items-center gap-2">
-                        <span>Curriculum Agent Co-Pilot</span>
+                        <span>Lesson Assistant</span>
                       </h4>
                       <span className="bg-emerald-50 text-emerald-700 text-[10px] font-bold px-2 py-0.5 rounded-full border border-emerald-200">
                         ⚡ Live Update
@@ -1637,7 +1635,7 @@ export function DayContentView({
                   <div className="flex items-center justify-between px-1">
                     <span className="text-[11px] font-extrabold uppercase text-slate-700 tracking-wider flex items-center gap-1.5">
                       <MessageSquare className="w-3.5 h-3.5 text-blue-600" />
-                      <span>Co-Pilot Conversation History</span>
+                      <span>Chat History</span>
                       {chatHistory.length > 0 && (
                         <span className="bg-blue-100 text-blue-800 text-[10px] px-1.5 py-0.2 rounded-full font-mono font-bold">
                           {chatHistory.length}

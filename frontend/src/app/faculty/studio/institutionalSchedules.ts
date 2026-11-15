@@ -290,9 +290,9 @@ export interface CollegeLevelSchedule {
 }
 
 export const COLLEGE_LEVEL_SCHEDULES: CollegeLevelSchedule[] = [
-  // European & Korean (French / German / Spanish / Korean)
+  // European, Korean & English (French / German / Spanish / Korean / English)
   {
-    languages: ['French', 'German', 'Spanish', 'Korean'],
+    languages: ['French', 'German', 'Spanish', 'Korean', 'English'],
     level: 'A1 / L1',
     courseDurationHours: 80,
     assessmentsCount: 4,
@@ -305,7 +305,7 @@ export const COLLEGE_LEVEL_SCHEDULES: CollegeLevelSchedule[] = [
     }
   },
   {
-    languages: ['French', 'German', 'Spanish', 'Korean'],
+    languages: ['French', 'German', 'Spanish', 'Korean', 'English'],
     level: 'A2 / L2',
     courseDurationHours: 100,
     assessmentsCount: 4,
@@ -318,7 +318,7 @@ export const COLLEGE_LEVEL_SCHEDULES: CollegeLevelSchedule[] = [
     }
   },
   {
-    languages: ['French', 'German', 'Spanish', 'Korean'],
+    languages: ['French', 'German', 'Spanish', 'Korean', 'English'],
     level: 'B1 / L3',
     courseDurationHours: 140,
     assessmentsCount: 5,
@@ -331,7 +331,7 @@ export const COLLEGE_LEVEL_SCHEDULES: CollegeLevelSchedule[] = [
     }
   },
   {
-    languages: ['French', 'German', 'Spanish', 'Korean'],
+    languages: ['French', 'German', 'Spanish', 'Korean', 'English'],
     level: 'B2 / L4',
     courseDurationHours: 180,
     assessmentsCount: 5,
