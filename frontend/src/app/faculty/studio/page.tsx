@@ -106,6 +106,10 @@ export default function FacultyStudioPage() {
   const [customHumanSpeakingMins, setCustomHumanSpeakingMins] = useState<number | ''>('');
   const [customAiPracticePerDay, setCustomAiPracticePerDay] = useState<number | ''>('');
   const [isCustomMetricsOpen, setIsCustomMetricsOpen] = useState<boolean>(false);
+  const [isCustomPeriodsPerWeekManual, setIsCustomPeriodsPerWeekManual] = useState<boolean>(false);
+  const [isCustomAssessmentsManual, setIsCustomAssessmentsManual] = useState<boolean>(false);
+  const [isCustomHumanSpeakingManual, setIsCustomHumanSpeakingManual] = useState<boolean>(false);
+  const [isCustomAiPracticeManual, setIsCustomAiPracticeManual] = useState<boolean>(false);
   const [customDaysMode, setCustomDaysMode] = useState<'TOTAL' | 'MONTHLY'>('TOTAL');
   const [monthlyMonths, setMonthlyMonths] = useState<number>(12);
   const [topic, setTopic] = useState('');
@@ -2195,17 +2199,43 @@ export default function FacultyStudioPage() {
                             <span className="text-[10px] text-slate-500 font-bold block uppercase tracking-wider">
                               Periods / Week:
                             </span>
-                            <div className="flex items-center gap-1.5">
+                            {!isCustomPeriodsPerWeekManual ? (
                               <select
                                 value={effectivePeriodsPerWeek}
-                                onChange={(e) => setCustomPeriodsPerWeek(parseInt(e.target.value))}
+                                onChange={(e) => {
+                                  if (e.target.value === 'CUSTOM') {
+                                    setIsCustomPeriodsPerWeekManual(true);
+                                  } else {
+                                    setCustomPeriodsPerWeek(parseInt(e.target.value));
+                                  }
+                                }}
                                 className="w-full bg-white border border-slate-300 rounded-lg px-2 py-1 text-xs font-bold text-slate-900 focus:outline-none focus:ring-1 focus:ring-blue-500"
                               >
                                 {[1, 2, 3, 4, 5, 6, 7, 8].map((n) => (
                                   <option key={n} value={n}>{n} Periods / wk</option>
                                 ))}
+                                <option value="CUSTOM">Custom Periods...</option>
                               </select>
-                            </div>
+                            ) : (
+                              <div className="flex items-center gap-1">
+                                <input
+                                  type="number"
+                                  min="1"
+                                  max="20"
+                                  value={effectivePeriodsPerWeek}
+                                  onChange={(e) => setCustomPeriodsPerWeek(e.target.value ? parseInt(e.target.value) : '')}
+                                  className="w-full bg-white border border-blue-400 rounded-lg px-2 py-1 text-xs font-bold text-slate-900 text-center"
+                                />
+                                <button
+                                  type="button"
+                                  onClick={() => setIsCustomPeriodsPerWeekManual(false)}
+                                  className="text-[10px] text-slate-400 hover:text-slate-700 font-bold px-1"
+                                  title="Return to list"
+                                >
+                                  ✕
+                                </button>
+                              </div>
+                            )}
                           </div>
 
                           {/* Teaching Hours */}
@@ -2214,15 +2244,22 @@ export default function FacultyStudioPage() {
                               Teaching Hours:
                             </span>
                             <div className="flex items-center gap-1.5">
-                              <input
-                                type="number"
-                                min="1"
-                                max="500"
-                                value={effectiveHours}
-                                onChange={(e) => setCustomTeachingHours(e.target.value ? parseInt(e.target.value) : '')}
+                              <select
+                                value={[10, 20, 40, 60, 80, 100, 120, 150].includes(effectiveHours) ? effectiveHours : 'CUSTOM'}
+                                onChange={(e) => {
+                                  if (e.target.value === 'CUSTOM') {
+                                    // keep current or leave for typing
+                                  } else {
+                                    setCustomTeachingHours(parseInt(e.target.value));
+                                  }
+                                }}
                                 className="w-full bg-white border border-slate-300 rounded-lg px-2 py-1 text-xs font-bold text-slate-900 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                              />
-                              <span className="text-[11px] font-bold text-slate-500 shrink-0">Hrs</span>
+                              >
+                                {[10, 20, 40, 60, 80, 100, 120, 150].map((h) => (
+                                  <option key={h} value={h}>{h} Hours</option>
+                                ))}
+                                <option value="CUSTOM">Custom Hours ({effectiveHours}h)</option>
+                              </select>
                             </div>
                           </div>
 
@@ -2231,17 +2268,43 @@ export default function FacultyStudioPage() {
                             <span className="text-[10px] text-slate-500 font-bold block uppercase tracking-wider">
                               Assessments:
                             </span>
-                            <div className="flex items-center gap-1.5">
+                            {!isCustomAssessmentsManual ? (
                               <select
                                 value={effectiveAssessments}
-                                onChange={(e) => setCustomAssessmentsCount(parseInt(e.target.value))}
+                                onChange={(e) => {
+                                  if (e.target.value === 'CUSTOM') {
+                                    setIsCustomAssessmentsManual(true);
+                                  } else {
+                                    setCustomAssessmentsCount(parseInt(e.target.value));
+                                  }
+                                }}
                                 className="w-full bg-white border border-slate-300 rounded-lg px-2 py-1 text-xs font-bold text-slate-900 focus:outline-none focus:ring-1 focus:ring-blue-500"
                               >
                                 {[1, 2, 3, 4, 5, 6, 8, 10, 12].map((n) => (
                                   <option key={n} value={n}>{n} Tests</option>
                                 ))}
+                                <option value="CUSTOM">Custom Tests...</option>
                               </select>
-                            </div>
+                            ) : (
+                              <div className="flex items-center gap-1">
+                                <input
+                                  type="number"
+                                  min="0"
+                                  max="50"
+                                  value={effectiveAssessments}
+                                  onChange={(e) => setCustomAssessmentsCount(e.target.value ? parseInt(e.target.value) : '')}
+                                  className="w-full bg-white border border-blue-400 rounded-lg px-2 py-1 text-xs font-bold text-slate-900 text-center"
+                                />
+                                <button
+                                  type="button"
+                                  onClick={() => setIsCustomAssessmentsManual(false)}
+                                  className="text-[10px] text-slate-400 hover:text-slate-700 font-bold px-1"
+                                  title="Return to list"
+                                >
+                                  ✕
+                                </button>
+                              </div>
+                            )}
                           </div>
 
                           {/* Human Speaking Practice */}
@@ -2249,17 +2312,43 @@ export default function FacultyStudioPage() {
                             <span className="text-[10px] text-slate-500 font-bold block uppercase tracking-wider">
                               Human Speaking:
                             </span>
-                            <div className="flex items-center gap-1.5">
+                            {!isCustomHumanSpeakingManual ? (
                               <select
                                 value={effectiveHumanSpeaking}
-                                onChange={(e) => setCustomHumanSpeakingMins(parseInt(e.target.value))}
+                                onChange={(e) => {
+                                  if (e.target.value === 'CUSTOM') {
+                                    setIsCustomHumanSpeakingManual(true);
+                                  } else {
+                                    setCustomHumanSpeakingMins(parseInt(e.target.value));
+                                  }
+                                }}
                                 className="w-full bg-white border border-slate-300 rounded-lg px-2 py-1 text-xs font-bold text-slate-900 focus:outline-none focus:ring-1 focus:ring-blue-500"
                               >
                                 {[5, 10, 15, 20, 30, 45, 60].map((mins) => (
                                   <option key={mins} value={mins}>{mins}m / 2 wks</option>
                                 ))}
+                                <option value="CUSTOM">Custom Minutes...</option>
                               </select>
-                            </div>
+                            ) : (
+                              <div className="flex items-center gap-1">
+                                <input
+                                  type="number"
+                                  min="0"
+                                  max="180"
+                                  value={effectiveHumanSpeaking}
+                                  onChange={(e) => setCustomHumanSpeakingMins(e.target.value ? parseInt(e.target.value) : '')}
+                                  className="w-full bg-white border border-blue-400 rounded-lg px-2 py-1 text-xs font-bold text-slate-900 text-center"
+                                />
+                                <button
+                                  type="button"
+                                  onClick={() => setIsCustomHumanSpeakingManual(false)}
+                                  className="text-[10px] text-slate-400 hover:text-slate-700 font-bold px-1"
+                                  title="Return to list"
+                                >
+                                  ✕
+                                </button>
+                              </div>
+                            )}
                           </div>
                         </div>
 
@@ -2267,15 +2356,43 @@ export default function FacultyStudioPage() {
                         <div className="bg-slate-50 border border-slate-200/80 rounded-xl p-2.5 flex items-center justify-between text-xs">
                           <span className="text-[11px] font-bold text-slate-600">AI Daily Practice Drills:</span>
                           <div className="flex items-center gap-1.5">
-                            <select
-                              value={effectiveAiPractice}
-                              onChange={(e) => setCustomAiPracticePerDay(parseInt(e.target.value))}
-                              className="bg-white border border-slate-300 rounded-lg px-2.5 py-1 text-xs font-bold text-slate-900 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                            >
-                              {[1, 2, 3, 4, 5, 6].map((times) => (
-                                <option key={times} value={times}>{times} times / day</option>
-                              ))}
-                            </select>
+                            {!isCustomAiPracticeManual ? (
+                              <select
+                                value={effectiveAiPractice}
+                                onChange={(e) => {
+                                  if (e.target.value === 'CUSTOM') {
+                                    setIsCustomAiPracticeManual(true);
+                                  } else {
+                                    setCustomAiPracticePerDay(parseInt(e.target.value));
+                                  }
+                                }}
+                                className="bg-white border border-slate-300 rounded-lg px-2.5 py-1 text-xs font-bold text-slate-900 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                              >
+                                {[1, 2, 3, 4, 5, 6].map((times) => (
+                                  <option key={times} value={times}>{times} times / day</option>
+                                ))}
+                                <option value="CUSTOM">Custom...</option>
+                              </select>
+                            ) : (
+                              <div className="flex items-center gap-1">
+                                <input
+                                  type="number"
+                                  min="0"
+                                  max="20"
+                                  value={effectiveAiPractice}
+                                  onChange={(e) => setCustomAiPracticePerDay(e.target.value ? parseInt(e.target.value) : '')}
+                                  className="w-16 bg-white border border-blue-400 rounded-lg px-2 py-1 text-xs font-bold text-slate-900 text-center"
+                                />
+                                <button
+                                  type="button"
+                                  onClick={() => setIsCustomAiPracticeManual(false)}
+                                  className="text-[10px] text-slate-400 hover:text-slate-700 font-bold px-1"
+                                  title="Return to list"
+                                >
+                                  ✕
+                                </button>
+                              </div>
+                            )}
                           </div>
                         </div>
 
