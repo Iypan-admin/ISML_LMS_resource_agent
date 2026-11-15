@@ -2643,28 +2643,13 @@ export default function FacultyStudioPage() {
                     handlePreviewPlanner(e);
                   }}
                   disabled={loading || !selectedLanguage}
-                  className={`w-full py-3 px-4 font-bold rounded-xl shadow-md flex items-center justify-center gap-2 transition-all cursor-pointer text-xs ${
+                  className={`w-full py-3.5 px-4 font-bold rounded-xl shadow-md flex items-center justify-center gap-2 transition-all cursor-pointer text-sm ${
                     !selectedLanguage
                       ? 'bg-slate-200 text-slate-400 cursor-not-allowed shadow-none'
-                      : 'bg-slate-900 hover:bg-slate-800 text-white shadow-slate-900/10'
+                      : 'bg-blue-600 hover:bg-blue-700 text-white shadow-blue-600/20 active:scale-[0.99]'
                   }`}
                 >
-                  <CalendarDays className="w-4 h-4 text-slate-200" />
-                  <span>Generate Full Course</span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={(e) => handleGenerate(e)}
-                  disabled={loading || !selectedLanguage}
-                  className={`w-full py-3 px-4 font-bold rounded-xl shadow-md flex items-center justify-center gap-2 transition-all cursor-pointer text-xs ${
-                    !selectedLanguage
-                      ? 'bg-slate-100 text-slate-400 border border-slate-200 cursor-not-allowed shadow-none'
-                      : 'bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white shadow-blue-600/20'
-                  }`}
-                >
-                  <Sparkles className="w-4 h-4 text-white" />
-                  <span>Directly Generate Content & Teaching Kit</span>
+                  <span>Create Session Planner & Timetable</span>
                 </button>
 
                 {!selectedLanguage && (
@@ -3156,20 +3141,9 @@ export default function FacultyStudioPage() {
                       type="button"
                       onClick={() => handlePreviewPlanner()}
                       disabled={!selectedLanguage || loading}
-                      className="w-full sm:flex-1 py-3 px-4 bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs rounded-xl shadow-md transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-40"
+                      className="w-full py-3.5 px-4 bg-blue-600 hover:bg-blue-700 text-white font-bold text-sm rounded-xl shadow-md transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-40 active:scale-[0.99]"
                     >
-                      <CalendarDays className="w-4 h-4 text-slate-200" />
-                      <span>Generate Full Course</span>
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={(e) => handleGenerate(e)}
-                      disabled={!selectedLanguage || loading}
-                      className="w-full sm:flex-1 py-3 px-4 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-bold text-xs rounded-xl shadow-md transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-40"
-                    >
-                      <Sparkles className="w-4 h-4 text-amber-300" />
-                      <span>Directly Generate Content & Teaching Kit</span>
+                      <span>Create Session Planner & Timetable</span>
                     </button>
                   </div>
 
