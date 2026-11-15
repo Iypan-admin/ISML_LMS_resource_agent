@@ -88,7 +88,10 @@ export default function FacultyStudioPage() {
   const [customSchoolCategoryMins, setCustomSchoolCategoryMins] = useState<number | ''>(45);
   const [customSchoolLevelName, setCustomSchoolLevelName] = useState<string>('Custom Level');
   const [schoolLevel, setSchoolLevel] = useState<string>('A1.1');
-  const [collegeTrack, setCollegeTrack] = useState<CollegeTrackKey>('STANDARD');
+  const [collegeTrack, setCollegeTrack] = useState<CollegeTrackKey | 'CUSTOM'>('STANDARD');
+  const [customCollegeTrackMins, setCustomCollegeTrackMins] = useState<number | ''>(60);
+  const [customCollegeTeachingHours, setCustomCollegeTeachingHours] = useState<number | ''>('');
+  const [customCollegeLevelName, setCustomCollegeLevelName] = useState<string>('Custom Level');
 
   const [selectedLanguage, setSelectedLanguage] = useState<'Spanish' | 'German' | 'French' | 'Japanese' | 'Korean' | 'English' | ''>('');
   const [selectedLevel, setSelectedLevel] = useState('A1');
@@ -2308,7 +2311,25 @@ export default function FacultyStudioPage() {
                           </option>
                         );
                       })}
-                    </select>
+                                          <option value="CUSTOM">Custom Session Duration (Enter Minutes)</option>
+</select>
+                    {collegeTrack === 'CUSTOM' && (
+                      <div className="mt-2 p-2.5 bg-white border border-indigo-200 rounded-xl flex items-center justify-between gap-3 animate-in fade-in">
+                        <span className="text-xs text-slate-700 font-semibold">Custom Session Length:</span>
+                        <div className="flex items-center gap-1.5">
+                          <input
+                            type="number"
+                            min="15"
+                            max="240"
+                            value={customCollegeTrackMins}
+                            onChange={(e) => setCustomCollegeTrackMins(e.target.value ? parseInt(e.target.value) : '')}
+                            placeholder="60"
+                            className="w-20 px-2.5 py-1.5 bg-slate-50 border border-slate-300 rounded-lg text-xs font-bold text-slate-900 text-center focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                          />
+                          <span className="text-xs font-bold text-slate-500">Mins</span>
+                        </div>
+                      </div>
+                    )}
                   </div>
 
                   {/* College Levels Dropdown */}
@@ -2332,7 +2353,37 @@ export default function FacultyStudioPage() {
                               Level {lvl} (CEFR College Track)
                             </option>
                           ))}
-                    </select>
+                                          <option value="CUSTOM">Custom College Level & Hours</option>
+</select>
+                    {selectedLevel === 'CUSTOM' && (
+                      <div className="mt-2 p-3 bg-white border border-indigo-200 rounded-xl space-y-2.5 animate-in fade-in">
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="text-xs text-slate-700 font-semibold">Custom Level Name:</span>
+                          <input
+                            type="text"
+                            value={customCollegeLevelName}
+                            onChange={(e) => setCustomCollegeLevelName(e.target.value)}
+                            placeholder="e.g. B2 Advanced / Semester 4"
+                            className="w-48 px-2.5 py-1.5 bg-slate-50 border border-slate-300 rounded-lg text-xs font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                          />
+                        </div>
+                        <div className="flex items-center justify-between gap-2 pt-1 border-t border-slate-100">
+                          <span className="text-xs text-slate-700 font-semibold">Custom Course Hours:</span>
+                          <div className="flex items-center gap-1.5">
+                            <input
+                              type="number"
+                              min="1"
+                              max="500"
+                              value={customCollegeTeachingHours !== '' ? customCollegeTeachingHours : 80}
+                              onChange={(e) => setCustomCollegeTeachingHours(e.target.value ? parseInt(e.target.value) : '')}
+                              placeholder="80"
+                              className="w-20 px-2.5 py-1.5 bg-slate-50 border border-slate-300 rounded-lg text-xs font-bold text-slate-900 text-center focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                            />
+                            <span className="text-xs font-bold text-slate-500">Hours</span>
+                          </div>
+                        </div>
+                      </div>
+                    )}
                   </div>
 
                   {/* College Dynamic Metric Summary Badge */}

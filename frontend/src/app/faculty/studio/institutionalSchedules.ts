@@ -402,7 +402,8 @@ export const COLLEGE_LEVEL_SCHEDULES: CollegeLevelSchedule[] = [
 ];
 
 // Helper to lookup College schedule
-export function getCollegeSchedule(language: string, level: string, track: CollegeTrackKey) {
+export function getCollegeSchedule(language: string, level: string, track: CollegeTrackKey | 'CUSTOM' | string) {
+  const safeTrack: CollegeTrackKey = (track === 'CUSTOM' || !track) ? 'STANDARD' : (track as CollegeTrackKey);
   const isJapanese = language.toLowerCase() === 'japanese';
   const filtered = COLLEGE_LEVEL_SCHEDULES.filter(s =>
     isJapanese ? s.languages.includes('Japanese') : s.languages.includes('French')
@@ -415,8 +416,8 @@ export function getCollegeSchedule(language: string, level: string, track: Colle
     return candidateLvl.includes(cleanLvl) || cleanLvl.includes(candidateLvl.split('/')[0]);
   }) || filtered[0];
 
-  const trackData = match.tracks[track] || match.tracks.STANDARD;
-  const trackMeta = COLLEGE_TRACKS[track] || COLLEGE_TRACKS.STANDARD;
+  const trackData = match.tracks[safeTrack] || match.tracks.STANDARD;
+  const trackMeta = COLLEGE_TRACKS[safeTrack] || COLLEGE_TRACKS.STANDARD;
 
   return {
     level: match.level,
@@ -424,7 +425,7 @@ export function getCollegeSchedule(language: string, level: string, track: Colle
     assessmentsCount: match.assessmentsCount,
     humanPracticeMinutesPerWeek: match.humanPracticeMinutesPerWeek,
     aiPracticePerDay: match.aiPracticePerDay,
-    trackKey: track,
+    trackKey: safeTrack,
     trackLabel: trackMeta.label,
     sessionMinutes: trackData.sessionMinutes,
     sessionsRequired: trackData.sessionsRequired,
