@@ -82,6 +82,8 @@ import {
 import { fetchBackendWithFallback, fetchWithEndpointFallback } from '@/utils/apiConfig';
 
 export default function FacultyStudioPage() {
+  // 3-Step Sequential Workflow: 1 = Setup, 2 = Session Planner & Timetable, 3 = Content Package
+  const [studioStep, setStudioStep] = useState<1 | 2 | 3>(1);
   // Institutional Stream Switcher: SCHOOL vs COLLEGE
   const [institutionType, setInstitutionType] = useState<InstitutionType>('SCHOOL');
   const [schoolCategory, setSchoolCategory] = useState<SchoolCategoryKey | 'CUSTOM'>('CAT_1');
@@ -1416,6 +1418,7 @@ export default function FacultyStudioPage() {
 
         // Auto-set as active saved session and initialize chatbot memory
         setActiveSavedSession(fullKitArchiveItem);
+        setStudioStep(3);
         const NATIVE_GREETINGS: Record<string, string> = {
           Spanish: '¡Hola!',
           French: 'Bonjour !',
@@ -1838,6 +1841,82 @@ export default function FacultyStudioPage() {
           </div>
         </div>
       )}
+
+      
+      {/* 🧭 Professional 3-Step Sequential Workflow Navigation */}
+      <div className="bg-white border-y sm:border sm:rounded-2xl border-slate-200 px-4 py-3 sm:px-6">
+        <div className="flex items-center justify-between max-w-3xl mx-auto">
+          {/* Step 1 */}
+          <button
+            type="button"
+            onClick={() => {
+              if (studioStep > 1) setStudioStep(1);
+            }}
+            className={`flex items-center gap-2 cursor-pointer transition-all ${
+              studioStep === 1 ? 'text-blue-600 font-bold' : studioStep > 1 ? 'text-slate-800 font-semibold' : 'text-slate-400'
+            }`}
+          >
+            <span className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${
+              studioStep === 1
+                ? 'bg-blue-600 text-white shadow-xs'
+                : studioStep > 1
+                ? 'bg-blue-100 text-blue-700 font-bold'
+                : 'bg-slate-100 text-slate-400'
+            }`}>
+              {studioStep > 1 ? '✓' : '1'}
+            </span>
+            <span className="text-xs sm:text-sm">Course Setup</span>
+          </button>
+
+          <div className={`flex-1 h-0.5 mx-2 sm:mx-4 transition-colors ${studioStep >= 2 ? 'bg-blue-600' : 'bg-slate-200'}`} />
+
+          {/* Step 2 */}
+          <button
+            type="button"
+            onClick={() => {
+              if (proposedPlanner) setStudioStep(2);
+            }}
+            disabled={!proposedPlanner}
+            className={`flex items-center gap-2 transition-all ${
+              studioStep === 2 ? 'text-blue-600 font-bold' : studioStep > 2 ? 'text-slate-800 font-semibold' : 'text-slate-400'
+            } ${!proposedPlanner ? 'cursor-not-allowed opacity-60' : 'cursor-pointer'}`}
+          >
+            <span className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${
+              studioStep === 2
+                ? 'bg-blue-600 text-white shadow-xs'
+                : studioStep > 2
+                ? 'bg-blue-100 text-blue-700 font-bold'
+                : 'bg-slate-100 text-slate-400'
+            }`}>
+              {studioStep > 3 ? '✓' : '2'}
+            </span>
+            <span className="text-xs sm:text-sm">Session Planner & Timetable</span>
+          </button>
+
+          <div className={`flex-1 h-0.5 mx-2 sm:mx-4 transition-colors ${studioStep >= 3 ? 'bg-blue-600' : 'bg-slate-200'}`} />
+
+          {/* Step 3 */}
+          <button
+            type="button"
+            onClick={() => {
+              if (sessionPackage) setStudioStep(3);
+            }}
+            disabled={!sessionPackage}
+            className={`flex items-center gap-2 transition-all ${
+              studioStep === 3 ? 'text-blue-600 font-bold' : 'text-slate-400'
+            } ${!sessionPackage ? 'cursor-not-allowed opacity-60' : 'cursor-pointer'}`}
+          >
+            <span className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${
+              studioStep === 3
+                ? 'bg-blue-600 text-white shadow-xs'
+                : 'bg-slate-100 text-slate-400'
+            }`}>
+              3
+            </span>
+            <span className="text-xs sm:text-sm">Teaching Kit</span>
+          </button>
+        </div>
+      </div>
 
       {/* Target anchor for auto-scrolling to errors */}
       <div ref={errorAlertRef} className="scroll-mt-8 space-y-4">
