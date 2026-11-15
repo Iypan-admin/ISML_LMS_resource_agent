@@ -93,6 +93,14 @@ export default function FacultyStudioPage() {
   const [selectedTrack, setSelectedTrack] = useState<'STANDARD' | 'INTERNSHIP' | 'SUPER_INTERNSHIP' | 'CUSTOM'>('CUSTOM');
   const [customDays, setCustomDays] = useState<number | ''>(2);
   const [courseDurationMode, setCourseDurationMode] = useState<'INSTITUTIONAL' | 'CUSTOM'>('INSTITUTIONAL');
+  // Editable Institutional & Session Metrics overrides
+  const [customPeriodMins, setCustomPeriodMins] = useState<number | ''>('');
+  const [customTeachingHours, setCustomTeachingHours] = useState<number | ''>('');
+  const [customPeriodsPerWeek, setCustomPeriodsPerWeek] = useState<number | ''>('');
+  const [customAssessmentsCount, setCustomAssessmentsCount] = useState<number | ''>('');
+  const [customHumanSpeakingMins, setCustomHumanSpeakingMins] = useState<number | ''>('');
+  const [customAiPracticePerDay, setCustomAiPracticePerDay] = useState<number | ''>('');
+  const [isCustomMetricsOpen, setIsCustomMetricsOpen] = useState<boolean>(false);
   const [customDaysMode, setCustomDaysMode] = useState<'TOTAL' | 'MONTHLY'>('TOTAL');
   const [monthlyMonths, setMonthlyMonths] = useState<number>(12);
   const [topic, setTopic] = useState('');
