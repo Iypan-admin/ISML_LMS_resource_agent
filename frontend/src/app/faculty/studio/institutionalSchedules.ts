@@ -10,6 +10,7 @@ export type InstitutionType = 'SCHOOL' | 'COLLEGE';
 // Categories 1 to 6 (35 min to 60 min per period)
 // -----------------------------------------------------------------------------
 export type SchoolCategoryKey = 'CAT_1' | 'CAT_2' | 'CAT_3' | 'CAT_4' | 'CAT_5' | 'CAT_6';
+export type ExtendedSchoolCategoryKey = SchoolCategoryKey | 'CUSTOM';
 
 export interface SchoolCategoryMeta {
   key: SchoolCategoryKey;
@@ -215,10 +216,11 @@ export const SCHOOL_LEVEL_SCHEDULES: SchoolLevelSchedule[] = [
 ];
 
 // Helper to lookup School schedule
-export function getSchoolSchedule(level: string, category: SchoolCategoryKey) {
+export function getSchoolSchedule(level: string, category: SchoolCategoryKey | 'CUSTOM' | string) {
+  const safeCategory: SchoolCategoryKey = (category === 'CUSTOM' || !category) ? 'CAT_1' : (category as SchoolCategoryKey);
   const match = SCHOOL_LEVEL_SCHEDULES.find(s => s.level.toLowerCase() === level.toLowerCase()) || SCHOOL_LEVEL_SCHEDULES[0];
-  const cat = match.categoryPeriods[category] || match.categoryPeriods.CAT_1;
-  const catMeta = SCHOOL_CATEGORIES[category] || SCHOOL_CATEGORIES.CAT_1;
+  const cat = match.categoryPeriods[safeCategory] || match.categoryPeriods.CAT_1;
+  const catMeta = SCHOOL_CATEGORIES[safeCategory] || SCHOOL_CATEGORIES.CAT_1;
 
   return {
     level: match.level,
@@ -226,7 +228,7 @@ export function getSchoolSchedule(level: string, category: SchoolCategoryKey) {
     assessmentsCount: match.assessmentsCount,
     humanPracticeMinutesPer2Weeks: match.humanPracticeMinutesPer2Weeks,
     aiPracticePerDay: match.aiPracticePerDay,
-    categoryKey: category,
+    categoryKey: safeCategory,
     categoryLabel: catMeta.label,
     periodDurationMinutes: catMeta.durationMinutes,
     periodsPerWeek: cat.periodsPerWeek,

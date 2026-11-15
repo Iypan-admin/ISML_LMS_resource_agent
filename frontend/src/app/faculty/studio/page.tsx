@@ -84,7 +84,9 @@ import { fetchBackendWithFallback, fetchWithEndpointFallback } from '@/utils/api
 export default function FacultyStudioPage() {
   // Institutional Stream Switcher: SCHOOL vs COLLEGE
   const [institutionType, setInstitutionType] = useState<InstitutionType>('SCHOOL');
-  const [schoolCategory, setSchoolCategory] = useState<SchoolCategoryKey>('CAT_1');
+  const [schoolCategory, setSchoolCategory] = useState<SchoolCategoryKey | 'CUSTOM'>('CAT_1');
+  const [customSchoolCategoryMins, setCustomSchoolCategoryMins] = useState<number | ''>(45);
+  const [customSchoolLevelName, setCustomSchoolLevelName] = useState<string>('Custom Level');
   const [schoolLevel, setSchoolLevel] = useState<string>('A1.1');
   const [collegeTrack, setCollegeTrack] = useState<CollegeTrackKey>('STANDARD');
 
@@ -2088,43 +2090,166 @@ export default function FacultyStudioPage() {
                     </select>
                   </div>
 
-                  {/* School Dynamic Metric Summary Badge */}
+                  {/* School Dynamic Metric Summary Card (100% Directly Selectable & Editable) */}
                   {(() => {
-                    const activeSchool = getSchoolSchedule(schoolLevel, schoolCategory);
+                    const fallbackCategory: SchoolCategoryKey = schoolCategory === 'CUSTOM' ? 'CAT_3' : schoolCategory;
+                    const fallbackLevel = schoolLevel === 'CUSTOM' ? 'A1.1' : schoolLevel;
+                    const activeSchool = getSchoolSchedule(fallbackLevel, fallbackCategory);
+
+                    const effectivePeriodMins = schoolCategory === 'CUSTOM' && customSchoolCategoryMins !== ''
+                      ? Number(customSchoolCategoryMins)
+                      : (customPeriodMins !== '' ? Number(customPeriodMins) : activeSchool.periodDurationMinutes);
+
+                    const effectiveHours = customTeachingHours !== '' 
+                      ? Number(customTeachingHours) 
+                      : activeSchool.courseDurationHours;
+
+                    const effectivePeriodsPerWeek = customPeriodsPerWeek !== '' 
+                      ? Number(customPeriodsPerWeek) 
+                      : activeSchool.periodsPerWeek;
+
+                    const effectiveAssessments = customAssessmentsCount !== '' 
+                      ? Number(customAssessmentsCount) 
+                      : activeSchool.assessmentsCount;
+
+                    const effectiveHumanSpeaking = customHumanSpeakingMins !== '' 
+                      ? Number(customHumanSpeakingMins) 
+                      : activeSchool.humanPracticeMinutesPer2Weeks;
+
+                    const effectiveAiPractice = customAiPracticePerDay !== '' 
+                      ? Number(customAiPracticePerDay) 
+                      : activeSchool.aiPracticePerDay;
+
+                    // Automatically compute total periods based on selected Teaching Hours and Period Mins:
+                    const totalCalculatedPeriods = Math.max(2, Math.round((effectiveHours * 60) / effectivePeriodMins));
+
                     return (
-                      <div className="bg-white border border-slate-200 rounded-xl p-3 shadow-2xs space-y-2">
-                        <div className="flex items-center justify-between border-b border-slate-100 pb-2">
-                          <span className="text-[11px] font-bold uppercase text-slate-700 flex items-center gap-1.5">
-                            🏫 School Curriculum Metrics
-                          </span>
-                          <span className="text-xs font-black text-blue-700 bg-blue-50 px-2.5 py-1 rounded-lg border border-blue-200">
-                            {activeSchool.totalPeriods} Total Periods
+                      <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm space-y-3">
+                        <div className="flex items-center justify-between border-b border-slate-100 pb-2.5">
+                          <div>
+                            <span className="text-xs font-black uppercase text-slate-800 flex items-center gap-1.5 tracking-wider">
+                              School Curriculum Metrics
+                            </span>
+                            <span className="text-[10px] text-slate-400 font-medium">Edit or select any value directly</span>
+                          </div>
+                          <span className="text-xs font-black text-blue-700 bg-blue-50 px-3 py-1 rounded-xl border border-blue-200">
+                            {totalCalculatedPeriods} Total Periods
                           </span>
                         </div>
 
+                        {/* Direct Selectable & Customizable Metrics Grid */}
                         <div className="grid grid-cols-2 gap-2 text-xs">
-                          <div className="bg-slate-50 p-2 rounded-lg border border-slate-100">
-                            <span className="text-[10px] text-slate-500 block font-semibold">Periods / Week:</span>
-                            <strong className="text-slate-800 text-xs font-bold">{activeSchool.periodsPerWeek} Periods</strong>
+                          {/* Periods / Week */}
+                          <div className="bg-slate-50 border border-slate-200/80 rounded-xl p-2.5 space-y-1">
+                            <span className="text-[10px] text-slate-500 font-bold block uppercase tracking-wider">
+                              Periods / Week:
+                            </span>
+                            <div className="flex items-center gap-1.5">
+                              <select
+                                value={effectivePeriodsPerWeek}
+                                onChange={(e) => setCustomPeriodsPerWeek(parseInt(e.target.value))}
+                                className="w-full bg-white border border-slate-300 rounded-lg px-2 py-1 text-xs font-bold text-slate-900 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                              >
+                                {[1, 2, 3, 4, 5, 6, 7, 8].map((n) => (
+                                  <option key={n} value={n}>{n} Periods / wk</option>
+                                ))}
+                              </select>
+                            </div>
                           </div>
-                          <div className="bg-slate-50 p-2 rounded-lg border border-slate-100">
-                            <span className="text-[10px] text-slate-500 block font-semibold">Teaching Hours:</span>
-                            <strong className="text-slate-800 text-xs font-bold">{activeSchool.courseDurationHours} Hours</strong>
+
+                          {/* Teaching Hours */}
+                          <div className="bg-slate-50 border border-slate-200/80 rounded-xl p-2.5 space-y-1">
+                            <span className="text-[10px] text-slate-500 font-bold block uppercase tracking-wider">
+                              Teaching Hours:
+                            </span>
+                            <div className="flex items-center gap-1.5">
+                              <input
+                                type="number"
+                                min="1"
+                                max="500"
+                                value={effectiveHours}
+                                onChange={(e) => setCustomTeachingHours(e.target.value ? parseInt(e.target.value) : '')}
+                                className="w-full bg-white border border-slate-300 rounded-lg px-2 py-1 text-xs font-bold text-slate-900 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                              />
+                              <span className="text-[11px] font-bold text-slate-500 shrink-0">Hrs</span>
+                            </div>
                           </div>
-                          <div className="bg-slate-50 p-2 rounded-lg border border-slate-100">
-                            <span className="text-[10px] text-slate-500 block font-semibold">Assessments:</span>
-                            <strong className="text-slate-800 text-xs font-bold">{activeSchool.assessmentsCount} Tests</strong>
+
+                          {/* Assessments (Tests) */}
+                          <div className="bg-slate-50 border border-slate-200/80 rounded-xl p-2.5 space-y-1">
+                            <span className="text-[10px] text-slate-500 font-bold block uppercase tracking-wider">
+                              Assessments:
+                            </span>
+                            <div className="flex items-center gap-1.5">
+                              <select
+                                value={effectiveAssessments}
+                                onChange={(e) => setCustomAssessmentsCount(parseInt(e.target.value))}
+                                className="w-full bg-white border border-slate-300 rounded-lg px-2 py-1 text-xs font-bold text-slate-900 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                              >
+                                {[1, 2, 3, 4, 5, 6, 8, 10, 12].map((n) => (
+                                  <option key={n} value={n}>{n} Tests</option>
+                                ))}
+                              </select>
+                            </div>
                           </div>
-                          <div className="bg-slate-50 p-2 rounded-lg border border-slate-100">
-                            <span className="text-[10px] text-slate-500 block font-semibold">Human Speaking:</span>
-                            <strong className="text-slate-800 text-xs font-bold">{activeSchool.humanPracticeMinutesPer2Weeks}m / 2 wks</strong>
+
+                          {/* Human Speaking Practice */}
+                          <div className="bg-slate-50 border border-slate-200/80 rounded-xl p-2.5 space-y-1">
+                            <span className="text-[10px] text-slate-500 font-bold block uppercase tracking-wider">
+                              Human Speaking:
+                            </span>
+                            <div className="flex items-center gap-1.5">
+                              <select
+                                value={effectiveHumanSpeaking}
+                                onChange={(e) => setCustomHumanSpeakingMins(parseInt(e.target.value))}
+                                className="w-full bg-white border border-slate-300 rounded-lg px-2 py-1 text-xs font-bold text-slate-900 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                              >
+                                {[5, 10, 15, 20, 30, 45, 60].map((mins) => (
+                                  <option key={mins} value={mins}>{mins}m / 2 wks</option>
+                                ))}
+                              </select>
+                            </div>
                           </div>
                         </div>
 
-                        <div className="text-[11px] text-slate-600 bg-slate-50 px-2.5 py-1.5 rounded-lg flex items-center justify-between border border-slate-100">
-                          <span>AI Daily Practice:</span>
-                          <strong className="text-slate-900 font-bold">{activeSchool.aiPracticePerDay} times / day</strong>
+                        {/* AI Daily Practice */}
+                        <div className="bg-slate-50 border border-slate-200/80 rounded-xl p-2.5 flex items-center justify-between text-xs">
+                          <span className="text-[11px] font-bold text-slate-600">AI Daily Practice Drills:</span>
+                          <div className="flex items-center gap-1.5">
+                            <select
+                              value={effectiveAiPractice}
+                              onChange={(e) => setCustomAiPracticePerDay(parseInt(e.target.value))}
+                              className="bg-white border border-slate-300 rounded-lg px-2.5 py-1 text-xs font-bold text-slate-900 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                            >
+                              {[1, 2, 3, 4, 5, 6].map((times) => (
+                                <option key={times} value={times}>{times} times / day</option>
+                              ))}
+                            </select>
+                          </div>
                         </div>
+
+                        {(customTeachingHours !== '' || customPeriodMins !== '' || customAssessmentsCount !== '' || schoolCategory === 'CUSTOM' || schoolLevel === 'CUSTOM') && (
+                          <div className="flex justify-end pt-1">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setSchoolCategory('CAT_1');
+                                setSchoolLevel('A1.1');
+                                setCustomTeachingHours('');
+                                setCustomPeriodMins('');
+                                setCustomPeriodsPerWeek('');
+                                setCustomAssessmentsCount('');
+                                setCustomHumanSpeakingMins('');
+                                setCustomAiPracticePerDay('');
+                                setCustomSchoolCategoryMins(45);
+                                setCustomSchoolLevelName('Custom Level');
+                              }}
+                              className="text-[10px] text-blue-600 hover:text-rose-600 underline font-semibold cursor-pointer"
+                            >
+                              Reset All to Standard Default
+                            </button>
+                          </div>
+                        )}
                       </div>
                     );
                   })()}
