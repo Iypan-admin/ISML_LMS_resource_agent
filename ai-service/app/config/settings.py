@@ -21,6 +21,20 @@ class Settings(BaseSettings):
     GEMINI_API_KEY: Optional[str] = None
     OPENAI_API_KEY: Optional[str] = None
 
+    # Embedding & Vector Store Settings
+    EMBEDDING_PROVIDER: str = "gemini"
+    EMBEDDING_MODEL: str = "gemini-embedding-001"
+    EMBEDDING_DIM: int = 768
+    SUPABASE_URL: Optional[str] = None
+    SUPABASE_KEY: Optional[str] = None
+    DATABASE_URL: Optional[str] = None
+
+    # Knowledge Engine Thresholds
+    SIMHASH_DISTANCE_THRESHOLD: int = 3
+    SEMANTIC_DEDUP_THRESHOLD: float = 0.94
+    RRF_K: int = 60
+    RRF_TOP_K: int = 12
+
     # Security & SSRF Protection
     ALLOW_PRIVATE_IPS: bool = False
     MAX_REQUEST_TIMEOUT: float = 15.0

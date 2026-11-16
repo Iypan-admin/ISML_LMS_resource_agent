@@ -273,17 +273,23 @@ RULES:
         import re
         lines = [line.strip() for line in text.split('\n') if line.strip()]
 
-        # 1. Main topics from section labels or headers
+        # 1. Main topics from section labels, headings or key thematic phrases
         discovered_topics = []
         for line in lines:
             if line.startswith('[') and ']' in line:
                 label = line.split(']')[0].strip('[')
-                if label not in discovered_topics:
-                    discovered_topics.append(label)
+                if not re.search(r'(tutor upload|reference #|uploaded pdf|uploaded doc|web content|youtube|\.pdf|\.docx)', label, re.I):
+                    if len(label) >= 4 and label not in discovered_topics:
+                        discovered_topics.append(label)
             elif line.startswith('#'):
                 header = line.lstrip('#').strip()
-                if header and header not in discovered_topics:
+                if header and len(header) >= 4 and header not in discovered_topics:
                     discovered_topics.append(header)
+            elif len(line) >= 5 and len(line) <= 60 and not line.endswith(('.', ':', ';', ',')):
+                clean_l = re.sub(r'^[0-9\.\-\*\•\s]+', '', line).strip()
+                if len(clean_l) >= 5 and clean_l not in discovered_topics and not re.search(r'(tutor upload|page \d|http|\.pdf|\.docx|report|standup|table of contents|contents)', clean_l, re.I):
+                    discovered_topics.append(clean_l)
+
         if not discovered_topics:
             discovered_topics = [f"{language} {level}: {topic}"]
 
@@ -294,7 +300,10 @@ RULES:
         words = re.findall(r'\b[A-Za-zÀ-ÿ\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff\uac00-\ud7af]{3,}\b', text)
         stop_words = {
             "the", "and", "for", "with", "that", "this", "from", "have", "are", "was", "were",
-            "tutor", "upload", "reference", "video", "transcript", "document", "slides", "word"
+            "tutor", "upload", "reference", "video", "transcript", "document", "slides", "word",
+            "pdf", "docx", "file", "page", "table", "report", "total", "date", "time", "id", "name",
+            "branch", "employee", "durkkas", "dipl", "aruppukottai", "private", "limited", "active",
+            "about", "your", "will", "what", "there", "their", "which", "would", "could", "should"
         }
         seen_words = set()
         vocab_items = []
@@ -331,14 +340,23 @@ RULES:
                 )
             ]
 
-        # 5. Grammar patterns
+        # 5. Authentic Grammar & Core Conceptual Structures
         grammar_items = []
         for i, sent in enumerate(sentences[:10]):
-            words_in_s = sent.split()
-            if len(words_in_s) >= 4:
-                pattern_name = f"{topic} Syntactic Rule {i+1}: {' '.join(words_in_s[:3])}... construction"
+            clean_s = re.sub(r"^\[[^\]]+\]\s*", "", sent)
+            clean_s = re.sub(r"\b(Tutor Upload|Word Doc|Sample Dataset|MCQ|Format|Question Paper|Test|Import)\b.*", "", clean_s, flags=re.I).strip()
+            clean_words = [w for w in clean_s.split() if len(w) > 2 and w.lower() not in stop_words]
+            if len(clean_words) >= 2:
+                concept_name = " ".join(clean_words[:4]).title()
                 grammar_items.append(EvidenceItem(
-                    item=pattern_name,
+                    item=concept_name,
+                    category="grammar",
+                    evidence_excerpt=sent[:120],
+                    confidence="high",
+                ))
+            elif discovered_topics:
+                grammar_items.append(EvidenceItem(
+                    item=discovered_topics[i % len(discovered_topics)],
                     category="grammar",
                     evidence_excerpt=sent[:120],
                     confidence="high",

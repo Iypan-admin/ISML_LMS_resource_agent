@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { FRENCH_CURRICULUM_DATA } from '@/app/faculty/studio/curriculumLanguageBanks';
+import { FRENCH_CURRICULUM_DATA, getLinguisticUnit } from '@/app/faculty/studio/curriculumLanguageBanks';
 import { COMPREHENSIVE_LANGUAGE_BANKS, getLanguageSyllabusItem } from '@/app/faculty/studio/comprehensiveLanguageBanks';
 
 // =============================================================================
@@ -148,124 +148,7 @@ function classifyUserIntent(prompt: string, currentPeriod: number): ClassifiedIn
   return { type, targetPeriod, topicKeyword, count, duration, topicIndex, navigateToPeriod: canonicalPeriod };
 }
 
-// =============================================================================
-// AUDIO SCENARIO BANK - Rich dialogue scenarios for audio track generation
-// =============================================================================
-const AUDIO_SCENARIO_BANK = [
-  {
-    topic: "Les Verbes d'Action (Être, Avoir, Aller)",
-    turns: [
-      { speaker: "Professeur", text: "Bonjour à tous ! Aujourd'hui, nous explorons les verbes d'action fondamentaux : être, avoir, aller et parler." },
-      { speaker: "Étudiant (Marc)", text: "Bonjour Monsieur ! Est-ce que nous conjuguons ces verbes au présent de l'indicatif ?" },
-      { speaker: "Professeur", text: "Exactement Marc. Par exemple avec le verbe être : Je suis étudiant, tu es motivé, il est prêt." },
-      { speaker: "Étudiante (Chloé)", text: "Et pour le verbe avoir : J'ai un livre, tu as des questions, nous avons du temps ?" },
-      { speaker: "Professeur", text: "Parfait Chloé ! N'oubliez pas les verbes réguliers du premier groupe en -er comme aimer et parler : Je parle français tous les jours." },
-      { speaker: "Marc", text: "Nous allons à la bibliothèque maintenant pour réviser tous les exercices de conjugaison." },
-      { speaker: "Professeur", text: "Très bonne initiative ! Écoutez attentivement la prononciation des liaisons sonores." }
-    ]
-  },
-  {
-    topic: "Les Verbes Réguliers en -ER (Parler, Aimer, Voyager)",
-    turns: [
-      { speaker: "Marc", text: "Chloé, est-ce que tu parles français avec ta famille ou tes amis à la maison ?" },
-      { speaker: "Chloé", text: "Oui, j'adore parler français ! J'habite à Lyon et j'étudie les langues internationales avec enthousiasme." },
-      { speaker: "Marc", text: "Nous aimons voyager et explorer de nouvelles villes historiques ensemble pendant les vacances." },
-      { speaker: "Professeur", text: "Remarquez bien la terminaison muette au singulier : je parle, tu parles, il parle." },
-      { speaker: "Chloé", text: "Et au pluriel, nous parlons, vous parlez, ils parlent — la base ne change jamais !" },
-      { speaker: "Professeur", text: "Exactement ! Les verbes en -er suivent tous le même modèle de conjugaison régulière." }
-    ]
-  },
-  {
-    topic: "Les Verbes Modaux (Vouloir, Pouvoir, Devoir)",
-    turns: [
-      { speaker: "Marc", text: "Pardon Monsieur, est-ce que je peux poser une question sur le devoir de grammaire ?" },
-      { speaker: "Professeur", text: "Bien sûr Marc ! Tu veux clarifier quelle règle spécifique aujourd'hui ?" },
-      { speaker: "Marc", text: "Je veux comprendre comment articuler les verbes modaux avec un infinitif." },
-      { speaker: "Chloé", text: "Nous devons respecter la syntaxe et conjuguer uniquement le premier verbe auxiliaire." },
-      { speaker: "Professeur", text: "Parfait ! Pouvoir + infinitif : Je peux parler. Devoir + infinitif : Je dois étudier." },
-      { speaker: "Marc", text: "Donc on conjugue seulement le verbe modal et l'autre reste à l'infinitif ?" },
-      { speaker: "Professeur", text: "Exactement ! C'est la règle universelle pour tous les verbes modaux en français." }
-    ]
-  },
-  {
-    topic: "Les Salutations et la Politesse (Greetings & Politeness)",
-    turns: [
-      { speaker: "Professeur", text: "Bonjour classe ! Aujourd'hui nous allons apprendre les formules de politesse essentielles." },
-      { speaker: "Sophie", text: "Bonjour Madame ! Comment dit-on 'nice to meet you' en français ?" },
-      { speaker: "Professeur", text: "On dit 'Enchanté' pour un homme et 'Enchantée' pour une femme, avec un accent sur le é final." },
-      { speaker: "Thomas", text: "Et pour demander poliment quelque chose au restaurant ?" },
-      { speaker: "Professeur", text: "On utilise 'S'il vous plaît' en situation formelle et 'S'il te plaît' entre amis." },
-      { speaker: "Sophie", text: "Merci beaucoup Madame ! C'est très utile pour notre voyage à Paris." }
-    ]
-  },
-  {
-    topic: "Au Restaurant (Ordering Food & Drinks)",
-    turns: [
-      { speaker: "Serveur", text: "Bonsoir Madame, Monsieur ! Bienvenue au restaurant. Vous avez réservé ?" },
-      { speaker: "Claire", text: "Oui, une table pour deux personnes au nom de Dupont, s'il vous plaît." },
-      { speaker: "Serveur", text: "Parfait, suivez-moi. Voici la carte et le menu du jour." },
-      { speaker: "Pierre", text: "Je voudrais le plat du jour avec une salade verte et un verre de vin rouge." },
-      { speaker: "Claire", text: "Pour moi, la soupe à l'oignon en entrée et le poulet rôti avec des légumes grillés." },
-      { speaker: "Serveur", text: "Excellent choix ! Et comme dessert, je vous recommande notre tarte aux pommes maison." },
-      { speaker: "Pierre", text: "L'addition, s'il vous plaît. C'était délicieux !" }
-    ]
-  },
-  {
-    topic: "La Négation en Français (Saying No)",
-    turns: [
-      { speaker: "Professeur", text: "Aujourd'hui, nous travaillons sur la négation. En français, on encadre le verbe avec 'ne... pas'." },
-      { speaker: "Lucas", text: "Par exemple : 'Je ne parle pas espagnol' — le 'ne' avant et le 'pas' après le verbe ?" },
-      { speaker: "Professeur", text: "Exactement ! Et avec les articles indéfinis, 'un/une/des' deviennent 'de' : 'Je n'ai pas de chat'." },
-      { speaker: "Emma", text: "Et à l'oral, on oublie souvent le 'ne', non ? On dit juste 'Je parle pas' ?" },
-      { speaker: "Professeur", text: "Oui, en français parlé familier, mais à l'écrit et en examen, gardez toujours le 'ne'." },
-      { speaker: "Lucas", text: "D'accord ! Je ne fais jamais cette erreur maintenant !" }
-    ]
-  },
-  {
-    topic: "Demander son Chemin (Asking for Directions)",
-    turns: [
-      { speaker: "Tourist", text: "Excusez-moi, pourriez-vous m'indiquer le chemin pour aller à la gare Saint-Lazare ?" },
-      { speaker: "Passant", text: "Bien sûr ! Continuez tout droit pendant deux cents mètres, puis tournez à gauche au feu rouge." },
-      { speaker: "Tourist", text: "C'est loin d'ici ? Combien de temps à pied environ ?" },
-      { speaker: "Passant", text: "Non, c'est à environ dix minutes de marche. Vous verrez un grand panneau bleu." },
-      { speaker: "Tourist", text: "Merci infiniment ! Et le métro, c'est par où ?" },
-      { speaker: "Passant", text: "La station de métro est juste en face de la gare, vous ne pouvez pas la manquer !" }
-    ]
-  },
-  {
-    topic: "Le Passé Composé (Talking About the Past)",
-    turns: [
-      { speaker: "Professeur", text: "Pour raconter des événements passés, on utilise le passé composé : auxiliaire + participe passé." },
-      { speaker: "Chloé", text: "J'ai mangé au restaurant hier soir. Le verbe 'manger' prend l'auxiliaire 'avoir' ?" },
-      { speaker: "Professeur", text: "Oui ! Et certains verbes utilisent 'être' : Je suis allé(e), elle est partie, nous sommes arrivés." },
-      { speaker: "Marc", text: "Avec 'être', le participe s'accorde en genre et en nombre avec le sujet ?" },
-      { speaker: "Professeur", text: "Parfaitement ! 'Elle est allée' avec un e, 'ils sont partis' avec un s." },
-      { speaker: "Chloé", text: "Les quatorze verbes de la maison d'être : aller, venir, arriver, partir..." }
-    ]
-  },
-  {
-    topic: "Les Nombres et l'Heure (Numbers & Telling Time)",
-    turns: [
-      { speaker: "Professeur", text: "Apprenons les nombres de zéro à cent et comment dire l'heure en français." },
-      { speaker: "Sophie", text: "Quelle heure est-il maintenant, Monsieur ?" },
-      { speaker: "Professeur", text: "Il est dix heures et quart. On dit aussi 'dix heures quinze' en langage formel." },
-      { speaker: "Thomas", text: "Et pour dire 'half past' ?" },
-      { speaker: "Professeur", text: "'Et demie' — il est trois heures et demie. Pour 'quarter to', c'est 'moins le quart'." },
-      { speaker: "Sophie", text: "Donc midi moins le quart, c'est onze heures quarante-cinq !" }
-    ]
-  },
-  {
-    topic: "La Famille et les Possessifs (Family & Possessives)",
-    turns: [
-      { speaker: "Professeur", text: "Aujourd'hui, nous parlons de la famille et des adjectifs possessifs : mon, ton, son, notre, votre, leur." },
-      { speaker: "Emma", text: "Ma mère s'appelle Marie et mon père s'appelle Jacques. J'ai deux frères et une sœur." },
-      { speaker: "Lucas", text: "Attention, devant un nom féminin commençant par une voyelle, 'ma' devient 'mon' : mon amie !" },
-      { speaker: "Professeur", text: "Excellent Lucas ! Et au pluriel : mes frères, tes sœurs, ses parents. Simple et régulier." },
-      { speaker: "Emma", text: "Notre famille est grande. Nos grands-parents habitent à la campagne." },
-      { speaker: "Professeur", text: "Parfait ! Votre prononciation des possessifs est très naturelle maintenant." }
-    ]
-  }
-];
+
 
 export async function POST(req: Request) {
   try {
@@ -300,9 +183,10 @@ export async function POST(req: Request) {
       for (let i = 0; i < totalUnits; i++) {
         const dNum = i + 1;
         const topicIdx = i % topicsList.length;
-        const currUnit = FRENCH_CURRICULUM_DATA[i % FRENCH_CURRICULUM_DATA.length];
+        const currUnit = getLinguisticUnit(language, level, dNum);
         const enrichedTopic = topicsList[topicIdx] || currUnit.topic;
 
+        const isFr = (language || '').toLowerCase().includes('french') || (language || '').toLowerCase().includes('français');
         regeneratedDays.push({
           day_number: dNum,
           month_number: Math.ceil(dNum / 10),
@@ -313,9 +197,12 @@ export async function POST(req: Request) {
           classroom_dialogues: currUnit.dialogue,
           in_class_exercises: currUnit.drills.map(d => d.question),
           exercise_solutions: currUnit.drills,
-          homework_tasks: [
+          homework_tasks: isFr ? [
             `Mémoriser le vocabulaire cible de la Period ${dNum}.`,
             `Rédiger 3 phrases affirmatives en appliquant la formule du tableau.`
+          ] : [
+            `Memorize target vocabulary items and review key structures for Period ${dNum}.`,
+            `Write 3 complete sentences in ${language} applying today's grammar equation.`
           ]
         });
       }
@@ -329,49 +216,131 @@ export async function POST(req: Request) {
     }
 
     // =======================================================================
-    // INTENT HANDLER: AUDIO GENERATION (ONLY audio, no content overwrite)
+    // INTENT HANDLER: AUDIO GENERATION (Language-Aware & Document-Grounded)
     // =======================================================================
     if (intent.type === 'AUDIO_GENERATION') {
       const numTracks = intent.count;
       const audioTracks = [];
+      const lKey = (language || 'english').toLowerCase().trim();
 
-      // If topic keyword specified, prioritize matching scenarios
-      let scenarioPool = [...AUDIO_SCENARIO_BANK];
-      if (intent.topicKeyword === 'verbs') {
-        // Put verb-related scenarios first
-        scenarioPool.sort((a, b) => {
-          const aVerb = /verb|conjugat|parler|aimer/i.test(a.topic) ? 0 : 1;
-          const bVerb = /verb|conjugat|parler|aimer/i.test(b.topic) ? 0 : 1;
-          return aVerb - bVerb;
-        });
-      } else if (intent.topicKeyword === 'restaurant') {
-        scenarioPool.sort((a, b) => {
-          const aRest = /restaurant|menu|serveur/i.test(a.topic) ? 0 : 1;
-          const bRest = /restaurant|menu|serveur/i.test(b.topic) ? 0 : 1;
-          return aRest - bRest;
-        });
-      } else if (intent.topicKeyword === 'salutations') {
-        scenarioPool.sort((a, b) => {
-          const aSal = /salutation|politesse|greeting/i.test(a.topic) ? 0 : 1;
-          const bSal = /salutation|politesse|greeting/i.test(b.topic) ? 0 : 1;
-          return aSal - bSal;
-        });
-      }
+      const activeDay = (days && days.length >= current_period)
+        ? days[current_period - 1]
+        : (days && days.length > 0 ? days[0] : null);
 
+      const activeTopicRaw = activeDay?.day_topic || topic || 'Core Educational Unit';
+      const activeTopicClean = activeTopicRaw
+        .replace(/^(Period|Session|Unit)\s*\d+:?\s*/i, '')
+        .replace(/^(Syntactic Rule \d+:?|\[Tutor Upload[^\]]*\]|Durkkas|DIPL-[A-Z0-9\-]+|Aruppukottai)\s*/gi, '')
+        .replace(/\.(docx|doc|pdf|txt|pptx)\b/gi, '')
+        .trim() || `${language} Communication`;
+
+      const activeVocabList: any[] = activeDay?.vocabulary_bank || [];
+      const pWord = activeVocabList[0]?.word || 'core concept';
+      const sWord = activeVocabList[1]?.word || 'application';
+      const pExample = activeVocabList[0]?.example_sentence || activeVocabList[0]?.example || `Applying ${pWord} in natural conversation.`;
+      const sExample = activeVocabList[1]?.example_sentence || activeVocabList[1]?.example || `Using ${sWord} for practical communication.`;
+
+      // Dynamically construct authentic, document-grounded tracks for the target language:
       for (let k = 0; k < numTracks; k++) {
-        const sc = scenarioPool[k % scenarioPool.length];
+        const trackNum = k + 1;
+        let trackTopic = `${activeTopicClean} - Part ${trackNum}`;
+        let turns: Array<{ speaker: string; text: string }> = [];
+        let questions: Array<{ question: string; answer: string }> = [];
+
+        if (lKey.includes('english')) {
+          trackTopic = k === 0 
+            ? `${activeTopicClean}: Conversational Focus & Pronunciation`
+            : `${activeTopicClean}: Practical Dialogue & Core Vocabulary`;
+          turns = [
+            { speaker: "Teacher", text: `Good morning class! Welcome to today's English listening practice on ${activeTopicClean}.` },
+            { speaker: "Student (Alex)", text: `Good morning Teacher! In our study guide, we have the key word "${pWord}". How do we apply it in a natural sentence?` },
+            { speaker: "Teacher", text: `Great question, Alex! In our material, "${pWord}" is used in context: "${pExample}".` },
+            { speaker: "Student (Sarah)", text: `Can we also connect "${pWord}" with "${sWord}"?` },
+            { speaker: "Teacher", text: `Exactly, Sarah! For instance: "${sExample}". Listen carefully to the pronunciation and word stress.` },
+            { speaker: "Alex", text: `Let me practice saying that: "${pWord} is essential when working with ${sWord}." Did I pronounce it clearly?` },
+            { speaker: "Teacher", text: `Spot on, Alex! Your rhythm and tone were very natural. Now everyone, repeat this key phrase together and complete today's comprehension exercise.` }
+          ];
+          questions = [
+            { question: `What is the core topic of this English audio lesson?`, answer: activeTopicClean },
+            { question: `How did the teacher demonstrate using "${pWord}"?`, answer: `In the example: "${pExample}".` }
+          ];
+        } else if (lKey.includes('spanish') || lKey.includes('español')) {
+          trackTopic = `${activeTopicClean}: Comprensión Auditiva`;
+          turns = [
+            { speaker: "Profesor", text: `¡Buenos días a todos! Hoy practicamos comprensión auditiva sobre ${activeTopicClean}.` },
+            { speaker: "Estudiante (Carlos)", text: `¡Buenos días Profesor! ¿Cómo usamos el término "${pWord}" en esta situación?` },
+            { speaker: "Profesor", text: `Excelente pregunta. En nuestro material observamos: "${pExample}".` },
+            { speaker: "Estudiante (Elena)", text: `¿Podemos combinarlo con "${sWord}" en una frase conversacional?` },
+            { speaker: "Profesor", text: `¡Exacto Elena! Escuchen bien la entonación y repitan conmigo con fluidez.` }
+          ];
+          questions = [
+            { question: `¿Cuál es el tema principal de este diálogo?`, answer: activeTopicClean },
+            { question: `¿Cómo se aplica el concepto "${pWord}"?`, answer: pExample }
+          ];
+        } else if (lKey.includes('german') || lKey.includes('deutsch')) {
+          trackTopic = `${activeTopicClean}: Hörverständnis`;
+          turns = [
+            { speaker: "Lehrer", text: `Guten Tag zusammen! Heute üben wir das Hörverständnis zum Thema ${activeTopicClean}.` },
+            { speaker: "Schüler (Lukas)", text: `Guten Tag Herr Lehrer! Wie wenden wir den Begriff "${pWord}" im Satz an?` },
+            { speaker: "Lehrer", text: `Gute Frage, Lukas. Achten Sie auf das Beispiel: "${pExample}".` },
+            { speaker: "Schüler (Anna)", text: `Können wir auch "${sWord}" in diesem Dialog verwenden?` },
+            { speaker: "Lehrer", text: `Ganz genau, Anna! Wiederholen Sie den Satz mit klarer Aussprache.` }
+          ];
+          questions = [
+            { question: `Was ist das Hauptthema dieses Audio-Dialogs?`, answer: activeTopicClean },
+            { question: `Welcher Beispielsatz wurde für "${pWord}" genannt?`, answer: pExample }
+          ];
+        } else if (lKey.includes('japanese') || lKey.includes('nihongo')) {
+          trackTopic = `${activeTopicClean} : リスニング練習`;
+          turns = [
+            { speaker: "先生", text: `皆さん、こんにちは！今日は「${activeTopicClean}」のリスニング練習を行います。` },
+            { speaker: "学生 (ケン)", text: `先生、こんにちは！「${pWord}」は会話でどのように使いますか？` },
+            { speaker: "先生", text: `例文を聞いてみてください：「${pExample}」。自然な発音を意識しましょう。` },
+            { speaker: "学生 (ユミ)", text: `「${sWord}」と一緒に使うこともできますか？` },
+            { speaker: "先生", text: `その通りです！声に出して一緒に練習してみましょう。` }
+          ];
+          questions = [
+            { question: `この音声のテーマは何ですか？`, answer: activeTopicClean },
+            { question: `「${pWord}」の使い方は何ですか？`, answer: pExample }
+          ];
+        } else if (lKey.includes('korean') || lKey.includes('hangul')) {
+          trackTopic = `${activeTopicClean} : 듣기 연습`;
+          turns = [
+            { speaker: "선생님", text: `여러분, 안녕하세요! 오늘은 "${activeTopicClean}" 듣기 연습을 진행합니다.` },
+            { speaker: "학생 (민수)", text: `선생님, 안녕하세요! "${pWord}" 단어는 대화에서 어떻게 사용하나요?` },
+            { speaker: "선생님", text: `아주 좋은 질문이에요. 예문을 잘 들어보세요: "${pExample}".` },
+            { speaker: "학생 (지수)", text: `"${sWord}"와 함께 자연스럽게 표현할 수 있나요?` },
+            { speaker: "선생님", text: `맞아요, 지수 씨! 정확한 발음과 억양으로 따라 해보세요.` }
+          ];
+          questions = [
+            { question: `이번 듣기 수업의 주요 주제는 무엇인가요?`, answer: activeTopicClean },
+            { question: `"${pWord}"의 사용 예시는 무엇인가요?`, answer: pExample }
+          ];
+        } else {
+          // French Default
+          trackTopic = `Les Verbes et Structures: ${activeTopicClean}`;
+          turns = [
+            { speaker: "Professeur", text: `Bonjour à tous ! Aujourd'hui nous pratiquons l'écoute sur ${activeTopicClean}.` },
+            { speaker: "Étudiant (Marc)", text: `Bonjour Monsieur ! Comment utilise-t-on le terme "${pWord}" en contexte ?` },
+            { speaker: "Professeur", text: `Remarquez cet exemple précis : "${pExample}".` },
+            { speaker: "Étudiante (Chloé)", text: `Peut-on aussi l'associer avec "${sWord}" dans une phrase affirmative ?` },
+            { speaker: "Professeur", text: `Parfaitement Chloé ! Répétez attentivement avec une prononciation claire.` }
+          ];
+          questions = [
+            { question: `Quel est le thème principal de cette leçon audio ?`, answer: activeTopicClean },
+            { question: `Quel est l'exemple donné pour "${pWord}" ?`, answer: pExample }
+          ];
+        }
+
         const wordCount = Math.round(intent.duration * 140);
         audioTracks.push({
-          id: `track-${k + 1}`,
-          title: `${language} ${level} • Audio Track ${k + 1}: ${sc.topic}`,
+          id: `track-${trackNum}`,
+          title: `${language} ${level} • Audio Track ${trackNum}: ${trackTopic}`,
           duration_minutes: intent.duration,
           word_count: wordCount,
-          script: sc.turns.map(t => `${t.speaker}: ${t.text}`).join(' '),
-          dialogue_turns: sc.turns,
-          comprehension_questions: [
-            { question: `Identifiez les verbes conjugués dans ce dialogue`, answer: `Verbes de: ${sc.topic}` },
-            { question: `Résumez le thème principal de cette conversation`, answer: sc.topic }
-          ]
+          script: turns.map(t => `${t.speaker}: ${t.text}`).join(' '),
+          dialogue_turns: turns,
+          comprehension_questions: questions
         });
       }
 
@@ -389,12 +358,36 @@ export async function POST(req: Request) {
     // =======================================================================
     // RESOLVE CURRICULUM UNIT for content-based intents
     // =======================================================================
-    const repoUnit = FRENCH_CURRICULUM_DATA[intent.topicIndex] || FRENCH_CURRICULUM_DATA[0];
-    const enrichedSyllabus = getLanguageSyllabusItem(language, level, intent.targetPeriod);
-
     // If topicKeyword matched, use the canonical period number for that topic
     // so "verb base pani content kudu" always goes to Period 5 (the verb period)
     const effectivePeriod = intent.navigateToPeriod ?? intent.targetPeriod;
+
+    const activeDay = (days && days.length >= effectivePeriod)
+      ? days[effectivePeriod - 1]
+      : (days && days.length > 0 ? days[0] : null);
+
+    const baseLangUnit = getLinguisticUnit(language, level, effectivePeriod);
+    const enrichedSyllabus = getLanguageSyllabusItem(language, level, effectivePeriod);
+
+    // Dynamic repoUnit grounded in activeDay (mined document / transcript) or authentic language bank:
+    const repoUnit = {
+      topic: activeDay?.day_topic || baseLangUnit.topic,
+      grammarFocus: activeDay?.grammar_rules_detail || baseLangUnit.grammarFocus,
+      pedagogicalObjective: (activeDay as any)?.pedagogical_objective || (activeDay as any)?.study_notes_markdown || baseLangUnit.pedagogicalObjective,
+      boardNotes: (activeDay as any)?.board_notes || baseLangUnit.boardNotes,
+      vocabulary: (activeDay?.vocabulary_bank && activeDay.vocabulary_bank.length > 0)
+        ? activeDay.vocabulary_bank
+        : baseLangUnit.vocabulary,
+      dialogue: (activeDay?.classroom_dialogues && activeDay.classroom_dialogues.length > 0)
+        ? activeDay.classroom_dialogues
+        : baseLangUnit.dialogue,
+      drills: (activeDay?.exercise_solutions && activeDay.exercise_solutions.length > 0)
+        ? activeDay.exercise_solutions
+        : baseLangUnit.drills,
+      commonGotchas: baseLangUnit.commonGotchas,
+      remedialActivity: baseLangUnit.remedialActivity,
+      extensionActivity: baseLangUnit.extensionActivity,
+    };
 
     // =======================================================================
     // INTENT HANDLER: TOPIC EXPLANATION ("verb pathi sollu")
@@ -416,7 +409,7 @@ export async function POST(req: Request) {
           study_notes_markdown: explanation.fullNotes,
           vocabulary_bank: repoUnit.vocabulary,
           classroom_dialogues: repoUnit.dialogue,
-          in_class_exercises: repoUnit.drills.map(d => d.question),
+          in_class_exercises: (repoUnit.drills || []).map((d: any) => d.question),
           exercise_solutions: repoUnit.drills,
         }]
       });
@@ -438,7 +431,7 @@ export async function POST(req: Request) {
           study_notes_markdown: grammarContent.fullNotes,
           vocabulary_bank: repoUnit.vocabulary,
           classroom_dialogues: repoUnit.dialogue,
-          in_class_exercises: repoUnit.drills.map(d => d.question),
+          in_class_exercises: (repoUnit.drills || []).map((d: any) => d.question),
           exercise_solutions: repoUnit.drills,
         }]
       });
@@ -483,7 +476,7 @@ export async function POST(req: Request) {
           study_notes_markdown: repoUnit.pedagogicalObjective,
           vocabulary_bank: repoUnit.vocabulary,
           classroom_dialogues: dialogues,
-          in_class_exercises: repoUnit.drills.map(d => d.question),
+          in_class_exercises: (repoUnit.drills || []).map((d: any) => d.question),
           exercise_solutions: repoUnit.drills,
         }]
       });
@@ -510,7 +503,7 @@ export async function POST(req: Request) {
           study_notes_markdown: `# Vocabulary Bank: ${repoUnit.topic}\n\n${selectedVocab.map((v, i) => `### ${i+1}. ${v.word}\n- **Meaning:** ${v.meaning}\n- **Pronunciation:** ${v.pronunciation}\n- **Example:** _${v.example_sentence}_`).join('\n\n')}`,
           vocabulary_bank: selectedVocab,
           classroom_dialogues: repoUnit.dialogue,
-          in_class_exercises: repoUnit.drills.map(d => d.question),
+          in_class_exercises: (repoUnit.drills || []).map((d: any) => d.question),
           exercise_solutions: repoUnit.drills,
         }]
       });
@@ -519,7 +512,7 @@ export async function POST(req: Request) {
     // =======================================================================
     // INTENT HANDLER: CONTENT FOR SPECIFIC PERIOD / GENERAL REFINEMENT
     // =======================================================================
-    const formattedDrills = repoUnit.drills.map((d, dIdx) => ({
+    const formattedDrills = (repoUnit.drills || []).map((d: any, dIdx: number) => ({
       question: d.question.startsWith('[') ? d.question : `[Q${dIdx + 1}] ${d.question}`,
       answer: d.answer,
       explanation: d.explanation
@@ -538,11 +531,14 @@ export async function POST(req: Request) {
       study_notes_markdown: `# Study Notes: Period ${effectivePeriod} (${language} ${level})\n\n### Topic Focus:\n**${repoUnit.topic}**\n\n### Pedagogical Objective:\n${repoUnit.pedagogicalObjective}\n\n### Blackboard Paradigm:\n\`${repoUnit.boardNotes}\`\n\n### Remedial & Extension Activities:\n- **Remedial:** ${repoUnit.remedialActivity}\n- **Extension:** ${repoUnit.extensionActivity}\n\n### Common Learner Pitfalls:\n${repoUnit.commonGotchas.map(g => `- ${g}`).join('\n')}`,
       vocabulary_bank: uniqueVocab,
       classroom_dialogues: repoUnit.dialogue,
-      in_class_exercises: formattedDrills.map(d => d.question),
+      in_class_exercises: formattedDrills.map((d: any) => d.question),
       exercise_solutions: formattedDrills,
-      homework_tasks: [
+      homework_tasks: ((language || '').toLowerCase().includes('french') || (language || '').toLowerCase().includes('français')) ? [
         `Mémoriser les fiches de vocabulaire de la Period ${effectivePeriod}.`,
         `Compléter l'exercice de production écrite dans le cahier de classe.`
+      ] : [
+        `Review and memorize the target vocabulary items for Period ${effectivePeriod}.`,
+        `Complete the written exercises and dialogue practice in your study workbook.`
       ]
     };
 
@@ -664,16 +660,34 @@ function buildDrills(unit: any, syllabus: any, language: string, level: string, 
 // =============================================================================
 function buildDialogues(unit: any, language: string, count: number) {
   const baseDialogues = [...unit.dialogue];
-  const extras = [
-    `Professeur: "Très bien ! Maintenant, répétez après moi avec la bonne intonation."`,
-    `Étudiant: "D'accord Monsieur, je vais essayer de prononcer chaque syllabe clairement."`,
-    `Professeur: "N'oubliez pas la liaison entre les mots quand il y a une voyelle."`,
-    `Étudiante: "Est-ce que vous pouvez répéter plus lentement, s'il vous plaît ?"`,
-    `Professeur: "Bien sûr ! Écoutez attentivement : sujet + verbe conjugué + complément."`,
-    `Étudiant: "Merci beaucoup ! Maintenant je comprends mieux la règle de grammaire."`,
-    `Professeur: "Excellent travail ! Vous avez fait des progrès remarquables aujourd'hui."`,
-    `Étudiante: "Est-ce qu'on peut faire un exercice supplémentaire pour pratiquer ?"`,
-  ];
+  const lKey = (language || 'english').toLowerCase().trim();
+
+  const extrasMap: Record<string, string[]> = {
+    english: [
+      `Teacher: "Very well done! Now let's practice repeating this phrase with natural stress."`,
+      `Student (Alex): "I will focus on clear pronunciation and syllable emphasis."`,
+      `Teacher: "Notice how these words connect smoothly in everyday conversation."`,
+      `Student (Sarah): "Could you please give another example of this pattern in use?"`,
+      `Teacher: "Certainly! Remember: subject + auxiliary verb + core action."`,
+      `Student (Alex): "Thank you Teacher, this makes the concept much easier to apply."`
+    ],
+    french: [
+      `Professeur: "Très bien ! Maintenant, répétez après moi avec la bonne intonation."`,
+      `Étudiant: "D'accord Monsieur, je vais essayer de prononcer chaque syllabe clairement."`,
+      `Professeur: "N'oubliez pas la liaison entre les mots quand il y a une voyelle."`,
+      `Étudiante: "Est-ce que vous pouvez répéter plus lentement, s'il vous plaît ?"`,
+      `Professeur: "Bien sûr ! Écoutez attentivement : sujet + verbe conjugué + complément."`,
+      `Étudiant: "Merci beaucoup ! Maintenant je comprends mieux la règle de grammaire."`
+    ],
+    spanish: [
+      `Profesor: "¡Muy bien! Ahora repitan conmigo con la entonación adecuada."`,
+      `Estudiante: "De acuerdo profesor, pronunciaré cada término con claridad."`,
+      `Profesor: "Recuerden la concordancia entre el sujeto y el verbo."`,
+      `Estudiante: "¿Podría darnos otro ejemplo práctico para reforzar el concepto?"`
+    ]
+  };
+
+  const extras = extrasMap[lKey] || extrasMap.english;
 
   while (baseDialogues.length < count) {
     baseDialogues.push(extras[baseDialogues.length % extras.length]);

@@ -7,6 +7,7 @@ from app.api.discovery import router as discovery_router
 from app.api.generation import router as generation_router
 from app.api.review import router as review_router
 from app.api.sessions import router as sessions_router
+from app.api.knowledge import router as knowledge_router
 
 settings = get_settings()
 
@@ -34,6 +35,7 @@ app.include_router(discovery_router)
 app.include_router(generation_router)
 app.include_router(review_router)
 app.include_router(sessions_router)
+app.include_router(knowledge_router)
 
 @app.get("/")
 async def root():

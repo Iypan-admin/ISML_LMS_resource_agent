@@ -257,6 +257,36 @@ export function PlannerBlueprintSection({
           </button>
         </div>
 
+        {/* ── Knowledge Intelligence Engine Insights ── */}
+        {proposedPlanner.knowledge_intelligence && (
+          <div className="mt-3 pt-3 border-t border-slate-200 space-y-2.5">
+            <div className="flex flex-wrap items-center justify-between gap-2 bg-white p-2.5 rounded-xl border border-blue-100 text-xs">
+              <div className="flex items-center gap-2">
+                <span className="font-bold text-blue-900">⚡ Knowledge Intelligence:</span>
+                <span className="text-slate-700">{proposedPlanner.knowledge_intelligence.intent_summary}</span>
+              </div>
+              <div className="flex items-center gap-1.5 font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200 text-[11px]">
+                <span>✓ Faithfulness: {(proposedPlanner.knowledge_intelligence.faithfulness_score * 100).toFixed(0)}% (RRF pgvector)</span>
+              </div>
+            </div>
+
+            {/* Cross-Source Contradictions Warning */}
+            {proposedPlanner.knowledge_intelligence.identified_contradictions?.length > 0 && (
+              <div className="p-3 rounded-xl bg-amber-50 border border-amber-200 text-xs text-amber-900 space-y-1">
+                <div className="flex items-center gap-1.5 font-bold text-amber-800">
+                  <span>⚠️ Cross-Source Contradictions Detected ({proposedPlanner.knowledge_intelligence.identified_contradictions.length})</span>
+                </div>
+                <ul className="list-disc list-inside space-y-0.5 text-amber-800">
+                  {proposedPlanner.knowledge_intelligence.identified_contradictions.map((c: string, ci: number) => (
+                    <li key={ci}>{c}</li>
+                  ))}
+                </ul>
+                <p className="text-[10px] text-amber-600 italic">Both perspectives are preserved in the knowledge base without destructive overwrite.</p>
+              </div>
+            )}
+          </div>
+        )}
+
         {/* Expandable Source Materials Viewer */}
         {showSourceMaterials && (
           <div className="mt-4 pt-3.5 border-t border-slate-200 grid grid-cols-1 md:grid-cols-2 gap-3 animate-in fade-in duration-200">
@@ -296,17 +326,9 @@ export function PlannerBlueprintSection({
                 <div className="space-y-1.5 max-h-40 overflow-y-auto pr-1">
                   {urlsList.map((url: string, ui: number) => (
                     <div key={ui} className="flex items-center justify-between text-xs p-2 bg-slate-50 hover:bg-slate-100 rounded-lg border border-slate-100">
-                      <span className="font-mono text-blue-700 truncate max-w-[240px] text-[11px]">
+                      <span className="font-semibold text-slate-800 truncate max-w-[200px] sm:max-w-[240px]">
                         {url}
                       </span>
-                      <a
-                        href={url}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="text-[10px] text-blue-600 hover:underline font-bold shrink-0 ml-2"
-                      >
-                        Open ↗
-                      </a>
                     </div>
                   ))}
                 </div>
@@ -314,6 +336,34 @@ export function PlannerBlueprintSection({
                 <p className="text-xs text-slate-400 italic py-2">No external video or web links provided.</p>
               )}
             </div>
+
+            {/* Grounded Knowledge Citations Box */}
+            {proposedPlanner.knowledge_intelligence?.citations?.length > 0 && (
+              <div className="md:col-span-2 bg-white border border-slate-200 rounded-xl p-3 space-y-2">
+                <div className="flex items-center justify-between text-xs font-bold text-slate-700 border-b border-slate-100 pb-1.5">
+                  <span>Grounded Knowledge Propositions & Citations</span>
+                  <span className="text-blue-600 font-semibold text-[11px] bg-blue-50 px-2 py-0.5 rounded">
+                    {proposedPlanner.knowledge_intelligence.citations.length} Verified Evidence Points
+                  </span>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-48 overflow-y-auto pr-1">
+                  {proposedPlanner.knowledge_intelligence.citations.map((c: any, ci: number) => (
+                    <div key={ci} className="p-2.5 rounded-lg bg-slate-50 border border-slate-100 text-xs space-y-1">
+                      <div className="flex items-center justify-between font-bold text-slate-800">
+                        <span className="truncate max-w-[200px]">{c.source_title}</span>
+                        <span className="text-[10px] text-blue-700 font-mono">
+                          {c.page_number ? `Page ${c.page_number}` : ''}
+                          {c.time_offset_sec ? ` ${c.time_offset_sec}s` : ''}
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-slate-600 italic line-clamp-2">
+                        &quot;{c.supporting_excerpt}&quot;
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         )}
       </div>

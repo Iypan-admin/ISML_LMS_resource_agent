@@ -1,4 +1,5 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
+import { randomUUID } from 'crypto';
 import { PrismaService } from '../../prisma/prisma.service';
 
 @Injectable()
@@ -174,6 +175,165 @@ export class SessionsService {
       message: `Session package '${pkg.title}' exported to ISML LMS successfully`,
       package_id: updated.sessionId,
       lms_payload: lmsPayload,
+    };
+  }
+
+  // 🧠 Continuous Knowledge Intelligence: Store pgvector Embeddings, Claims & Contradictions
+  async saveKnowledgeIntelligence(sessionId: string, payload: {
+    chunks?: Array<{
+      id?: string;
+      sourceType?: string;
+      sourceTitle?: string;
+      chunkIndex?: number;
+      totalChunks?: number;
+      content: string;
+      tokenCount?: number;
+      embedding?: number[];
+      simHash?: string;
+      pageNumber?: number;
+      timeOffsetSec?: number;
+      cefrLevel?: string;
+      language?: string;
+    }>;
+    claims?: Array<{
+      id?: string;
+      chunkId?: string;
+      subject: string;
+      predicate: string;
+      object: string;
+      epistemic_status?: string;
+      confidence?: number;
+      verbatim_quote?: string;
+    }>;
+    contradictions?: Array<{
+      claimAId: string;
+      claimBId: string;
+      contradictionType: string;
+      description: string;
+    }>;
+  }) {
+    const chunkIdMap = new Map<number, string>();
+    let insertedChunksCount = 0;
+
+    if (payload.chunks && payload.chunks.length > 0) {
+      for (const [idx, c] of payload.chunks.entries()) {
+        const chunkId = c.id || randomUUID();
+        chunkIdMap.set(idx, chunkId);
+        const tokenCount = c.tokenCount || Math.ceil(c.content.length / 4);
+        const sourceType = c.sourceType || 'DOCUMENT';
+        const sourceTitle = c.sourceTitle || 'Uploaded Material';
+        const chunkIndex = c.chunkIndex ?? idx;
+        const totalChunks = c.totalChunks || payload.chunks.length;
+        const simHash = c.simHash || null;
+        const pageNumber = c.pageNumber ?? null;
+        const timeOffsetSec = c.timeOffsetSec ?? null;
+        const cefrLevel = c.cefrLevel || null;
+        const language = c.language || null;
+
+        if (c.embedding && Array.isArray(c.embedding) && c.embedding.length > 0) {
+          const embeddingStr = `[${c.embedding.join(',')}]`;
+          await this.prisma.$executeRaw`
+            INSERT INTO "session_vector_chunks" (
+              "id", "sessionId", "sourceType", "sourceTitle", "chunkIndex", "totalChunks",
+              "content", "tokenCount", "embedding", "simHash", "pageNumber", "timeOffsetSec",
+              "cefrLevel", "language", "createdAt"
+            ) VALUES (
+              ${chunkId}, ${sessionId}, ${sourceType}, ${sourceTitle}, ${chunkIndex}, ${totalChunks},
+              ${c.content}, ${tokenCount}, ${embeddingStr}::vector, ${simHash}, ${pageNumber}, ${timeOffsetSec},
+              ${cefrLevel}, ${language}, NOW()
+            )
+            ON CONFLICT ("id") DO UPDATE SET
+              "content" = EXCLUDED."content",
+              "embedding" = EXCLUDED."embedding",
+              "simHash" = EXCLUDED."simHash";
+          `;
+        } else {
+          await this.prisma.$executeRaw`
+            INSERT INTO "session_vector_chunks" (
+              "id", "sessionId", "sourceType", "sourceTitle", "chunkIndex", "totalChunks",
+              "content", "tokenCount", "simHash", "pageNumber", "timeOffsetSec",
+              "cefrLevel", "language", "createdAt"
+            ) VALUES (
+              ${chunkId}, ${sessionId}, ${sourceType}, ${sourceTitle}, ${chunkIndex}, ${totalChunks},
+              ${c.content}, ${tokenCount}, ${simHash}, ${pageNumber}, ${timeOffsetSec},
+              ${cefrLevel}, ${language}, NOW()
+            )
+            ON CONFLICT ("id") DO UPDATE SET
+              "content" = EXCLUDED."content",
+              "simHash" = EXCLUDED."simHash";
+          `;
+        }
+        insertedChunksCount++;
+      }
+    }
+
+    let insertedClaimsCount = 0;
+    if (payload.claims && payload.claims.length > 0) {
+      const defaultChunkId = chunkIdMap.get(0) || payload.chunks?.[0]?.id;
+      for (const claim of payload.claims) {
+        const claimId = claim.id || randomUUID();
+        const targetChunkId = claim.chunkId || defaultChunkId;
+        if (!targetChunkId) continue;
+
+        await this.prisma.$executeRaw`
+          INSERT INTO "knowledge_claims" (
+            "id", "sessionId", "chunkId", "subject", "predicate", "object",
+            "epistemicStatus", "confidence", "verbatimQuote", "createdAt"
+          ) VALUES (
+            ${claimId}, ${sessionId}, ${targetChunkId}, ${claim.subject}, ${claim.predicate}, ${claim.object},
+            ${claim.epistemic_status || 'FACT'}, ${claim.confidence ?? 0.95}, ${claim.verbatim_quote || null}, NOW()
+          )
+          ON CONFLICT ("id") DO UPDATE SET
+            "subject" = EXCLUDED."subject",
+            "predicate" = EXCLUDED."predicate",
+            "object" = EXCLUDED."object",
+            "confidence" = EXCLUDED."confidence";
+        `;
+        insertedClaimsCount++;
+      }
+    }
+
+    let insertedContradictionsCount = 0;
+    if (payload.contradictions && payload.contradictions.length > 0) {
+      for (const c of payload.contradictions) {
+        if (!c.claimAId || !c.claimBId) continue;
+        const cid = randomUUID();
+        await this.prisma.$executeRaw`
+          INSERT INTO "knowledge_contradictions" (
+            "id", "claimAId", "claimBId", "contradictionType", "description", "detectedAt"
+          ) VALUES (
+            ${cid}, ${c.claimAId}, ${c.claimBId}, ${c.contradictionType || 'DIRECT_OPPOSITE'}, ${c.description}, NOW()
+          )
+          ON CONFLICT ("claimAId", "claimBId") DO UPDATE SET
+            "description" = EXCLUDED."description";
+        `;
+        insertedContradictionsCount++;
+      }
+    }
+
+    return {
+      success: true,
+      sessionId,
+      stored_chunks: insertedChunksCount,
+      stored_claims: insertedClaimsCount,
+      stored_contradictions: insertedContradictionsCount,
+    };
+  }
+
+  async getKnowledgeIntelligence(sessionId: string) {
+    const chunks = await this.prisma.sessionVectorChunk.findMany({
+      where: { sessionId },
+      orderBy: { chunkIndex: 'asc' },
+    });
+    const claims = await this.prisma.knowledgeClaim.findMany({
+      where: { sessionId },
+      orderBy: { createdAt: 'desc' },
+    });
+    return {
+      total_chunks: chunks.length,
+      total_claims: claims.length,
+      chunks,
+      claims,
     };
   }
 }

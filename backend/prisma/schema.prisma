@@ -310,6 +310,8 @@ model Resource {
   auditLogs         AuditLog[]
   fileStorage       FileStorage?
   discoveryResults  DiscoveryResult[]
+  chunks            SessionVectorChunk[]
+  claims            KnowledgeClaim[]
 
   @@index([languageId, status, updatedAt])
   @@index([urlHash])
@@ -605,29 +607,88 @@ model SessionPackage {
 
   // Vectorized and split chunks for RAG grounding
   chunks                SessionVectorChunk[]
+  claims                KnowledgeClaim[]
 
   @@index([language, level, trackMode])
   @@map("session_packages")
 }
 
 model SessionVectorChunk {
-  id                    String          @id @default(uuid())
-  sessionId             String
-  sessionPackage        SessionPackage  @relation(fields: [sessionId], references: [sessionId], onDelete: Cascade)
-  sourceType            String          // DOCUMENT, WEB_SCRAPE, VIDEO_TRANSCRIPT, AUDIO
-  sourceTitle           String          // e.g. "French_Grammar.pdf", "YouTube: Café Dialogue"
+  id                    String              @id @default(uuid())
+  sessionId             String?             // Optional: link to session package
+  sessionPackage        SessionPackage?     @relation(fields: [sessionId], references: [sessionId], onDelete: Cascade)
+  resourceId            String?             // Optional: link to central resource
+  resource              Resource?           @relation(fields: [resourceId], references: [id], onDelete: Cascade)
+  parentChunkId         String?             // Hierarchical Parent-Child link
+  sourceType            String              // DOCUMENT, WEB_SCRAPE, VIDEO_TRANSCRIPT, AUDIO
+  sourceTitle           String              // e.g. "French_Grammar.pdf", "YouTube: Café Dialogue"
   chunkIndex            Int
-  totalChunks           Int
-  content               String          @db.Text
-  tokenCount            Int             @default(0)
-  cefrLevel             String?         // A1, A2, etc.
-  language              String?         // French, Spanish, etc.
-  metadata              Json?           // keywords, grammar tags, timestamps
+  totalChunks           Int                 @default(1)
+  content               String              @db.Text
+  tokenCount            Int                 @default(0)
+  pageNumber            Int?
+  timeOffsetSec         Int?
+  simHash               String?             // 64-bit SimHash for near-duplicate text
+  cefrLevel             String?             // A1, A2, etc.
+  language              String?             // French, Spanish, etc.
+  metadata              Json?               // keywords, grammar tags, timestamps
+  createdAt             DateTime            @default(now())
 
-  createdAt             DateTime        @default(now())
+  parentChunk           SessionVectorChunk?  @relation("ChunkHierarchy", fields: [parentChunkId], references: [id])
+  childChunks           SessionVectorChunk[] @relation("ChunkHierarchy")
+  claims                KnowledgeClaim[]
 
   @@index([sessionId])
+  @@index([resourceId])
   @@index([sourceType])
+  @@index([parentChunkId])
   @@map("session_vector_chunks")
+}
+
+// =============================================================================
+// CONTINUOUS KNOWLEDGE CLAIMS & CONTRADICTION ENGINE
+// =============================================================================
+
+model KnowledgeClaim {
+  id              String             @id @default(uuid())
+  resourceId      String?
+  sessionId       String?
+  chunkId         String
+  subject         String             // Entity / Subject
+  predicate       String             // Relation / Predicate
+  object          String             // Fact / Value / Object
+  epistemicStatus String             @default("FACT") // FACT, HYPOTHESIS, OPINION, DEPRECATED
+  confidence      Float              @default(1.0)
+  verifications   Int                @default(1)
+  verbatimQuote   String?            @db.Text
+  createdAt       DateTime           @default(now())
+
+  resource        Resource?          @relation(fields: [resourceId], references: [id], onDelete: Cascade)
+  session         SessionPackage?    @relation(fields: [sessionId], references: [sessionId], onDelete: Cascade)
+  chunk           SessionVectorChunk @relation(fields: [chunkId], references: [id], onDelete: Cascade)
+
+  contradictionsA KnowledgeContradiction[] @relation("ClaimA")
+  contradictionsB KnowledgeContradiction[] @relation("ClaimB")
+
+  @@index([subject])
+  @@index([resourceId])
+  @@index([sessionId])
+  @@index([chunkId])
+  @@map("knowledge_claims")
+}
+
+model KnowledgeContradiction {
+  id                String          @id @default(uuid())
+  claimAId          String
+  claimBId          String
+  contradictionType String          // DIRECT_OPPOSITE, NUMERICAL_DISCREPANCY, TEMPORAL_SUPERSEDENCE
+  description       String          @db.Text
+  detectedAt        DateTime        @default(now())
+
+  claimA            KnowledgeClaim  @relation("ClaimA", fields: [claimAId], references: [id], onDelete: Cascade)
+  claimB            KnowledgeClaim  @relation("ClaimB", fields: [claimBId], references: [id], onDelete: Cascade)
+
+  @@unique([claimAId, claimBId])
+  @@map("knowledge_contradictions")
 }
 

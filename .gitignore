@@ -55,6 +55,9 @@ yarn-error.log*
 next-env.d.ts
 
 # generated runtime assets & uploads
+static/documents/*
+static/presentations/*
+static/uploads/*
 ai-service/static/documents/*
 !ai-service/static/documents/.gitkeep
 ai-service/static/presentations/*

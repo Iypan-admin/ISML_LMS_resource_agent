@@ -561,6 +561,12 @@ function generateGenericAuthenticUnit(language: string, level: string, dayNumber
 
   // Language specific vocabulary dictionaries
   const vocabBanks: Record<string, Array<{ word: string; meaning: string; pronunciation: string; example_sentence: string }>> = {
+    english: [
+      { word: "Pronunciation", meaning: "Articulatory phonetic clarity and natural spoken rhythm", pronunciation: "/prəˌnʌn.siˈeɪ.ʃən/", example_sentence: "Clear pronunciation helps listeners understand your message accurately." },
+      { word: "Vocabulary", meaning: "Active lexical repertoire and communicative expressions", pronunciation: "/vəˈkæb.jə.lər.i/", example_sentence: "We expand our practical vocabulary through contextual reading and dialogues." },
+      { word: "Conversation", meaning: "Spoken interactive discourse between speakers", pronunciation: "/ˌkɒn.vəˈseɪ.ʃən/", example_sentence: "They had an engaging conversation about everyday routines and plans." },
+      { word: "Comprehension", meaning: "Auditory decoding and textual understanding", pronunciation: "/ˌkɒm.prɪˈhen.ʃən/", example_sentence: "Listening comprehension exercises improve oral communication skills." }
+    ],
     spanish: [
       { word: "La pronunciación", meaning: "Articulatory pronunciation and phonetic clarity", pronunciation: "/pɾo.nun.sjaˈsjon/", example_sentence: "Es fundamental practicar la pronunciación de las consonantes dobles." },
       { word: "El vocabulario", meaning: "Active vocabulary repertoire in target language", pronunciation: "/bo.ka.buˈla.ɾjo/", example_sentence: "Ampliamos nuestro vocabulario activo en cada sesión temática." },

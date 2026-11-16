@@ -37,6 +37,19 @@ export class SessionsController {
     return this.sessionsService.saveChunks(sessionId, chunks);
   }
 
+  @Post(':sessionId/knowledge-intelligence')
+  async saveKnowledgeIntelligence(
+    @Param('sessionId') sessionId: string,
+    @Body() body: any,
+  ) {
+    return this.sessionsService.saveKnowledgeIntelligence(sessionId, body);
+  }
+
+  @Get(':sessionId/knowledge-intelligence')
+  async getKnowledgeIntelligence(@Param('sessionId') sessionId: string) {
+    return this.sessionsService.getKnowledgeIntelligence(sessionId);
+  }
+
   @Get(':sessionId/chunks')
   async getChunks(
     @Param('sessionId') sessionId: string,

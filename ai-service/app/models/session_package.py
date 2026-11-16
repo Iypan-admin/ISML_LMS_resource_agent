@@ -139,3 +139,4 @@ class FullSessionPackageResult(BaseModel):
     evaluation_task_metadata: Optional[EvaluationTaskMetadata] = None
     content_lineage: Optional[ContentLineageMetadata] = None
     raw_source_context: Optional[str] = None
+    knowledge_intelligence: Optional[Dict[str, Any]] = None
