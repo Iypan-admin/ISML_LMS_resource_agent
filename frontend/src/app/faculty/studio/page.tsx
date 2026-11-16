@@ -144,6 +144,22 @@ export default function FacultyStudioPage() {
   };
 
   const updateSourceUrl = (index: number, val: string) => {
+    if (val.includes('\n')) {
+      const lines = val.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+      const extractedUrls: string[] = [];
+      lines.forEach(l => {
+        const m = l.match(/(https?:\/\/[^\s]+|[a-zA-Z0-9-]+\.(?:netlify\.app|com|org|edu|de|io|ai|app|co|be)[^\s]*)/i);
+        if (m) {
+          extractedUrls.push(m[0]);
+        }
+      });
+      if (extractedUrls.length > 0) {
+        const updated = [...sourceUrls];
+        updated.splice(index, 1, ...extractedUrls);
+        setSourceUrls(updated);
+        return;
+      }
+    }
     const updated = [...sourceUrls];
     updated[index] = val;
     setSourceUrls(updated);
@@ -1063,8 +1079,28 @@ export default function FacultyStudioPage() {
     }
 
     // 1. Language Pre-Validation Check against uploaded links and files via Backend
-    const validUrls = sourceUrls.map(u => u.trim()).filter(Boolean);
-    let extractedSourceContextFromValidation = '';
+    const rawUrlsList = sourceUrls.map(u => u.trim()).filter(Boolean);
+    const validUrls: string[] = [];
+    let inlineSourceContext = '';
+
+    rawUrlsList.forEach(rawItem => {
+      const lines = rawItem.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+      lines.forEach(line => {
+        const urlMatch = line.match(/(https?:\/\/[^\s]+|[a-zA-Z0-9-]+\.(?:netlify\.app|com|org|edu|de|io|ai|app|co|be)[^\s]*)/i);
+        if (urlMatch) {
+          validUrls.push(urlMatch[0]);
+          inlineSourceContext += `${line}\n`;
+        } else if (line.length >= 3) {
+          inlineSourceContext += `${line}\n`;
+        }
+      });
+    });
+
+    if (topic && (topic.includes('\n') || topic.includes('http') || topic.includes(':'))) {
+      inlineSourceContext += `\n${topic}\n`;
+    }
+
+    let extractedSourceContextFromValidation = inlineSourceContext;
     if (validUrls.length > 0 || uploadedFiles.length > 0) {
       setPlannerLoading(true);
       try {
@@ -1091,7 +1127,7 @@ export default function FacultyStudioPage() {
             return;
           }
           if (valData.extracted_source_context) {
-            extractedSourceContextFromValidation = valData.extracted_source_context;
+            extractedSourceContextFromValidation = (extractedSourceContextFromValidation ? `${extractedSourceContextFromValidation}\n\n` : '') + valData.extracted_source_context;
           }
         }
       } catch (err) {
@@ -1464,9 +1500,32 @@ export default function FacultyStudioPage() {
       setSessionPackage(null);
     }
 
-    const validUrls = sourceUrls.map(u => u.trim()).filter(Boolean);
+    const rawUrlsList = sourceUrls.map(u => u.trim()).filter(Boolean);
+    const validUrls: string[] = [];
+    let inlineSourceContext = '';
+
+    rawUrlsList.forEach(rawItem => {
+      const lines = rawItem.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+      lines.forEach(line => {
+        const urlMatch = line.match(/(https?:\/\/[^\s]+|[a-zA-Z0-9-]+\.(?:netlify\.app|com|org|edu|de|io|ai|app|co|be)[^\s]*)/i);
+        if (urlMatch) {
+          validUrls.push(urlMatch[0]);
+          inlineSourceContext += `${line}\n`;
+        } else if (line.length >= 3) {
+          inlineSourceContext += `${line}\n`;
+        }
+      });
+    });
+
+    if (topic && (topic.includes('\n') || topic.includes('http') || topic.includes(':'))) {
+      inlineSourceContext += `\n${topic}\n`;
+    }
+
     const formData = new FormData();
     formData.append('language', activeLang || selectedLanguage || 'French');
+    if (inlineSourceContext.trim()) {
+      formData.append('extracted_source_context', inlineSourceContext);
+    }
 
     // Dynamic level and duration resolution based on institutionType
     let effectiveLevel: string = selectedLevel;

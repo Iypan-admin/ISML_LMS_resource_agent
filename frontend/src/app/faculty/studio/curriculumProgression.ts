@@ -89,6 +89,7 @@ export interface DayCurriculumItem {
     speaking_prompt: { situation: string; guiding_cues: string[]; sample_model: string };
     writing_task: { task: string; rubric_summary: string };
   };
+  source_reference_url?: string;
 }
 
 /**
@@ -248,25 +249,32 @@ Language: **${language}** • Certified CEFR **${level}** • Topic: **${baseTop
           task: `Write a short 50-75 word paragraph in ${language} describing ${rawDay.day_topic} using today's target structures.`,
           rubric_summary: `Scored out of 100 on Grammatical Accuracy (40%), Lexical Range (30%), and Communicative Task Completion (30%) by the ISML LSRW Evaluation Agent.`
         }
-      }
+      },
+      source_reference_url: rawDay.source_reference_url || undefined
     };
   }
 
   // ---------------------------------------------------------------------------
   // 2. DYNAMIC INPUT-GROUNDED SYLLABUS SYNTHESIZER
-  // Completely grounded in LLM analysis findings and extracted video/source transcripts
+  // Completely grounded in LLM analysis findings, extracted video/source transcripts, and resource libraries
   // ---------------------------------------------------------------------------
   const planInfo = sessionPackage?.session_plan;
   const lsrwInfo = sessionPackage?.student_lsrw;
   const rawDays = planInfo?.day_wise_syllabus || [];
-  const sourceContext = sessionPackage?.extracted_source_context || sessionPackage?.raw_source_context || '';
+  const sourceContext = sessionPackage?.extracted_source_context || 
+    sessionPackage?.raw_source_context || 
+    (baseTopic && (baseTopic.includes('\n') || baseTopic.includes('http')) ? baseTopic : '') || 
+    '';
 
-  // Extract dynamic linguistic evidence from user uploaded video transcript / web material
+  // Extract dynamic linguistic evidence from user uploaded video transcript / web material / resource library
   const parsedSourceTopics: string[] = [];
+  const parsedSourceUrls: Record<string, string> = {};
   const parsedSourceVocab: Array<{ word: string; meaning: string; pronunciation?: string; example_sentence?: string }> = [];
   const parsedSourceDialogues: string[] = [];
 
-  if (sourceContext && sourceContext.trim().length > 30) {
+  const urlPattern = /(https?:\/\/[^\s]+|[a-zA-Z0-9-]+\.(?:netlify\.app|com|org|edu|de|io|ai|app|co|be)[^\s]*)/i;
+
+  if (sourceContext && sourceContext.trim().length > 10) {
     // 1. Clean transcript text and split into logical lines
     const lines = sourceContext
       .split(/\n+|\.\s+/)
@@ -279,35 +287,64 @@ Language: **${language}** • Certified CEFR **${level}** • Topic: **${baseTop
       const line = rawLine.trim();
       if (!line) return;
 
-      // Detect Headings (Markdown # or numbered 1.1 / Section / Chapter / Module)
-      let clean = line
-        .replace(/^#{1,6}\s+/, "")
-        .replace(/^[\d\s\.\-\:\*\•]+/, "")
-        .replace(/\.(docx|doc|pdf|txt|pptx|xlsx|csv|zip)\b/gi, "")
-        .replace(/_FINAL_V\d+|_V\d+|\(1\)|\(\d+\)/gi, "")
-        .replace(/[_\-]+/g, " ")
-        .trim();
-
       const isFileNoise = /\.(docx|doc|pdf|txt|pptx|xlsx|csv)\b/i.test(line) ||
         /^(file|document|upload|tutor|material)\s*['"\d]/i.test(line) ||
         /(_v\d+|_final|sample_question|question_paper|sample_template|template|neet|cbt|bulk_import)/i.test(line);
 
-      // Filter exam noise, MCQ choices (e.g. 'A Nucleus', 'B Ribosome', 'Option C', 'Answer: C'), marks, single letters
-      const isMcqChoice = /^([A-D]\s+|[A-D]\)|Option\s+[A-D]|Answer\s*:?|Question\s*\d+|Q\d+)/i.test(clean) ||
-        /^(Format:|Single-choice|MCQs|Biology|Physics|Chemistry|Marks)/i.test(clean);
+      const isRawDevNoise = /^(Day\s*\d+|Daily\s*Report|Sprint|Status|Release|Report|Log|Summary|Meeting|Notes|Checklist|Overview|Draft|Version|Changelog)/i.test(line) ||
+        /(day\s*\d+\s*report|daily\s*standup|git\s*commit|pull\s*request|issue|jira|branch)/i.test(line);
 
-      const isRawDevNoise = /^(Day\s*\d+|Daily\s*Report|Sprint|Status|Release|Report|Log|Summary|Meeting|Notes|Checklist|Overview|Draft|Version|Changelog)/i.test(clean) ||
-        /(day\s*\d+\s*report|daily\s*standup|git\s*commit|pull\s*request|issue|jira|branch)/i.test(clean);
+      // Check URL match
+      const urlMatch = line.match(urlPattern);
+      let detectedTopic = '';
+      let detectedUrl = '';
 
-      const isDocHeaderNoise = isFileNoise || isMcqChoice || isRawDevNoise || /(isml|faculty|student|master|curriculum|blueprint|edition|multi-period|table of contents|contents|page|complete|scheduled unit|executive lecture|hour|mins|period \d+)/i.test(clean);
+      if (urlMatch) {
+        detectedUrl = urlMatch[0];
+        let titleBefore = line.substring(0, urlMatch.index).trim();
+        if (!titleBefore) {
+          titleBefore = line.substring(urlMatch.index! + urlMatch[0].length).trim();
+        }
+        titleBefore = titleBefore
+          .replace(/^[:\-–\•\*\#\d\.\s]+|[:\-–\•\*\#\s]+$/g, '')
+          .replace(/\.(docx|doc|pdf|txt|pptx|xlsx|csv|zip)\b/gi, "")
+          .replace(/_FINAL_V\d+|_V\d+|\(1\)|\(\d+\)/gi, "")
+          .trim();
 
-      if (clean.length >= 6 && clean.length <= 80 && !isDocHeaderNoise && !clean.endsWith("?") && !clean.includes("http")) {
-        if (!parsedSourceTopics.includes(clean)) {
-          parsedSourceTopics.push(clean);
+        if (titleBefore && titleBefore.length >= 3) {
+          detectedTopic = titleBefore;
+        }
+      } else {
+        let clean = line
+          .replace(/^#{1,6}\s+/, "")
+          .replace(/^[\d\s\.\-\:\*\•]+/, "")
+          .replace(/\.(docx|doc|pdf|txt|pptx|xlsx|csv|zip)\b/gi, "")
+          .replace(/_FINAL_V\d+|_V\d+|\(1\)|\(\d+\)/gi, "")
+          .trim();
+
+        const isMcqChoice = /^([A-D]\s+|[A-D]\)|Option\s+[A-D]|Answer\s*:?|Question\s*\d+|Q\d+)/i.test(clean) ||
+          /^(Format:|Single-choice|MCQs|Biology|Physics|Chemistry|Marks)/i.test(clean);
+
+        if (clean.length >= 3 && clean.length <= 80 && !isMcqChoice && !clean.endsWith("?") && !clean.includes("http")) {
+          detectedTopic = clean;
         }
       }
+
+      const isHeaderNoise = isFileNoise || isRawDevNoise || 
+        /^(german|french|spanish|japanese|korean|english)?\s*(resource library|a1|a1\.1|a1\.2|a2|b1|b2|c1|c2|n5|n4|n3|n2|n1|topik\s*\d)$/i.test(detectedTopic) ||
+        /(isml|faculty|student|master|curriculum|blueprint|edition|multi-period|table of contents|contents|page|complete|scheduled unit|executive lecture|hour|mins|period \d+)/i.test(detectedTopic);
+
+      if (detectedTopic && detectedTopic.length >= 2 && !isHeaderNoise) {
+        if (!parsedSourceTopics.includes(detectedTopic)) {
+          parsedSourceTopics.push(detectedTopic);
+          if (detectedUrl) {
+            parsedSourceUrls[detectedTopic] = detectedUrl;
+          }
+        }
+      }
+
       // Dialogues extraction
-      if ((line.includes(':') || line.includes('«') || line.includes('"') || line.includes('?') || line.includes('!')) && line.length < 90 && !isDocHeaderNoise) {
+      if (!detectedUrl && (line.includes(':') || line.includes('«') || line.includes('"') || line.includes('?') || line.includes('!')) && line.length < 90 && !isHeaderNoise) {
         if (!parsedSourceDialogues.includes(line) && parsedSourceDialogues.length < 30) {
           parsedSourceDialogues.push(line);
         }
@@ -420,11 +457,12 @@ Language: **${language}** • Certified CEFR **${level}** • Topic: **${baseTop
   // Strictly authentic topic synthesis: Use clean parsed topics if authentic, otherwise CEFR language bank topics
   const cleanParsedTopics = parsedSourceTopics.filter(t => 
     !/(complete|multi-period|edition|master|curriculum|blueprint|comprehensive|isml|course|hours|table of contents)/i.test(t) &&
-    t.length > 8 && t.length < 80
+    t.length >= 2 && t.length < 80
   );
 
   // 100% PURE GROUNDING IN UPLOADED MATERIALS & LINKS (NO A1/B1 ARTIFICIAL OVERRIDES)
   let analyzedGrammar: string[] = [];
+  let currentDocUrl: string | undefined = undefined;
 
   // Authentic Language Acquisition Communicative Situations (Target Language Immersion)
   const COMMUNICATIVE_CURRICULUM_DOMAINS = [
@@ -462,9 +500,11 @@ Language: **${language}** • Certified CEFR **${level}** • Topic: **${baseTop
     let rawDocTopic = '';
     if (dayNumber <= cleanParsedTopics.length) {
       rawDocTopic = cleanParsedTopics[dayNumber - 1];
+      currentDocUrl = parsedSourceUrls[rawDocTopic];
     } else {
       // Progressive thematic elaboration: Never repeat identically across 120 days
       const baseDocTopic = cleanParsedTopics[(dayNumber - 1) % cleanParsedTopics.length];
+      currentDocUrl = parsedSourceUrls[baseDocTopic];
       rawDocTopic = `${baseDocTopic} — Part ${dayNumber}: ${comprehensiveSyllabus.topic}`;
     }
     rawDocTopic = rawDocTopic
@@ -608,20 +648,19 @@ Language: **${language}** • Certified CEFR **${level}** • Topic: **${baseTop
     .replace(/\b(A1|A1\.1|A1\.2|A2|B1|B2)\b/gi, "")
     .replace(/\(Applied Context:\s*/gi, "— ")
     .replace(/\)/g, "")
-    .replace(/[_\-]+/g, " ")
     .replace(/(Durkkas|EMS|Final|Sample Question Paper|MCQ Question Paper Sample|Template|DIPL-[A-Z0-9\-]+|Aruppukottai)/gi, "")
     .replace(/\s{2,}/g, " ")
     .trim();
 
   // If the extracted topic is too short or contains noise, fall back to certified CEFR curriculum topic
-  if (!cleanGrammarLabel || cleanGrammarLabel.length < 5 || /(durkkas|syntactic rule|dipl-|aruppukottai|pdf\b|tutor upload|id name|branch|employee|workforce|private limited|choice|option)/i.test(cleanGrammarLabel)) {
+  if (!cleanGrammarLabel || cleanGrammarLabel.length < 2 || /(durkkas|syntactic rule|dipl-|aruppukottai|pdf\b|tutor upload|id name|branch|employee|workforce|private limited|choice|option)/i.test(cleanGrammarLabel)) {
     cleanGrammarLabel = comprehensiveSyllabus.topic || linguisticUnit.topic || `Linguistic Milestones in ${language}`;
   }
 
   // 15+ Yrs Language Acquisition Specialist: Master 120-Period Progression Fallbacks
   const specialistFallbackTopic = comprehensiveSyllabus.topic || linguisticUnit.topic || `Linguistic Competency Period ${dayNumber} in ${language}`;
 
-  if (!cleanGrammarLabel || cleanGrammarLabel.length < 5 || /(docx|pdf|txt|template|sample|neet|mcq|import|test|options|choice)/i.test(cleanGrammarLabel) || /^([A-D]\s+|[A-D]\))/i.test(cleanGrammarLabel)) {
+  if (!cleanGrammarLabel || cleanGrammarLabel.length < 2 || /(docx|pdf|txt|template|sample|neet|mcq|import|test|options|choice)/i.test(cleanGrammarLabel) || /^([A-D]\s+|[A-D]\))/i.test(cleanGrammarLabel)) {
     cleanGrammarLabel = specialistFallbackTopic;
   }
   const unitTopic = `${unitLabel}: ${cleanGrammarLabel}`;
@@ -708,7 +747,7 @@ Language: **${language}** • Certified CEFR **${level}** • Topic: **${baseTop
   const sampleSentence2 = currentVocabList[1]?.example_sentence || `Could you please repeat that? Thank you.`;
   const sampleSentence3 = currentVocabList[2]?.example_sentence || `I am practicing ${language} today.`;
 
-  const studyNotesMarkdown = `### 📘 ${unitLabel}: ${cleanGrammarLabel}
+  let studyNotesMarkdown = `### 📘 ${unitLabel}: ${cleanGrammarLabel}
 **Language**: ${language} • **Level**: CEFR ${level} • **Duration**: ${unitMinutes} Minutes
 
 ---
@@ -741,6 +780,10 @@ ${classroomDialogues.slice(0, 4).map(d => `> ${d}`).join('\n>\n')}
 2. **Polite Register**: Always use friendly polite phrases like *"Please"* and *"Thank you"* when speaking with classmates and teachers.
 3. **Daily Habit**: Practice speaking the model dialogue aloud for 2 minutes to gain oral confidence.`;
 
+  if (currentDocUrl) {
+    studyNotesMarkdown += `\n\n---\n\n#### 🔗 Primary Reference & Study Resource\n- **Target Lesson Resource:** [${cleanGrammarLabel}](${currentDocUrl})`;
+  }
+
   return {
     day_number: dayNumber,
     month_number: monthNumber,
@@ -760,6 +803,7 @@ ${classroomDialogues.slice(0, 4).map(d => `> ${d}`).join('\n>\n')}
     in_class_exercises: inClassExercises,
     exercise_solutions: exerciseSolutions,
     homework_tasks: homeworkTasks,
+    source_reference_url: currentDocUrl,
     // Dual Output Architecture: Populated Dedicated Teacher Breakdown
     teacher_lesson_breakdown: {
       allocated_minutes: unitMinutes,

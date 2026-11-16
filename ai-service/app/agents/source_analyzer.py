@@ -273,21 +273,41 @@ RULES:
         import re
         lines = [line.strip() for line in text.split('\n') if line.strip()]
 
-        # 1. Main topics from section labels, headings or key thematic phrases
+        # 1. Main topics from section labels, headings, resource lists or key thematic phrases
         discovered_topics = []
+        url_regex = re.compile(r'(https?://[^\s]+|[a-zA-Z0-9-]+\.(?:netlify\.app|com|org|edu|de|io|ai|app|co|be)[^\s]*)', re.I)
+
         for line in lines:
-            if line.startswith('[') and ']' in line:
-                label = line.split(']')[0].strip('[')
+            line_str = line.strip()
+            if not line_str:
+                continue
+
+            # Check if line contains a URL + topic (e.g. "Numbers: https://youtube.com/...")
+            url_m = url_regex.search(line_str)
+            if url_m:
+                title_cand = line_str[:url_m.start()].strip()
+                if not title_cand:
+                    title_cand = line_str[url_m.end():].strip()
+                title_cand = re.sub(r'^[:\-–\•\*\#\d\.\s]+|[:\-–\•\*\#\s]+$', '', title_cand).strip()
+                title_cand = re.sub(r'\.(docx|doc|pdf|txt|pptx|xlsx|csv|zip)\b', '', title_cand, flags=re.I).strip()
+                if title_cand and len(title_cand) >= 2 and not re.search(r'^(german|french|spanish|japanese|korean|english)?\s*(resource library|a1|a1\.1|a1\.2|a2|b1|b2|c1|c2|n5|n4|n3|n2|n1|topik\s*\d)$', title_cand, re.I):
+                    if title_cand not in discovered_topics:
+                        discovered_topics.append(title_cand)
+                continue
+
+            if line_str.startswith('[') and ']' in line_str:
+                label = line_str.split(']')[0].strip('[')
                 if not re.search(r'(tutor upload|reference #|uploaded pdf|uploaded doc|web content|youtube|\.pdf|\.docx)', label, re.I):
-                    if len(label) >= 4 and label not in discovered_topics:
+                    if len(label) >= 3 and label not in discovered_topics:
                         discovered_topics.append(label)
-            elif line.startswith('#'):
-                header = line.lstrip('#').strip()
-                if header and len(header) >= 4 and header not in discovered_topics:
+            elif line_str.startswith('#'):
+                header = line_str.lstrip('#').strip()
+                if header and len(header) >= 3 and header not in discovered_topics:
                     discovered_topics.append(header)
-            elif len(line) >= 5 and len(line) <= 60 and not line.endswith(('.', ':', ';', ',')):
-                clean_l = re.sub(r'^[0-9\.\-\*\•\s]+', '', line).strip()
-                if len(clean_l) >= 5 and clean_l not in discovered_topics and not re.search(r'(tutor upload|page \d|http|\.pdf|\.docx|report|standup|table of contents|contents)', clean_l, re.I):
+            elif len(line_str) >= 3 and len(line_str) <= 80:
+                clean_l = re.sub(r'^[0-9\.\-\*\•\s]+', '', line_str).strip()
+                clean_l = re.sub(r'[:\-–\s]+$', '', clean_l).strip()
+                if len(clean_l) >= 3 and clean_l not in discovered_topics and not re.search(r'^(german resource library|french resource library|spanish resource library|resource library|a1|a1\.1|a1\.2|a2|b1|b2|c1|c2|tutor upload|page \d|http|\.pdf|\.docx|report|standup|table of contents|contents)$', clean_l, re.I):
                     discovered_topics.append(clean_l)
 
         if not discovered_topics:
@@ -380,7 +400,7 @@ RULES:
         )
 
         return SourceAnalysis(
-            main_topics=discovered_topics[:5],
+            main_topics=discovered_topics[:120],
             subtopics=[f"{topic} Unit {i+1}" for i in range(len(grammar_items) or 3)],
             vocabulary_items=vocab_items,
             grammar_structures=grammar_items,

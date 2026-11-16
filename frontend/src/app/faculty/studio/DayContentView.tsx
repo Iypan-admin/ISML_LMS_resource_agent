@@ -397,6 +397,21 @@ export function DayContentView({
             <h3 className="text-base sm:text-lg font-black text-slate-900 mt-1 tracking-tight">
               {effectiveDay.day_topic}
             </h3>
+            {effectiveDay.source_reference_url && (
+              <div className="mt-1.5 flex items-center gap-1.5">
+                <a
+                  href={effectiveDay.source_reference_url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-blue-700 hover:text-blue-900 bg-blue-50/90 hover:bg-blue-100 border border-blue-200/80 px-2.5 py-0.5 rounded-md transition-colors max-w-lg truncate shadow-2xs"
+                  title={effectiveDay.source_reference_url}
+                >
+                  <span className="text-[12px]">🔗</span>
+                  <span className="font-bold">Resource:</span>
+                  <span className="truncate underline font-mono text-[10px]">{effectiveDay.source_reference_url}</span>
+                </a>
+              </div>
+            )}
           </div>
         </div>
 

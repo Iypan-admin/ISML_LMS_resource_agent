@@ -52,7 +52,7 @@ async def validate_session_inputs(
 
     # 1. Read files and check text snippets for language detection
     all_files = tutor_files or []
-    for idx, t_file in enumerate(all_files[:10]):
+    for idx, t_file in enumerate(all_files[:30]):
         if not t_file or not t_file.filename:
             continue
         try:
@@ -93,7 +93,7 @@ async def validate_session_inputs(
 
     # 2. Check source URLs
     all_urls = [u.strip() for u in (source_urls or []) if u and u.strip()]
-    for idx, url in enumerate(all_urls[:5]):
+    for idx, url in enumerate(all_urls[:100]):
         if "youtube.com" in url or "youtu.be" in url:
             yt_res = await ContentExtractor.extract_from_youtube(url)
             if yt_res.get("success"):
@@ -120,12 +120,25 @@ async def validate_session_inputs(
                 })
                 valid_source_count += 1
             else:
-                unreachable_urls.append({
-                    "url": url,
-                    "type": "Web Link",
-                    "reason": web_res.get("reason", "Access blocked by website security or network timeout"),
-                    "error": web_res.get("error", "Failed to scrape page")
-                })
+                # Even if scraping is restricted by Cloudflare/Facebook/redirects, extract title/topic from URL!
+                import urllib.parse
+                parsed_u = urllib.parse.urlparse(url)
+                path_part = parsed_u.path.strip("/").split("/")[-1]
+                path_part = urllib.parse.unquote(path_part).replace("-", " ").replace("_", " ")
+                clean_topic_hint = re.sub(r'^(a1|a2|b1|b2)\s*', '', path_part, flags=re.I).strip()
+                if clean_topic_hint and len(clean_topic_hint) >= 3 and not re.search(r'^(url|watch|shorts)$', clean_topic_hint, re.I):
+                    text_samples.append({
+                        "name": f"Resource Reference #{idx + 1} ({clean_topic_hint.title()})",
+                        "content": f"Topic: {clean_topic_hint.title()}\nReference URL: {url}"
+                    })
+                    valid_source_count += 1
+                else:
+                    unreachable_urls.append({
+                        "url": url,
+                        "type": "Web Link",
+                        "reason": web_res.get("reason", "Access blocked by website security or network timeout"),
+                        "error": web_res.get("error", "Failed to scrape page")
+                    })
 
     # 3. Check language mismatch
     is_lang_ok, mismatch_err = ContentExtractor.validate_language_alignment(language, text_samples)
@@ -140,8 +153,8 @@ async def validate_session_inputs(
             message=mismatch_err or "Language mismatch detected"
         )
 
-    # 4. If any URLs unreachable, notify tutor
-    if unreachable_urls:
+    # 4. If any URLs unreachable but some sources were verified, do not block the user
+    if unreachable_urls and valid_source_count == 0:
         return InputValidationResult(
             is_valid=False,
             language_mismatch=False,
@@ -160,8 +173,8 @@ async def validate_session_inputs(
     return InputValidationResult(
         is_valid=True,
         language_mismatch=False,
-        has_unreachable_urls=False,
-        unreachable_urls=[],
+        has_unreachable_urls=bool(unreachable_urls),
+        unreachable_urls=unreachable_urls,
         valid_source_count=valid_source_count,
         message="All uploaded materials and reference links verified successfully.",
         extracted_source_context=combined_extracted_text
@@ -345,7 +358,7 @@ async def generate_session_package(
     if source_url and source_url.strip() and source_url not in all_urls:
         all_urls.append(source_url.strip())
 
-    for idx, raw_url in enumerate(all_urls[:5]):
+    for idx, raw_url in enumerate(all_urls[:100]):
         url = raw_url.strip()
         if not url:
             continue
@@ -384,10 +397,20 @@ async def generate_session_package(
                 sources_to_audit.append({"name": f"Web Article #{idx+1} ({url})", "content": content})
                 extracted_source_context += f"\n[Reference #{idx+1} Web Content & Educational Article - {web_res.get('title')}]:\n{content[:15000]}"
             else:
-                unreachable_urls.append({
-                    "url": url,
-                    "reason": web_res.get("reason", "Security restriction or blocked"),
-                })
+                # Even if scraping is blocked (Cloudflare / Facebook / Google redirect), preserve topic and URL!
+                import urllib.parse
+                parsed_u = urllib.parse.urlparse(url)
+                path_part = parsed_u.path.strip("/").split("/")[-1]
+                path_part = urllib.parse.unquote(path_part).replace("-", " ").replace("_", " ")
+                clean_topic_hint = re.sub(r'^(a1|a2|b1|b2)\s*', '', path_part, flags=re.I).strip()
+                if clean_topic_hint and len(clean_topic_hint) >= 3 and not re.search(r'^(url|watch|shorts)$', clean_topic_hint, re.I):
+                    sources_to_audit.append({"name": f"Web Reference #{idx+1} ({clean_topic_hint.title()})", "content": f"Topic: {clean_topic_hint.title()}\nURL: {url}"})
+                    extracted_source_context += f"\n[Reference #{idx+1} Web Topic - {clean_topic_hint.title()}]:\nTarget Syllabus Milestone: {clean_topic_hint.title()}\nReference Material Link: {url}"
+                else:
+                    unreachable_urls.append({
+                        "url": url,
+                        "reason": web_res.get("reason", "Security restriction or blocked"),
+                    })
 
     # Strict Validation 1: Per-Item Language Mismatch Audit
     is_lang_ok, mismatch_err = ContentExtractor.validate_language_alignment(language, sources_to_audit)
@@ -402,8 +425,8 @@ async def generate_session_package(
             }
         )
 
-    # Strict Validation 2: If unreachable URLs exist and tutor has NOT explicitly opted to skip
-    if unreachable_urls and not skip_unreachable:
+    # Strict Validation 2: If unreachable URLs exist and NO valid sources were found
+    if unreachable_urls and len(sources_to_audit) == 0 and not skip_unreachable:
         logger.warning(f"Generation paused due to unreachable URLs: {unreachable_urls}")
         raise HTTPException(
             status_code=422,
