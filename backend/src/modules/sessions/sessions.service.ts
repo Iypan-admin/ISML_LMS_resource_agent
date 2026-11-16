@@ -91,6 +91,17 @@ export class SessionsService {
     }
   }
 
+  async clearAllPackages() {
+    try {
+      await this.prisma.sessionVectorChunk.deleteMany({});
+      await this.prisma.knowledgeClaim.deleteMany({});
+      const res = await this.prisma.sessionPackage.deleteMany({});
+      return { success: true, count: res.count, message: `All ${res.count} session packages and vector chunks deleted from database.` };
+    } catch (err: any) {
+      return { success: false, error: err.message };
+    }
+  }
+
   // 📦 Vector Chunking Services: Store & Retrieve Split Source Evidence
   async saveChunks(sessionId: string, chunks: Array<{
     sourceType: string;

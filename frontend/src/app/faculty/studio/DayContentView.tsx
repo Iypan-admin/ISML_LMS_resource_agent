@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import React, { useState } from 'react';
 import { Loader2 } from 'lucide-react';
@@ -82,7 +82,9 @@ export function DayContentView({
   const [activeLsrwTab, setActiveLsrwTab] = useState<'ALL' | 'LISTENING' | 'SPEAKING' | 'READING' | 'WRITING'>('ALL');
   const [lastModifiedSection, setLastModifiedSection] = useState<string | null>(null);
   // 📎 Multi-file persistent memory attachment state
-  const [attachedChatFiles, setAttachedChatFiles] = useState<Array<{ name: string; size: number; content?: string }>>([]);
+  const [attachedChatFiles, setAttachedChatFiles] = useState<Array<{ name: string; size: number; content?: string; pages?: number; wordCount?: number }>>([]);
+  const [isExtractingChatFile, setIsExtractingChatFile] = useState(false);
+  const [extractingFileName, setExtractingFileName] = useState('');
   const chatFilePickerRef = React.useRef<HTMLInputElement | null>(null);
 
   // 💬 Multi-turn Continuous Conversation History (ChatGPT / Gemini / Claude Style)
@@ -303,6 +305,68 @@ export function DayContentView({
       a.click();
       document.body.removeChild(a);
     }
+  };
+
+  // 📄 Autonomous Document Ingestion for Chat Copilot (PDF, DOCX, TXT, CSV, PPTX)
+  const handleProcessIncomingChatFiles = async (fileList: File[]) => {
+    if (!fileList || fileList.length === 0) return;
+    setIsExtractingChatFile(true);
+
+    const processed: Array<{ name: string; size: number; content?: string; pages?: number; wordCount?: number }> = [];
+
+    for (const f of fileList) {
+      setExtractingFileName(f.name);
+      let textContent = '';
+      let pageCount = 1;
+      let wordCount = 0;
+
+      const ext = f.name.slice(f.name.lastIndexOf('.')).toLowerCase();
+
+      // Textual formats
+      if (['.txt', '.md', '.csv', '.json', '.html', '.tsv', '.xml'].includes(ext) || f.type.includes('text')) {
+        try {
+          textContent = await f.text();
+          wordCount = textContent.split(/\s+/).filter(Boolean).length;
+        } catch (_) {}
+      } else {
+        // Binary formats (PDF, DOCX, PPTX)
+        try {
+          const fd = new FormData();
+          fd.append('files', f);
+          const res = await fetchWithEndpointFallback('/api/v1/sessions/extract-material', {
+            method: 'POST',
+            body: fd
+          });
+          if (res.ok) {
+            const data = await res.json();
+            if (data.extracted_materials && data.extracted_materials.length > 0) {
+              const item = data.extracted_materials[0];
+              textContent = item.text || '';
+              pageCount = item.pages || 1;
+              wordCount = item.word_count || (textContent.split(/\s+/).filter(Boolean).length);
+            }
+          }
+        } catch (err) {
+          console.error('Failed to extract material from backend:', err);
+        }
+      }
+
+      if (!textContent) {
+        textContent = `[Uploaded Document Reference: ${f.name} (${(f.size / 1024).toFixed(0)} KB)]`;
+      }
+
+      processed.push({
+        name: f.name,
+        size: f.size,
+        content: textContent,
+        pages: pageCount,
+        wordCount: wordCount
+      });
+    }
+
+    setAttachedChatFiles(prev => [...prev, ...processed]);
+    setIsExtractingChatFile(false);
+    setExtractingFileName('');
   };
 
   return (
@@ -1871,11 +1935,29 @@ export function DayContentView({
 
               {/* Chat & Prompt Transformation Box */}
               <div className="space-y-2.5">
+                {/* Book & Material Ingestion Indicator */}
+                {isExtractingChatFile && (
+                  <div className="flex items-center gap-2 p-2.5 bg-indigo-50 border border-indigo-200 rounded-xl text-xs text-indigo-900 shadow-2xs animate-pulse">
+                    <Loader2 className="w-4 h-4 animate-spin text-indigo-600 shrink-0" />
+                    <span>
+                      <strong>Digesting Material:</strong> Extracting full text, chapters, verbs & grammar rules from <em>{extractingFileName}</em> into curriculum memory...
+                    </span>
+                  </div>
+                )}
+
                 <form
+                  onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); }}
+                  onDrop={async (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    if (e.dataTransfer?.files && e.dataTransfer.files.length > 0) {
+                      await handleProcessIncomingChatFiles(Array.from(e.dataTransfer.files));
+                    }
+                  }}
                   onSubmit={async (e) => {
                     e.preventDefault();
                     if (!chatInput.trim() && attachedChatFiles.length === 0) return;
-                    if (chatLoading) return;
+                    if (chatLoading || isExtractingChatFile) return;
                     const refinedPrompt = chatInput.trim();
                     const promptTime = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
                     const userMsgId = 'user-' + Date.now();
@@ -1932,6 +2014,20 @@ export function DayContentView({
                       } catch (_) {}
                     }
 
+                    let previousSessionMaterials = '';
+                    try {
+                      previousSessionMaterials = localStorage.getItem(`isml_session_materials_${sid}`) || '';
+                    } catch (_) {}
+
+                    if (filesToProcess.length > 0 && typeof window !== 'undefined') {
+                      try {
+                        const newText = filesToProcess.map(f => `[Uploaded Material: ${f.name}]:\n${f.content || ''}`).join('\n\n');
+                        const merged = [previousSessionMaterials, newText].filter(Boolean).join('\n\n');
+                        localStorage.setItem(`isml_session_materials_${sid}`, merged.slice(0, 150000));
+                        previousSessionMaterials = merged;
+                      } catch (_) {}
+                    }
+
                     try {
                       const filesPayload = filesToProcess.map(f => ({
                         name: f.name,
@@ -1942,6 +2038,7 @@ export function DayContentView({
                       const cumulativeSourceContext = [
                         sessionPackage?.raw_source_context || '',
                         sessionPackage?.extracted_source_summary || '',
+                        previousSessionMaterials,
                         filesToProcess.map(f => `[File: ${f.name}]: ${f.content || ''}`).join('\n\n')
                       ].filter(Boolean).join('\n\n');
 
@@ -2172,14 +2269,18 @@ export function DayContentView({
                         <span>Attached Memory ({attachedChatFiles.length}):</span>
                       </span>
                       {attachedChatFiles.map((file, fIdx) => (
-                        <div key={fIdx} className="inline-flex items-center gap-1 bg-white border border-indigo-200 px-2 py-0.5 rounded-lg text-[10px] text-slate-800 shadow-2xs font-medium">
+                        <div key={fIdx} className="inline-flex items-center gap-1 bg-white border border-indigo-200 px-2.5 py-1 rounded-lg text-[10px] text-slate-800 shadow-2xs font-medium">
                           <FileText className="w-3 h-3 text-indigo-600 shrink-0" />
-                          <span className="truncate max-w-[120px]">{file.name}</span>
-                          <span className="text-slate-400 font-mono text-[9px]">({(file.size / 1024).toFixed(0)}KB)</span>
+                          <span className="truncate max-w-[150px] font-semibold">{file.name}</span>
+                          <span className="text-emerald-700 bg-emerald-50 px-1 py-0.2 rounded font-mono text-[9px] font-bold">
+                            {(file as any).pages && (file as any).pages > 1 ? `${(file as any).pages} pgs • ` : ''}
+                            {(file as any).wordCount ? `${(file as any).wordCount.toLocaleString()} words` : `${(file.size / 1024).toFixed(0)}KB`}
+                          </span>
                           <button
                             type="button"
                             onClick={() => setAttachedChatFiles(prev => prev.filter((_, idx) => idx !== fIdx))}
-                            className="text-slate-400 hover:text-rose-600 ml-0.5 font-bold cursor-pointer"
+                            className="text-slate-400 hover:text-rose-600 ml-1 font-bold cursor-pointer"
+                            title="Remove file"
                           >
                             <X className="w-2.5 h-2.5" />
                           </button>
@@ -2204,29 +2305,26 @@ export function DayContentView({
                     accept=".pdf,.txt,.docx,.csv,.doc,.xlsx,.pptx,.ppt,audio/*,image/*"
                     onChange={async (e) => {
                       if (!e.target.files) return;
-                      const fileList = Array.from(e.target.files);
-                      const processed: Array<{ name: string; size: number; content?: string }> = [];
-                      for (const f of fileList) {
-                        let textContent = '';
-                        try {
-                          if (f.type.includes('text') || f.name.endsWith('.txt') || f.name.endsWith('.csv') || f.name.endsWith('.json')) {
-                            textContent = await f.text();
-                          } else {
-                            textContent = `[Binary Document Attachment: ${f.name}, Size: ${(f.size / 1024).toFixed(1)} KB, Type: ${f.type || 'document'}]`;
-                          }
-                        } catch (_) {
-                          textContent = `[Uploaded File Reference: ${f.name}]`;
-                        }
-                        processed.push({
-                          name: f.name,
-                          size: f.size,
-                          content: textContent
-                        });
-                      }
-                      setAttachedChatFiles(prev => [...prev, ...processed]);
+                      await handleProcessIncomingChatFiles(Array.from(e.target.files));
                       e.target.value = '';
                     }}
                   />
+
+                  {/* Top Action Bar for Chat: Upload Book Button */}
+                  <div className="flex items-center justify-between pb-0.5">
+                    <button
+                      type="button"
+                      onClick={() => chatFilePickerRef.current?.click()}
+                      disabled={chatLoading || isExtractingChatFile}
+                      className="inline-flex items-center gap-1.5 px-3 py-1 bg-white hover:bg-indigo-50 border border-slate-300 hover:border-indigo-300 text-indigo-700 rounded-lg text-[11px] font-bold shadow-2xs transition-all cursor-pointer group"
+                    >
+                      <Paperclip className="w-3.5 h-3.5 text-indigo-600 group-hover:scale-110 transition-transform" />
+                      <span>+ Attach Book / Document to AI Memory</span>
+                    </button>
+                    <span className="text-[10px] text-slate-400">
+                      Drag & drop any PDF, DOCX or TXT file directly into chat
+                    </span>
+                  </div>
 
                   <div className="relative">
                     <textarea

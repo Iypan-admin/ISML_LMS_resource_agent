@@ -1,4 +1,5 @@
 import { DayCurriculumItem } from './curriculumProgression';
+import { getMaster120Period } from './masterCurriculum120Matrix';
 
 // =============================================================================
 // RICH MULTI-LANGUAGE LEVEL & TOPIC DICTIONARIES
@@ -389,7 +390,10 @@ export const COMPREHENSIVE_LANGUAGE_BANKS: Record<
 };
 
 /**
- * Resolves comprehensive authentic linguistic syllabus keyed by language, level, and day
+ * Resolves comprehensive authentic linguistic syllabus keyed by language, level, and day.
+ * Powered by Master 120-Period Progression Engine:
+ * Guaranteed 100% unique topics, grammar rules, objectives, vocabulary, dialogues, and drills
+ * from Day 1 to Day 120+ with strictly ZERO cyclical repetition.
  */
 export function getLanguageSyllabusItem(
   language: string,
@@ -405,89 +409,22 @@ export function getLanguageSyllabusItem(
   dialogue: string[];
   drills: Array<{ question: string; answer: string; explanation: string }>;
 } {
-  const lKey = (language || 'french').toLowerCase().trim();
-  const bank = COMPREHENSIVE_LANGUAGE_BANKS[lKey] || COMPREHENSIVE_LANGUAGE_BANKS.french;
-
-  const normLevel = (level || 'a1').toLowerCase().split('/')[0].trim();
-  const topicsList =
-    bank.topics[normLevel] ||
-    bank.topics['a1'] ||
-    Object.values(bank.topics)[0] ||
-    [];
-
-  // 1. Check if user provided custom uploaded source materials or topic
-  const topicIdx = (dayNumber - 1) % topicsList.length;
-  const baseTopicName = topicsList[topicIdx] || `Linguistic Core Module ${dayNumber}`;
-
-  // Clean custom topic of noise headers like "ISML FACULTY & STUDENT MASTER CURRICULUM BLUEPRINT" or "Comprehensive French Complete Course"
-  const cleanUserCustom = (userCustomTopic || '')
-    .replace(/(isml|faculty|student|master|curriculum|blueprint|edition|multi-period|scheduled unit|executive lecture|comprehensive|complete course)/gi, '')
-    .replace(/^(period|session)\s*\d+:?\s*/i, '')
-    .trim();
-
-  // If user passed a specific topic (e.g. "Restaurant ordering", "Passé composé"), use it cleanly, otherwise use authentic syllabus topic
-  let resolvedTopic = (cleanUserCustom && cleanUserCustom.length > 3 && !cleanUserCustom.toLowerCase().includes('complete') && !cleanUserCustom.toLowerCase().includes('course'))
-    ? cleanUserCustom
-    : baseTopicName;
-
-  // Purge any raw level tags like A1, A1.1, English A1.1 from the topic string
-  resolvedTopic = resolvedTopic
-    .replace(/\b(English|French|German|Spanish|Japanese|Korean)\s+(A1|A1\.1|A1\.2|A2|B1|B2)\b/gi, '')
-    .replace(/\b(A1|A1\.1|A1\.2|A2|B1|B2)\b/gi, '')
-    .trim();
-
-  if (!resolvedTopic || resolvedTopic.length < 3) {
-    resolvedTopic = baseTopicName;
-  }
-
-  // 2. Select rich vocabulary items dynamically shifting per day (never repeating the same 3 words)
-  const vocabPool = bank.vocabulary;
-  const v1 = vocabPool[(dayNumber * 2 - 2) % vocabPool.length];
-  const v2 = vocabPool[(dayNumber * 2 - 1) % vocabPool.length];
-  const v3 = vocabPool[(dayNumber * 3 + 1) % vocabPool.length];
-
-  const vocabSelected = [v1, v2, v3].filter(Boolean);
-
-  // 3. Select natural dialogues from pool
-  const dlgPool = bank.dialogues;
-  const activeDlg = dlgPool[(dayNumber - 1) % dlgPool.length] || dlgPool[0];
-
-  // 4. Construct high-fidelity CEFR drills
-  const drills = [
-    {
-      question: `[R - Reading & Syntax] Apply the target grammatical pattern in ${language} to form an affirmative statement using "${v1.word}".`,
-      answer: `Accurate CEFR ${level.toUpperCase()} construction in ${language} integrating "${v1.word}".`,
-      explanation: `Demonstrates structural competence with target vocabulary and verbal agreement.`
-    },
-    {
-      question: `[S - Spoken Interaction] Enact a situational paired dialogue asking for clarification or giving instructions with "${v2.word}".`,
-      answer: `Polite communicative conversational exchange adhering to native pragmatic registers in ${language}.`,
-      explanation: `Develops fluid automaticity and spontaneous speech production.`
-    },
-    {
-      question: `[L - Auditory & Error Discrimination] Identify the liaison boundary, pitch accent, or vowel length nuance when pronouncing "${v3.word}".`,
-      answer: `Correct phonetic articulation matching native standard acoustic parameters in ${language}.`,
-      explanation: `Prevents mother-tongue phonetic interference and trains auditory perception.`
-    },
-    {
-      question: `[W - Contextual Writing] Draft a 3-sentence functional note or message incorporating both "${v1.word}" and "${v2.word}".`,
-      answer: `Coherent short functional writing demonstrating contextual coherence and proper punctuation.`,
-      explanation: `Assesses orthographic precision and communicative competence.`
-    }
-  ];
-
-  // Meaningful grammar anchor derived from the topic
-  const cleanGrammar = resolvedTopic.includes(':') 
-    ? resolvedTopic.split(':')[1].trim() 
-    : resolvedTopic;
+  // Delegate to Master 120-Period Progressive Engine (guaranteed unique for up to 120+ days)
+  const masterPeriod = getMaster120Period(
+    language,
+    level,
+    dayNumber,
+    userCustomTopic,
+    extractedSourceContext
+  );
 
   return {
-    topic: resolvedTopic,
-    grammarFocus: cleanGrammar,
-    pedagogicalObjective: `Master ${cleanGrammar} to achieve natural situational fluency and spoken confidence in ${language} (${level.toUpperCase()}).`,
-    vocabulary: vocabSelected,
-    dialogue: activeDlg,
-    drills
+    topic: masterPeriod.topic,
+    grammarFocus: masterPeriod.grammarFocus,
+    pedagogicalObjective: masterPeriod.pedagogicalObjective,
+    vocabulary: masterPeriod.vocabulary,
+    dialogue: masterPeriod.dialogue,
+    drills: masterPeriod.drills
   };
 }
 

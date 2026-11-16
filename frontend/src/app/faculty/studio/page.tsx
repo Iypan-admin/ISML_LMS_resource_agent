@@ -160,6 +160,104 @@ export default function FacultyStudioPage() {
     }
   };
 
+  const handleStep4AddMaterials = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!e.target.files || e.target.files.length === 0) return;
+    const files = Array.from(e.target.files);
+    e.target.value = '';
+
+    setIsExtractingHeaderMaterials(true);
+    setUploadedFiles(prev => [...prev, ...files].slice(0, 20));
+
+    try {
+      const sid = sessionPackage?.session_id || proposedPlanner?.session_id || 'default';
+      let extractedCombined = '';
+      let totalPgs = 0;
+      let totalWords = 0;
+
+      for (const f of files) {
+        const ext = f.name.slice(f.name.lastIndexOf('.')).toLowerCase();
+        let txt = '';
+        let pgs = 1;
+        let wrds = 0;
+
+        if (['.txt', '.md', '.csv', '.json', '.html', '.tsv', '.xml'].includes(ext) || f.type.includes('text')) {
+          try {
+            txt = await f.text();
+            wrds = txt.split(/\s+/).filter(Boolean).length;
+          } catch (_) {}
+        } else {
+          try {
+            const fd = new FormData();
+            fd.append('files', f);
+            const res = await fetchWithEndpointFallback('/api/v1/sessions/extract-material', {
+              method: 'POST',
+              body: fd
+            });
+            if (res.ok) {
+              const data = await res.json();
+              if (data.extracted_materials && data.extracted_materials.length > 0) {
+                txt = data.extracted_materials[0].text || '';
+                pgs = data.extracted_materials[0].pages || 1;
+                wrds = data.extracted_materials[0].word_count || (txt.split(/\s+/).filter(Boolean).length);
+              }
+            }
+          } catch (err) {
+            console.error('Error extracting material in step 4:', err);
+          }
+        }
+
+        if (txt) {
+          extractedCombined += `\n\n[Uploaded Material: ${f.name}]:\n${txt}`;
+          totalPgs += pgs;
+          totalWords += wrds;
+        }
+      }
+
+      if (typeof window !== 'undefined' && extractedCombined) {
+        try {
+          const prevStored = localStorage.getItem(`isml_session_materials_${sid}`) || '';
+          const merged = [prevStored, extractedCombined].filter(Boolean).join('\n\n');
+          localStorage.setItem(`isml_session_materials_${sid}`, merged.slice(0, 200000));
+
+          const localArchiveStr = localStorage.getItem('isml_saved_sessions_archive');
+          if (localArchiveStr) {
+            const archive = JSON.parse(localArchiveStr);
+            const updatedArchive = archive.map((it: any) => {
+              if ((it.sessionId || it.id) === sid) {
+                const existingRefs = it.tutorFileRef ? it.tutorFileRef.split(',').map((s: string) => s.trim()).filter(Boolean) : [];
+                const newNames = files.map(f => f.name);
+                const combined = Array.from(new Set([...existingRefs, ...newNames])).join(', ');
+                return { ...it, tutorFileRef: combined };
+              }
+              return it;
+            });
+            localStorage.setItem('isml_saved_sessions_archive', JSON.stringify(updatedArchive));
+          }
+        } catch (_) {}
+      }
+
+      setSessionPackage((prev: any) => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          raw_source_context: [prev.raw_source_context || '', extractedCombined].filter(Boolean).join('\n\n')
+        };
+      });
+
+      const fileLabel = files.length === 1 ? `"${files[0].name}"` : `${files.length} materials`;
+      const stats = totalWords > 0 ? ` (${totalPgs > 1 ? `${totalPgs} pgs • ` : ''}${totalWords.toLocaleString()} words)` : '';
+      setHeaderMaterialToast(`✅ Successfully ingested ${fileLabel}${stats} into curriculum memory!`);
+      setTimeout(() => setHeaderMaterialToast(null), 6000);
+
+    } catch (err) {
+      console.error('Error adding more materials:', err);
+      setHeaderMaterialToast(`Added ${files.length} file(s) to curriculum resources.`);
+      setTimeout(() => setHeaderMaterialToast(null), 4000);
+    } finally {
+      setIsExtractingHeaderMaterials(false);
+    }
+  };
+
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault();
     e.stopPropagation();
@@ -243,6 +341,9 @@ export default function FacultyStudioPage() {
   const [chatAttachedFiles, setChatAttachedFiles] = useState<File[]>([]);
   const chatFileInputRef = useRef<HTMLInputElement | null>(null);
   const heroFileInputRef = useRef<HTMLInputElement | null>(null);
+  const step4MaterialsInputRef = useRef<HTMLInputElement | null>(null);
+  const [isExtractingHeaderMaterials, setIsExtractingHeaderMaterials] = useState(false);
+  const [headerMaterialToast, setHeaderMaterialToast] = useState<string | null>(null);
   const [sessionChunks, setSessionChunks] = useState<SourceChunk[]>([]);
   const [activeChunkTab, setActiveChunkTab] = useState<'ALL' | 'DOCUMENT' | 'WEB_SCRAPE' | 'VIDEO_TRANSCRIPT'>('ALL');
   const [curriculumChatMessages, setCurriculumChatMessages] = useState<Array<{role: 'user' | 'assistant', content: string, timestamp?: string}>>([
@@ -479,14 +580,27 @@ export default function FacultyStudioPage() {
   const fetchSavedSessions = async () => {
     setLoadingHistory(true);
     let dbSessions: any[] = [];
+    let isDbSuccess = false;
     try {
       const res = await fetchBackendWithFallback('/api/sessions', { method: 'GET' });
       if (res.ok) {
         const data = await res.json();
         dbSessions = Array.isArray(data) ? data : [];
+        isDbSuccess = true;
       }
     } catch (err) {
       console.warn('Backend history fetch offline, checking local cache:', err);
+    }
+
+    // If backend DB is connected and returned 0 sessions, respect the cleared DB state
+    if (isDbSuccess && dbSessions.length === 0) {
+      try {
+        localStorage.removeItem('isml_saved_sessions_archive');
+        localStorage.removeItem('isml_last_curriculum_blueprint');
+      } catch (_) {}
+      setSavedSessions([]);
+      setLoadingHistory(false);
+      return;
     }
 
     // Merge with client localStorage archive so history is NEVER empty
@@ -617,6 +731,43 @@ export default function FacultyStudioPage() {
       });
     } catch (backendErr) {
       console.warn('Backend delete error (offline/local):', backendErr);
+    }
+  };
+
+  // Clear all saved sessions from backend DB and local cache
+  const handleClearAllSessions = async () => {
+    const confirmClear = window.confirm("Are you sure you want to completely clear ALL saved sessions and previous chats from the database? This action is permanent and cannot be undone.");
+    if (!confirmClear) return;
+
+    setLoadingHistory(true);
+    setSavedSessions([]);
+    setActiveSavedSession(null);
+
+    // 1. Clear client localStorage
+    if (typeof window !== 'undefined') {
+      try {
+        localStorage.removeItem('isml_saved_sessions_archive');
+        localStorage.removeItem('isml_last_curriculum_blueprint');
+        const keysToRemove: string[] = [];
+        for (let i = 0; i < localStorage.length; i++) {
+          const k = localStorage.key(i);
+          if (k && (k.startsWith('isml_chat_thread_') || k.startsWith('isml_session_materials_') || k.startsWith('isml_overrides_'))) {
+            keysToRemove.push(k);
+          }
+        }
+        keysToRemove.forEach(k => localStorage.removeItem(k));
+      } catch (_) {}
+    }
+
+    // 2. Call backend DELETE /api/sessions endpoint
+    try {
+      await fetchBackendWithFallback('/api/sessions', {
+        method: 'DELETE'
+      });
+    } catch (err) {
+      console.warn('Backend clear all error:', err);
+    } finally {
+      setLoadingHistory(false);
     }
   };
 
@@ -1845,11 +1996,23 @@ export default function FacultyStudioPage() {
                 type="button"
                 onClick={fetchSavedSessions}
                 disabled={loadingHistory}
-                className="p-2 rounded-xl bg-white border border-slate-200 text-slate-600 hover:text-blue-600 hover:bg-blue-50 transition-colors"
+                className="p-2 rounded-xl bg-white border border-slate-200 text-slate-600 hover:text-blue-600 hover:bg-blue-50 transition-colors cursor-pointer"
                 title="Refresh from Database"
               >
                 <RotateCw className={`w-3.5 h-3.5 ${loadingHistory ? 'animate-spin text-blue-600' : ''}`} />
               </button>
+
+              {savedSessions.length > 0 && (
+                <button
+                  type="button"
+                  onClick={handleClearAllSessions}
+                  disabled={loadingHistory}
+                  className="p-2 rounded-xl bg-white border border-rose-200 text-rose-600 hover:text-white hover:bg-rose-600 transition-colors cursor-pointer"
+                  title="Clear All Saved Sessions from Database"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                </button>
+              )}
             </div>
 
             {/* List of Sessions */}
@@ -3649,19 +3812,39 @@ export default function FacultyStudioPage() {
 
                 {/* Action Controls & LMS Sync */}
                 <div className="flex items-center gap-3">
+                  {/* Hidden Input for Step 4 Materials Upload */}
+                  <input
+                    type="file"
+                    ref={step4MaterialsInputRef}
+                    className="hidden"
+                    multiple
+                    accept="image/*,video/*,audio/*,.pdf,.txt,.docx,.csv,.pptx,.ppt"
+                    onChange={handleStep4AddMaterials}
+                  />
+
                   {/* 📎 Add More Materials Button on Active Workspace Header */}
                   <button
                     type="button"
-                    onClick={() => heroFileInputRef.current?.click()}
-                    className="flex items-center gap-1.5 px-3.5 py-2.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white rounded-xl text-xs font-black transition-all border border-emerald-400/50 cursor-pointer shadow-md shadow-emerald-950/20"
+                    onClick={() => step4MaterialsInputRef.current?.click()}
+                    disabled={isExtractingHeaderMaterials}
+                    className="flex items-center gap-1.5 px-3.5 py-2.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white rounded-xl text-xs font-black transition-all border border-emerald-400/50 cursor-pointer shadow-md shadow-emerald-950/20 disabled:opacity-50"
                     title="Upload more study files, PDFs, or audio into this active curriculum session"
                   >
-                    <Upload className="w-3.5 h-3.5 text-amber-300" />
-                    <span>+ Add More Materials</span>
-                    {uploadedFiles.length > 0 && (
-                      <span className="bg-amber-400 text-slate-950 text-[10px] px-1.5 py-0.2 rounded-full font-black">
-                        {uploadedFiles.length}
-                      </span>
+                    {isExtractingHeaderMaterials ? (
+                      <>
+                        <Loader2 className="w-3.5 h-3.5 animate-spin text-amber-300" />
+                        <span>Ingesting Material...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Upload className="w-3.5 h-3.5 text-amber-300" />
+                        <span>+ Add More Materials</span>
+                        {uploadedFiles.length > 0 && (
+                          <span className="bg-amber-400 text-slate-950 text-[10px] px-1.5 py-0.2 rounded-full font-black">
+                            {uploadedFiles.length}
+                          </span>
+                        )}
+                      </>
                     )}
                   </button>
 
@@ -3727,6 +3910,23 @@ export default function FacultyStudioPage() {
                   </button>
                 </div>
               </div>
+
+              {/* Header Ingestion Notification Toast */}
+              {headerMaterialToast && (
+                <div className="bg-emerald-500 text-slate-950 px-5 py-2.5 text-xs font-black flex items-center justify-between shadow-md">
+                  <div className="flex items-center gap-2">
+                    <CheckCircle2 className="w-4 h-4 text-slate-950 shrink-0" />
+                    <span>{headerMaterialToast}</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setHeaderMaterialToast(null)}
+                    className="text-slate-950 font-black hover:opacity-75 cursor-pointer ml-3"
+                  >
+                    ✕
+                  </button>
+                </div>
+              )}
 
               {/* Senior Academic Agent Pedagogical Rationale & Grounding Seal */}
               <div className="bg-slate-50 text-slate-800 px-5 sm:px-6 py-3 border-b border-slate-200 grid grid-cols-1 md:grid-cols-3 gap-3 text-xs">

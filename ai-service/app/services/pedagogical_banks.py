@@ -6,6 +6,10 @@ STRICTLY ZERO hardcoded software standup/sprint templates or formulaic placehold
 """
 from typing import Dict, Any, List, Optional
 import math
+try:
+    from .master_curriculum_120 import get_master_120_period_py
+except ImportError:
+    from master_curriculum_120 import get_master_120_period_py
 
 # =============================================================================
 # CURRICULUM PROGRESSION MILESTONES BY LANGUAGE
@@ -318,14 +322,22 @@ def resolve_pedagogical_unit(
                 continue
             clean_mined.append(v)
 
-    # 1. If user provided custom source document topics, PRIORITIZE THEM!
+    # 1. Fetch from Master 120-Period Progression Engine (Guaranteed 100% unique Day 1 to Day 120+)
+    master_unit = get_master_120_period_py(language, level, day_number, topic)
+
+    # 2. If user provided custom source document topics, PRIORITIZE THEM with zero cyclical repeats
     import re
     clean_topics = [t for t in (mined_topics or []) if t and len(t) >= 4 and not re.search(r'(tutor upload|pdf|docx|table of contents|contents|report|standup)', t, re.I)]
     
     if clean_topics:
-        cur_topic = clean_topics[(day_number - 1) % len(clean_topics)]
+        if day_number <= len(clean_topics):
+            cur_topic = clean_topics[day_number - 1]
+        else:
+            base_topic = clean_topics[(day_number - 1) % len(clean_topics)]
+            cur_topic = f"{base_topic} — Part {day_number}: {master_unit['topic']}"
+
         unit_topic = f"Period {day_number}: {cur_topic}"
-        grammar_rule = f"Core sentence structure and communication for {cur_topic} in {language} ({level})."
+        grammar_rule = f"{master_unit['grammar_rule']} (Applied to {cur_topic})"
 
         if clean_mined:
             v_start = ((day_number - 1) * 3) % len(clean_mined)
@@ -354,15 +366,12 @@ def resolve_pedagogical_unit(
                 }
             ]
         else:
-            vocab_items = [
-                {"word": cur_topic.split()[0], "meaning": f"Core term for {cur_topic}", "pronunciation": f"/{cur_topic.split()[0].lower()}/", "example_sentence": f"Practicing key ideas for {cur_topic}."},
-                {"word": "Concept", "meaning": "Underlying subject matter", "pronunciation": "/ˈkɒnsɛpt/", "example_sentence": "Students explain the concept clearly."}
-            ]
+            vocab_items = master_unit.get("vocab", [])
 
-        p_word = vocab_items[0]["word"]
+        p_word = vocab_items[0]["word"] if vocab_items else cur_topic.split()[0]
         s_word = vocab_items[1]["word"] if len(vocab_items) > 1 else "expression"
         dialogues = [
-            f"Teacher: 'Today we will explore {cur_topic}. How do we use the term \"{p_word}\"?'",
+            f"Teacher: 'Today we explore {cur_topic}. How do we use the term \"{p_word}\"?'",
             f"Student: 'In this topic, \"{p_word}\" helps us explain the core principles, connecting with \"{s_word}\".'",
             f"Teacher: 'Excellent! Let us practice using \"{p_word}\" in a clear sentence together.'"
         ]
@@ -371,122 +380,30 @@ def resolve_pedagogical_unit(
             {"question": f"Practice saying this key term out loud: '{p_word}'.", "answer": f"Clear spoken pronunciation of {p_word}.", "explanation": "Develops confidence and fluency."}
         ]
         greeting = f"Welcome everyone! Today we examine {cur_topic}."
-    # 2. Base curriculum framework fallbacks when NO custom source documents exist:
-    elif "french" in lang_lower or "français" in lang_lower:
-        base_unit = FRENCH_UNITS[(day_number - 1) % len(FRENCH_UNITS)]
-        unit_topic = f"Unité {day_number} : {base_unit['topic']}"
-        grammar_rule = base_unit["grammar_rule"]
-        vocab_items = list(base_unit["vocab"])
-        dialogues = list(base_unit["dialogue"])
-        drills = list(base_unit["drills"])
-        greeting = f"Bonjour à tous ! Aujourd'hui nous étudions {base_unit['topic']}."
-    elif "spanish" in lang_lower or "español" in lang_lower:
-        s_tuple = SPANISH_TOPICS[(day_number - 1) % len(SPANISH_TOPICS)]
-        unit_topic = f"Unidad {day_number} : {s_tuple[0]}"
-        grammar_rule = f"Regla estructural para Unidad {day_number}: {s_tuple[1]}. Aplicación comunicativa según el marco MCER {level}."
-        vocab_items = [
-            {"word": w, "meaning": f"Término fundamental para {s_tuple[0]}", "pronunciation": f"/{w.lower()}/", "example_sentence": f"Practicamos '{w}' en la lección {day_number}."}
-            for w in s_tuple[2]
-        ]
-        dialogues = [
-            f"Profesor: '¡Buenos días! Hoy nos enfocamos en {s_tuple[0]}.'",
-            f"Estudiante: '¡Excelente! ¿Cómo se aplica esta estructura en una conversación real?'",
-            f"Profesor: 'Presten atención al ejemplo práctico y repitan con claridad.'"
-        ]
-        drills = [
-            {"question": f"¿Cuál es el concepto clave de {s_tuple[0]}?", "answer": s_tuple[1], "explanation": "Regla comunicativa esencial."},
-            {"question": f"Construya una frase afirmativa aplicando '{s_tuple[2][0]}'.", "answer": f"Frase modelo con {s_tuple[2][0]}.", "explanation": "Fija la competencia oral."}
-        ]
-        greeting = f"¡Buenos días a todos! Hoy exploramos {s_tuple[0]}."
-    elif "german" in lang_lower or "deutsch" in lang_lower:
-        g_tuple = GERMAN_TOPICS[(day_number - 1) % len(GERMAN_TOPICS)]
-        unit_topic = f"Einheit {day_number} : {g_tuple[0]}"
-        grammar_rule = f"Grammatikregel für Einheit {day_number}: {g_tuple[1]}. Struktur nach GER {level} Standard."
-        vocab_items = [
-            {"word": w, "meaning": f"Schlüsselbegriff für {g_tuple[0]}", "pronunciation": f"/{w.lower()}/", "example_sentence": f"Wir üben '{w}' in dieser Lektion."}
-            for w in g_tuple[2]
-        ]
-        dialogues = [
-            f"Lehrer: 'Guten Tag zusammen! Heute vertiefen wir {g_tuple[0]}.'",
-            f"Schüler: 'Guten Tag Herr Lehrer! Können wir dazu einen Beispielsatz hören?'",
-            f"Lehrer: 'Ja, natürlich! Hören Sie gut zu und wiederholen Sie laut.'"
-        ]
-        drills = [
-            {"question": f"Was ist der Schwerpunkt von {g_tuple[0]}?", "answer": g_tuple[1], "explanation": "Grammatisches Fundament."},
-            {"question": f"Bilden Sie einen Satz mit '{g_tuple[2][0]}'.", "answer": f"Beispielsatz mit {g_tuple[2][0]}.", "explanation": "Fördert die Sprachproduktion."}
-        ]
-        greeting = f"Guten Tag zusammen! Heute widmen wir uns {g_tuple[0]}."
-    elif "japanese" in lang_lower or "nihongo" in lang_lower:
-        j_tuple = JAPANESE_TOPICS[(day_number - 1) % len(JAPANESE_TOPICS)]
-        unit_topic = f"第{day_number}課 : {j_tuple[0]}"
-        grammar_rule = f"文法規則 : {j_tuple[1]} (JLPT {level} Standard Progression)."
-        vocab_items = [
-            {"word": w, "meaning": f"Essential concept for {j_tuple[0]}", "pronunciation": f"/{w.lower()}/", "example_sentence": f"Applying '{w}' in daily conversational Japanese."}
-            for w in j_tuple[2]
-        ]
-        dialogues = [
-            f"先生: '皆さん、こんにちは！今日は {j_tuple[0]} について学びます。'",
-            f"学生: 'こんにちは先生！この表現はどのように使いますか？'",
-            f"先生: '例文を聞いて、声に出して練習してみましょう。'"
-        ]
-        drills = [
-            {"question": f"What is the grammatical core of {j_tuple[0]}?", "answer": j_tuple[1], "explanation": "JLPT core competence."},
-            {"question": f"Construct a sentence using '{j_tuple[2][0]}'.", "answer": f"Standard sentence utilizing {j_tuple[2][0]}.", "explanation": "Reinforces native sentence structure."}
-        ]
-        greeting = f"皆さん、こんにちは。今日は {j_tuple[0]} について学びます。"
-    elif "korean" in lang_lower or "hangul" in lang_lower:
-        k_tuple = KOREAN_TOPICS[(day_number - 1) % len(KOREAN_TOPICS)]
-        unit_topic = f"제{day_number}과 : {k_tuple[0]}"
-        grammar_rule = f"문법 규칙 : {k_tuple[1]} (TOPIK {level} Standard Structure)."
-        vocab_items = [
-            {"word": w, "meaning": f"Core term for {k_tuple[0]}", "pronunciation": f"/{w.lower()}/", "example_sentence": f"Practicing '{w}' in situational Korean."}
-            for w in k_tuple[2]
-        ]
-        dialogues = [
-            f"선생님: '여러분, 안녕하세요! 오늘 우리는 {k_tuple[0]}에 대해 공부합니다.'",
-            f"학생: '선생님, 안녕하세요! 이 문법을 대화에서 어떻게 사용하나요?'",
-            f"선생님: '아주 좋은 질문이에요. 대화 예문을 따라 읽어보세요.'"
-        ]
-        drills = [
-            {"question": f"What is the primary structure of {k_tuple[0]}?", "answer": k_tuple[1], "explanation": "Core communicative pattern."},
-            {"question": f"Formulate an authentic phrase using '{k_tuple[2][0]}'.", "answer": f"Natural phrase using {k_tuple[2][0]}.", "explanation": "Solidifies grammatical automaticity."}
-        ]
-        greeting = f"여러분, 안녕하세요. 오늘 우리는 {k_tuple[0]}에 대해 공부합니다."
-    elif "english" in lang_lower:
-        e_tuple = ENGLISH_TOPICS[(day_number - 1) % len(ENGLISH_TOPICS)]
-        unit_topic = f"Period {day_number}: {e_tuple[0]}"
-        grammar_rule = f"Core sentence structure: {e_tuple[1]}. Adheres to Cambridge / CEFR {level} standard."
-        vocab_items = [
-            {"word": w, "meaning": f"Everyday vocabulary for {e_tuple[0]}", "pronunciation": f"/{w.lower()}/", "example_sentence": f"Practice saying '{w}' in natural conversation."}
-            for w in e_tuple[2]
-        ]
-        dialogues = [
-            f"Teacher: 'Good morning everyone! Today we will learn about {e_tuple[0]}.'",
-            f"Student: 'Good morning Teacher! Can you give us an example?'",
-            f"Teacher: 'Listen carefully: \"{e_tuple[2][0]}\" is used every day. Let's practice saying it together!'"
-        ]
-        drills = [
-            {"question": f"What is the key sentence pattern for {e_tuple[0]}?", "answer": e_tuple[1], "explanation": "Basic spoken pattern."},
-            {"question": f"Practice saying this out loud: '{e_tuple[2][0]}'.", "answer": f"Clear pronunciation of {e_tuple[2][0]}.", "explanation": "Develops confidence and fluency."}
-        ]
-        greeting = f"Good morning everyone! Welcome to Period {day_number}."
     else:
-        # General Language
-        unit_topic = f"Unit {day_number}: Everyday Communication & Grammar"
-        grammar_rule = f"Sentence structure and daily communicative fluency for Unit {day_number}."
-        vocab_items = [
-            {"word": "Hello", "meaning": "Daily greeting formula", "pronunciation": "/hɛˈloʊ/", "example_sentence": "Hello, nice to meet you."},
-            {"word": "Please", "meaning": "Polite request formula", "pronunciation": "/pliːz/", "example_sentence": "Could you please help me?"}
-        ]
-        dialogues = [
-            f"Teacher: 'Hello everyone! Today we focus on Unit {day_number}.'",
-            f"Student: 'Hello Teacher! We are ready to learn.'"
-        ]
-        drills = [
-            {"question": f"What is the communicative target of Unit {day_number}?", "answer": "Everyday polite conversation.", "explanation": "Target CEFR benchmark."},
-            {"question": "Formulate a sentence using today's target words.", "answer": "Hello, nice to meet you.", "explanation": "Builds active spoken confidence."}
-        ]
-        greeting = f"Hello everyone! Welcome to Unit {day_number}."
+        # Pure authentic CEFR Master 120-Period Progression (zero repeats for up to 120+ days)
+        unit_topic = f"Period {day_number}: {master_unit['topic']}"
+        grammar_rule = master_unit["grammar_rule"]
+        vocab_items = list(master_unit.get("vocab", []))
+        dialogues = list(master_unit.get("dialogue", []))
+        drills = list(master_unit.get("drills", []))
+        greeting = f"Welcome everyone! Today in Period {day_number}, we focus on {master_unit['topic']}."
+
+        if "french" in lang_lower or "français" in lang_lower:
+            unit_topic = f"Séance {day_number} : {master_unit['topic']}"
+            greeting = f"Bonjour à tous ! Aujourd'hui dans la séance {day_number}, nous étudions {master_unit['topic']}."
+        elif "spanish" in lang_lower or "español" in lang_lower:
+            unit_topic = f"Sesión {day_number} : {master_unit['topic']}"
+            greeting = f"¡Buenos días a todos! Hoy en la sesión {day_number}, exploramos {master_unit['topic']}."
+        elif "german" in lang_lower or "deutsch" in lang_lower:
+            unit_topic = f"Einheit {day_number} : {master_unit['topic']}"
+            greeting = f"Guten Tag zusammen! Heute in Einheit {day_number} widmen wir uns {master_unit['topic']}."
+        elif "japanese" in lang_lower or "nihongo" in lang_lower:
+            unit_topic = f"第{day_number}課 : {master_unit['topic']}"
+            greeting = f"皆さん、こんにちは。第{day_number}課では {master_unit['topic']} について学びます。"
+        elif "korean" in lang_lower or "hangul" in lang_lower:
+            unit_topic = f"제{day_number}과 : {master_unit['topic']}"
+            greeting = f"여러분, 안녕하세요. 오늘 제{day_number}과에서는 {master_unit['topic']}에 대해 공부합니다."
 
     # Filter mined vocabulary to remove raw document/table dump noise
     clean_mined = []

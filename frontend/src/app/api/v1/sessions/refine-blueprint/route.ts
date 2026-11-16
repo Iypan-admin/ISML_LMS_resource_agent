@@ -150,6 +150,141 @@ function classifyUserIntent(prompt: string, currentPeriod: number): ClassifiedIn
 
 
 
+// =============================================================================
+// DOCUMENT INTELLIGENCE EXTRACTOR (Verbs, Grammar Rules, Vocab, Sentences)
+// Understands full books, PDFs, DOCX, and course materials uploaded in chat
+// =============================================================================
+interface ExtractedDocIntelligence {
+  hasDocument: boolean;
+  wordCount: number;
+  verbs: Array<{ verb: string; sentence: string }>;
+  vocabulary: Array<{ word: string; meaning: string; pronunciation: string; example_sentence: string }>;
+  grammarRules: string;
+  sentences: string[];
+}
+
+function extractDocumentIntelligence(sourceText: string, language: string): ExtractedDocIntelligence | null {
+  if (!sourceText || sourceText.trim().length < 20) {
+    return null;
+  }
+
+  const cleanText = sourceText
+    .replace(/\[Binary Document Attachment:[^\]]*\]/gi, '')
+    .replace(/\[Uploaded File Reference:[^\]]*\]/gi, '');
+
+  const sentences = cleanText
+    .split(/(?<=[.?!])\s+|\n{2,}/)
+    .map(s => s.trim().replace(/\s+/g, ' '))
+    .filter(s => s.length >= 20 && s.length <= 320 && !/(durkkas|dipl-|aruppukottai|private limited)/i.test(s));
+
+  const lKey = (language || 'english').toLowerCase();
+
+  const englishVerbs = [
+    'learn', 'speak', 'write', 'read', 'listen', 'practice', 'understand', 'create',
+    'build', 'express', 'describe', 'explain', 'apply', 'demonstrate', 'structure',
+    'formulate', 'identify', 'analyze', 'solve', 'evaluate', 'communicate', 'articulate',
+    'pronounce', 'repeat', 'conjugate', 'develop', 'interact', 'discuss', 'study',
+    'review', 'produce', 'acquire', 'master', 'enhance', 'consolidate', 'reinforce',
+    'engage', 'collaborate', 'deliver', 'implement', 'explore', 'connect', 'determine'
+  ];
+
+  const frenchVerbs = [
+    'être', 'avoir', 'aller', 'faire', 'parler', 'aimer', 'manger', 'finir', 'choisir',
+    'vendre', 'attendre', 'venir', 'partir', 'savoir', 'pouvoir', 'vouloir', 'devoir',
+    'prendre', 'mettre', 'voir', 'écouter', 'écrire', 'lire', 'comprendre', 'demander',
+    'répondre', 'trouver', 'donner', 'travailler', 'étudier', 'pratiquer', 'commencer'
+  ];
+
+  const spanishVerbs = [
+    'ser', 'estar', 'tener', 'hacer', 'ir', 'poder', 'hablar', 'comer', 'vivir',
+    'querer', 'decir', 'saber', 'llegar', 'pasar', 'deber', 'poner', 'parecer',
+    'quedar', 'creer', 'llevar', 'dejar', 'seguir', 'encontrar', 'llamar', 'venir',
+    'pensar', 'salir', 'volver', 'tomar', 'conocer', 'escribir', 'leer', 'aprender'
+  ];
+
+  const targetVerbPool = lKey.includes('french') ? frenchVerbs
+    : (lKey.includes('spanish') ? spanishVerbs : englishVerbs);
+
+  const minedVerbs: Array<{ verb: string; sentence: string }> = [];
+  const usedVerbs = new Set<string>();
+
+  for (const v of targetVerbPool) {
+    const rx = new RegExp(`\\b${v}(?:s|es|ed|ing|d)?\\b`, 'i');
+    const matchedSentence = sentences.find(s => rx.test(s));
+    if (matchedSentence && !usedVerbs.has(v)) {
+      usedVerbs.add(v);
+      minedVerbs.push({
+        verb: v,
+        sentence: matchedSentence
+      });
+      if (minedVerbs.length >= 8) break;
+    }
+  }
+
+  // If few verbs found via dictionary, extract action verbs following pronouns
+  if (minedVerbs.length < 3) {
+    for (const s of sentences) {
+      const match = s.match(/\b(?:to|we|they|students|learners|you|i|he|she)\s+([a-z]{3,15})\b/i);
+      if (match) {
+        const candidate = match[1].toLowerCase();
+        if (!['the', 'this', 'that', 'with', 'from', 'have', 'been', 'will', 'also'].includes(candidate) && !usedVerbs.has(candidate)) {
+          usedVerbs.add(candidate);
+          minedVerbs.push({
+            verb: candidate,
+            sentence: s
+          });
+          if (minedVerbs.length >= 8) break;
+        }
+      }
+    }
+  }
+
+  // Vocabulary mining
+  const wordsRaw = cleanText.match(/\b[A-Za-zÀ-ÿ]{4,20}\b/g) || [];
+  const stopWords = new Set(['this', 'that', 'with', 'from', 'they', 'will', 'have', 'were', 'been', 'their', 'which', 'about', 'would', 'there', 'could', 'other', 'into', 'more', 'these', 'first', 'then', 'also', 'some', 'than', 'when', 'what', 'page', 'slide', 'unit', 'period', 'tutor', 'upload', 'document', 'file']);
+  const freq: Record<string, number> = {};
+  for (const w of wordsRaw) {
+    const lower = w.toLowerCase();
+    if (!stopWords.has(lower) && lower.length >= 4) {
+      freq[lower] = (freq[lower] || 0) + 1;
+    }
+  }
+
+  const topVocabWords = Object.keys(freq)
+    .sort((a, b) => freq[b] - freq[a])
+    .slice(0, 10);
+
+  const minedVocab = topVocabWords.map(w => {
+    const matchingSentence = sentences.find(s => new RegExp(`\\b${w}\\b`, 'i').test(s)) || `Applying ${w} in academic language communication.`;
+    const capitalized = w.charAt(0).toUpperCase() + w.slice(1);
+    return {
+      word: capitalized,
+      meaning: `Core conceptual term from uploaded document: ${capitalized}`,
+      pronunciation: `/${w}/`,
+      example_sentence: matchingSentence
+    };
+  });
+
+  const ruleSentences = sentences.filter(s =>
+    /\b(rule|grammar|syntax|structure|equation|must|always|formulation|conjugat|agreement)\b/i.test(s)
+  ).slice(0, 4);
+
+  const finalGrammarRules = ruleSentences.length > 0
+    ? ruleSentences.join(' • ')
+    : (minedVerbs.length >= 2
+        ? `Syntactic Paradigm with '${minedVerbs[0].verb}' & '${minedVerbs[1].verb}': [Subject] + [Target Verb Conjugation] + [Contextual Complement from Text].`
+        : `Linguistic Structural Architecture: Subject-Verb Agreement and Clause Formation in ${language}.`);
+
+  return {
+    hasDocument: true,
+    wordCount: cleanText.split(/\s+/).filter(Boolean).length,
+    verbs: minedVerbs,
+    vocabulary: minedVocab,
+    grammarRules: finalGrammarRules,
+    sentences: sentences.slice(0, 15)
+  };
+}
+
 export async function POST(req: Request) {
   try {
     const body = await req.json();
@@ -166,6 +301,18 @@ export async function POST(req: Request) {
 
     const hasAttachedMaterials = Array.isArray(attached_files) && attached_files.length > 0;
     const attachedFileNames = hasAttachedMaterials ? attached_files.map((f: any) => f.name).join(', ') : '';
+
+    // Digest uploaded materials / book content
+    const attachedTextParts = (attached_files || [])
+      .map((f: any) => f.content || f.text || '')
+      .filter((t: string) => t && !t.startsWith('[Document File:') && !t.startsWith('[Uploaded File Reference:'));
+
+    const combinedSource = [source_context, ...attachedTextParts]
+      .filter((t: string) => t && t.trim().length > 0)
+      .join('\n\n');
+
+    const docIntel = extractDocumentIntelligence(combinedSource, language);
+    const isVerbFocus = /verb|action|conjugat|vinai|kriya/i.test(user_prompt);
 
     const intent = classifyUserIntent(user_prompt, current_period);
 
@@ -235,10 +382,24 @@ export async function POST(req: Request) {
         .trim() || `${language} Communication`;
 
       const activeVocabList: any[] = activeDay?.vocabulary_bank || [];
-      const pWord = activeVocabList[0]?.word || 'core concept';
-      const sWord = activeVocabList[1]?.word || 'application';
-      const pExample = activeVocabList[0]?.example_sentence || activeVocabList[0]?.example || `Applying ${pWord} in natural conversation.`;
-      const sExample = activeVocabList[1]?.example_sentence || activeVocabList[1]?.example || `Using ${sWord} for practical communication.`;
+      let pWord = activeVocabList[0]?.word || 'core concept';
+      let sWord = activeVocabList[1]?.word || 'application';
+      let pExample = activeVocabList[0]?.example_sentence || activeVocabList[0]?.example || `Applying ${pWord} in natural conversation.`;
+      let sExample = activeVocabList[1]?.example_sentence || activeVocabList[1]?.example || `Using ${sWord} for practical communication.`;
+
+      if (docIntel && docIntel.hasDocument) {
+        if (isVerbFocus && docIntel.verbs.length > 0) {
+          pWord = docIntel.verbs[0].verb;
+          sWord = docIntel.verbs.length > 1 ? docIntel.verbs[1].verb : 'conjugation';
+          pExample = docIntel.verbs[0].sentence;
+          sExample = docIntel.verbs.length > 1 ? docIntel.verbs[1].sentence : `Conjugating ${sWord} accurately in affirmative clauses.`;
+        } else if (docIntel.vocabulary.length > 0) {
+          pWord = docIntel.vocabulary[0].word;
+          sWord = docIntel.vocabulary.length > 1 ? docIntel.vocabulary[1].word : 'concept';
+          pExample = docIntel.vocabulary[0].example_sentence;
+          sExample = docIntel.vocabulary.length > 1 ? docIntel.vocabulary[1].example_sentence : `Practicing ${sWord} in speech.`;
+        }
+      }
 
       // Dynamically construct authentic, document-grounded tracks for the target language:
       for (let k = 0; k < numTracks; k++) {
@@ -369,21 +530,58 @@ export async function POST(req: Request) {
     const baseLangUnit = getLinguisticUnit(language, level, effectivePeriod);
     const enrichedSyllabus = getLanguageSyllabusItem(language, level, effectivePeriod);
 
-    // Dynamic repoUnit grounded in activeDay (mined document / transcript) or authentic language bank:
+    // Dynamic repoUnit grounded in activeDay, uploaded document/book intelligence, or authentic language bank:
+    let resolvedTopic = activeDay?.day_topic || baseLangUnit.topic;
+    let resolvedGrammarFocus = activeDay?.grammar_rules_detail || baseLangUnit.grammarFocus;
+    let resolvedBoardNotes = (activeDay as any)?.board_notes || baseLangUnit.boardNotes;
+    let resolvedVocab = (activeDay?.vocabulary_bank && activeDay.vocabulary_bank.length > 0)
+      ? activeDay.vocabulary_bank
+      : baseLangUnit.vocabulary;
+    let resolvedDialogues = (activeDay?.classroom_dialogues && activeDay.classroom_dialogues.length > 0)
+      ? activeDay.classroom_dialogues
+      : baseLangUnit.dialogue;
+    let resolvedDrills = (activeDay?.exercise_solutions && activeDay.exercise_solutions.length > 0)
+      ? activeDay.exercise_solutions
+      : baseLangUnit.drills;
+
+    if (docIntel && docIntel.hasDocument) {
+      if (isVerbFocus && docIntel.verbs.length > 0) {
+        const v1 = docIntel.verbs[0].verb;
+        const v2 = docIntel.verbs.length > 1 ? docIntel.verbs[1].verb : v1;
+        resolvedTopic = `Period ${effectivePeriod}: Action Verbs & Structural Syntax from Uploaded Material`;
+        resolvedGrammarFocus = `Action Verbs & Syntactic Paradigm from Uploaded Text:\n• Identified Verbs: ${docIntel.verbs.map(v => `"${v.verb}"`).join(', ')}\n• Syntactic Formula: [Subject] + [Target Verb Conjugation] + [Contextual Object]\n• Evidence Sentence: "${docIntel.verbs[0].sentence}"`;
+        resolvedBoardNotes = `Grammar Paradigm: [Subject] + [Verb: ${v1}] + [Object: ${docIntel.verbs[0].sentence.slice(0, 35)}...]`;
+        resolvedVocab = docIntel.verbs.slice(0, 8).map(v => ({
+          word: v.verb.charAt(0).toUpperCase() + v.verb.slice(1),
+          meaning: `Action verb extracted directly from uploaded text`,
+          pronunciation: `/${v.verb}/`,
+          example_sentence: v.sentence
+        }));
+        resolvedDialogues = [
+          `Teacher: "Good morning class! Today we are mastering the action verbs directly from our uploaded course material."`,
+          `Student (Alex): "In our text, we observed: '${docIntel.verbs[0].sentence}'. How do we conjugate '${v1}' in a practical conversation?"`,
+          `Teacher: "Notice how '${v1}' establishes clear action. Let's combine it with '${v2}': '${docIntel.verbs.length > 1 ? docIntel.verbs[1].sentence : docIntel.verbs[0].sentence}'."`,
+          `Student (Sarah): "That makes the syntactic formula very clear! Let us practice repeating it together with accurate pronunciation."`
+        ];
+        resolvedDrills = docIntel.verbs.slice(0, Math.max(intent.count, 5)).map((v, vIdx) => ({
+          question: `[Q${vIdx + 1}] Using the verb "${v.verb}" from your uploaded material, construct an authentic sentence based on the context: "${v.sentence}".`,
+          answer: `Authentic ${language} ${level} formulation using "${v.verb}". Context: ${v.sentence}`,
+          explanation: `Assesses active verb conjugation, morphological agreement, and retention of uploaded book terminology.`
+        }));
+      } else if (docIntel.vocabulary.length > 0) {
+        resolvedVocab = docIntel.vocabulary;
+        resolvedGrammarFocus = docIntel.grammarRules;
+      }
+    }
+
     const repoUnit = {
-      topic: activeDay?.day_topic || baseLangUnit.topic,
-      grammarFocus: activeDay?.grammar_rules_detail || baseLangUnit.grammarFocus,
+      topic: resolvedTopic,
+      grammarFocus: resolvedGrammarFocus,
       pedagogicalObjective: (activeDay as any)?.pedagogical_objective || (activeDay as any)?.study_notes_markdown || baseLangUnit.pedagogicalObjective,
-      boardNotes: (activeDay as any)?.board_notes || baseLangUnit.boardNotes,
-      vocabulary: (activeDay?.vocabulary_bank && activeDay.vocabulary_bank.length > 0)
-        ? activeDay.vocabulary_bank
-        : baseLangUnit.vocabulary,
-      dialogue: (activeDay?.classroom_dialogues && activeDay.classroom_dialogues.length > 0)
-        ? activeDay.classroom_dialogues
-        : baseLangUnit.dialogue,
-      drills: (activeDay?.exercise_solutions && activeDay.exercise_solutions.length > 0)
-        ? activeDay.exercise_solutions
-        : baseLangUnit.drills,
+      boardNotes: resolvedBoardNotes,
+      vocabulary: resolvedVocab,
+      dialogue: resolvedDialogues,
+      drills: resolvedDrills,
       commonGotchas: baseLangUnit.commonGotchas,
       remedialActivity: baseLangUnit.remedialActivity,
       extensionActivity: baseLangUnit.extensionActivity,
@@ -393,6 +591,25 @@ export async function POST(req: Request) {
     // INTENT HANDLER: TOPIC EXPLANATION ("verb pathi sollu")
     // =======================================================================
     if (intent.type === 'TOPIC_EXPLANATION') {
+      if (docIntel && docIntel.hasDocument && isVerbFocus && docIntel.verbs.length > 0) {
+        const bookVerbSummary = `Vanakkam! 📖 Based on your uploaded document, here is the complete breakdown of Action Verbs extracted directly from the text:\n\n**Identified Verbs:** ${docIntel.verbs.map(v => `**${v.verb}**`).join(', ')}\n\n**Direct Evidence from Uploaded Material:**\n${docIntel.verbs.slice(0, 5).map((v, i) => `${i+1}. **"${v.verb}"**: _"${v.sentence}"_`).join('\n')}\n\n**Grammar Rule:** \`[Subject] + [Verb] + [Contextual Object]\`\n\nI have updated Period ${effectivePeriod} with these exact verbs and practice drills!`;
+        return NextResponse.json({
+          intent_type: 'TOPIC_EXPLANATION',
+          agent_reply: bookVerbSummary,
+          navigate_to_period: intent.navigateToPeriod,
+          updated_days: [{
+            day_number: effectivePeriod,
+            day_topic: repoUnit.topic,
+            grammar_rules_detail: repoUnit.grammarFocus,
+            study_notes_markdown: `# Study Guide: Action Verbs from Uploaded Material (${language} ${level})\n\n### Core Verbs Identified:\n${docIntel.verbs.map(v => `- **${v.verb}** — Found in: _"${v.sentence}"_`).join('\n')}\n\n### Syntactic Architecture:\n\`${repoUnit.boardNotes}\`\n\n### Pedagogical Practice Drills:\n${repoUnit.drills.map((d: any, i: number) => `**Q${i+1}:** ${d.question}\n- **Sample Model:** ${d.answer}`).join('\n\n')}`,
+            vocabulary_bank: repoUnit.vocabulary,
+            classroom_dialogues: repoUnit.dialogue,
+            in_class_exercises: (repoUnit.drills || []).map((d: any) => d.question),
+            exercise_solutions: repoUnit.drills,
+          }]
+        });
+      }
+
       const topicName = intent.topicKeyword || repoUnit.topic;
       const explanation = buildTopicExplanation(topicName, repoUnit, language, level);
 

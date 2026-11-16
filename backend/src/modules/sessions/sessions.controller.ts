@@ -29,6 +29,11 @@ export class SessionsController {
     return this.sessionsService.deletePackage(sessionId);
   }
 
+  @Delete()
+  async clearAllPackages() {
+    return this.sessionsService.clearAllPackages();
+  }
+
   @Post(':sessionId/chunks')
   async saveChunks(
     @Param('sessionId') sessionId: string,

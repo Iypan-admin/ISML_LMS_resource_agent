@@ -168,6 +168,64 @@ async def validate_session_inputs(
     )
 
 
+@router.post("/extract-material")
+async def extract_chat_material(
+    files: list[UploadFile] = File(...),
+):
+    """
+    Extracts high-fidelity text from documents (PDF, DOCX, PPTX, TXT, CSV)
+    uploaded directly inside the chat copilot.
+    """
+    results = []
+    for f in files:
+        if not f.filename:
+            continue
+        try:
+            content_bytes = await f.read()
+            fname_lower = f.filename.lower()
+            text = ""
+            pages = 1
+
+            if fname_lower.endswith((".txt", ".md", ".csv", ".json", ".tsv")):
+                text = content_bytes.decode('utf-8', errors='ignore')
+            elif fname_lower.endswith(".pdf"):
+                import io
+                from pypdf import PdfReader
+                reader = PdfReader(io.BytesIO(content_bytes))
+                pages = len(reader.pages)
+                p_txt = []
+                for idx, page in enumerate(reader.pages):
+                    pt = page.extract_text()
+                    if pt:
+                        p_txt.append(f"--- Page {idx+1} ---\n{pt.strip()}")
+                text = "\n\n".join(p_txt)
+            elif fname_lower.endswith((".docx", ".doc")):
+                text = ContentExtractor.extract_from_docx(content_bytes)
+            elif fname_lower.endswith((".pptx", ".ppt")):
+                text = ContentExtractor.extract_from_pptx(content_bytes)
+            
+            words = len(text.split())
+            results.append({
+                "name": f.filename,
+                "size": len(content_bytes),
+                "pages": pages,
+                "word_count": words,
+                "char_count": len(text),
+                "text": text
+            })
+        except Exception as e:
+            logger.warning(f"Failed to extract {f.filename}: {e}")
+            results.append({
+                "name": f.filename,
+                "size": 0,
+                "pages": 1,
+                "word_count": 0,
+                "char_count": 0,
+                "text": f"[Error extracting {f.filename}: {e}]"
+            })
+    return {"success": True, "extracted_materials": results, "count": len(results)}
+
+
 @router.post("/generate-package", response_model=FullSessionPackageResult)
 async def generate_session_package(
     language: str = Form(..., description="Target language: French, German, Japanese, Spanish, Korean"),

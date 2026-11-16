@@ -457,16 +457,28 @@ Language: **${language}** • Certified CEFR **${level}** • Topic: **${baseTop
 
   const domainStage = COMMUNICATIVE_CURRICULUM_DOMAINS[(dayNumber - 1) % COMMUNICATIVE_CURRICULUM_DOMAINS.length];
 
-  // PRIORITY 1: When user provided uploaded materials/source context, GROUND IN THE SOURCE!
+  // PRIORITY 1: When user provided uploaded materials/source context, GROUND IN THE SOURCE with zero cyclical repeats!
   if (cleanParsedTopics.length > 0) {
-    const rawDocTopic = cleanParsedTopics[(dayNumber - 1) % cleanParsedTopics.length]
+    let rawDocTopic = '';
+    if (dayNumber <= cleanParsedTopics.length) {
+      rawDocTopic = cleanParsedTopics[dayNumber - 1];
+    } else {
+      // Progressive thematic elaboration: Never repeat identically across 120 days
+      const baseDocTopic = cleanParsedTopics[(dayNumber - 1) % cleanParsedTopics.length];
+      rawDocTopic = `${baseDocTopic} — Part ${dayNumber}: ${comprehensiveSyllabus.topic}`;
+    }
+    rawDocTopic = rawDocTopic
       .replace(/\b(English|French|German|Spanish|Japanese|Korean)\s+(A1|A1\.1|A1\.2|A2|B1|B2)\b/gi, '')
       .replace(/\b(A1|A1\.1|A1\.2|A2|B1|B2)\b/gi, '')
       .replace(/\b(Day\s*\d+|Report|Standup|Sprint)\b/gi, '')
       .trim();
-    analyzedGrammar = [rawDocTopic || cleanParsedTopics[0]];
+    analyzedGrammar = [rawDocTopic || comprehensiveSyllabus.topic];
   } else if (collectedGrammar.length > 0 && !collectedGrammar[0].includes('Phonetics')) {
-    analyzedGrammar = [collectedGrammar[(dayNumber - 1) % collectedGrammar.length]];
+    if (dayNumber <= collectedGrammar.length) {
+      analyzedGrammar = [collectedGrammar[dayNumber - 1]];
+    } else {
+      analyzedGrammar = [`${collectedGrammar[(dayNumber - 1) % collectedGrammar.length]} — Part ${dayNumber}: ${comprehensiveSyllabus.topic}`];
+    }
   } else if (comprehensiveSyllabus && comprehensiveSyllabus.topic) {
     analyzedGrammar = [comprehensiveSyllabus.topic];
   } else if (linguisticUnit && linguisticUnit.topic) {
@@ -606,15 +618,8 @@ Language: **${language}** • Certified CEFR **${level}** • Topic: **${baseTop
     cleanGrammarLabel = comprehensiveSyllabus.topic || linguisticUnit.topic || `Linguistic Milestones in ${language}`;
   }
 
-  // 15+ Yrs Language Acquisition Specialist: Pedagogical Progression Fallbacks
-  const SPECIALIST_STAGES = [
-    comprehensiveSyllabus.topic || "Phonetics, Vowel Sounds and Alphabet Foundations",
-    comprehensiveSyllabus.topic || "Conversational Inquiries & Dynamic Social Exchange",
-    comprehensiveSyllabus.topic || "Descriptive Discourse & Situational Vocabulary Application",
-    comprehensiveSyllabus.topic || "Audio Dialogue Shadowing & Fluent Turn-Taking",
-    comprehensiveSyllabus.topic || "Communicative Synthesis & Spontaneous Oral Presentation"
-  ];
-  const specialistFallbackTopic = SPECIALIST_STAGES[(dayNumber - 1) % SPECIALIST_STAGES.length];
+  // 15+ Yrs Language Acquisition Specialist: Master 120-Period Progression Fallbacks
+  const specialistFallbackTopic = comprehensiveSyllabus.topic || linguisticUnit.topic || `Linguistic Competency Period ${dayNumber} in ${language}`;
 
   if (!cleanGrammarLabel || cleanGrammarLabel.length < 5 || /(docx|pdf|txt|template|sample|neet|mcq|import|test|options|choice)/i.test(cleanGrammarLabel) || /^([A-D]\s+|[A-D]\))/i.test(cleanGrammarLabel)) {
     cleanGrammarLabel = specialistFallbackTopic;
