@@ -20,6 +20,58 @@ export const COMPREHENSIVE_LANGUAGE_BANKS: Record<
     dialogues: string[][];
   }
 > = {
+  english: {
+    topics: {
+      a1: [
+        "Phonetics, Vowel Sounds and Alphabet Foundations",
+        "Greetings, Formal & Informal Salutations, and Politeness Markers",
+        "Self-Introduction, Origin, Nationality, and the Verb 'To Be'",
+        "Numbers (0-100), Contact Details, Age, and the Verb 'To Have'",
+        "Everyday Objects, Classroom Tools, and Singular/Plural Nouns",
+        "Family Members, Personal Relationships, and Possessive Pronouns",
+        "Telling Time, Days of the Week, and Daily Routine Verbs",
+        "Ordering Food & Beverages: Expressing Needs and Preferences",
+        "Navigating the City: Asking for Directions and Spatial Prepositions",
+        "Describing People, Places, and Essential Descriptive Adjectives",
+        "Making Purchases: Prices, Quantities, and Shopping Discourse",
+        "Hobbies, Leisure Activities, and Present Continuous Actions",
+        "Weather, Seasons, and Describing Daily Environments",
+        "Basic Phone Etiquette, Email Messages, and Digital Communication",
+        "Comprehensive Beginner Review & Interactive Situational Fluency"
+      ],
+      b1: [
+        "Technical Architecture Review and Systems Evaluation",
+        "Incident Management, Root Cause Analysis and Troubleshooting",
+        "Data Pipeline Engineering and Performance Optimization",
+        "Cross-Functional Stakeholder Communication and Alignment",
+        "Capstone Deployment Review and Production Sign-Off"
+      ]
+    },
+    vocabulary: [
+      { word: "Welcome / Hello", meaning: "Universal greeting to initiate polite conversation", pronunciation: "/ˈwɛlkəm / hɛˈloʊ/", example_sentence: "Hello and welcome to our language class! It is great to meet you." },
+      { word: "Please / Thank you", meaning: "Core politeness formulas required in daily interactions", pronunciation: "/pliːz / θæŋk juː/", example_sentence: "Could you please pass the study guide? Thank you very much." },
+      { word: "Name / Introduction", meaning: "Expressing personal identity and introductions", pronunciation: "/neɪm / ˌɪntrəˈdʌkʃən/", example_sentence: "My name is David, and I am learning English for work and travel." },
+      { word: "Origin / Country", meaning: "Describing where you come from and nationality", pronunciation: "/ˈɔːrɪdʒɪn / ˈkʌntri/", example_sentence: "I come from India, and my colleague comes from France." },
+      { word: "To Be (am, is, are)", meaning: "Foundational auxiliary verb expressing identity and state", pronunciation: "/tuː biː/", example_sentence: "She is a student, and we are excited to practice today's lesson." },
+      { word: "To Have (have, has)", meaning: "Expressing possession, age, and basic attributes", pronunciation: "/tuː hæv/", example_sentence: "I have two questions regarding the dialogue pronunciation." },
+      { word: "Daily Schedule", meaning: "Expressing time, hours, and routine activities", pronunciation: "/ˈdeɪli ˈskɛdʒuːl/", example_sentence: "Our class starts at nine o'clock every morning." },
+      { word: "Conversation / Question", meaning: "Interactive question-and-answer exchanges", pronunciation: "/ˌkɒnvərˈseɪʃən / ˈkwɛstʃən/", example_sentence: "Feel free to ask any question during our paired conversation." }
+    ],
+    dialogues: [
+      [
+        "Teacher: 'Good morning everyone! Welcome to our first spoken session. How are you today?'",
+        "Student: 'Good morning Teacher! I am doing well, thank you. Nice to meet you!'",
+        "Teacher: 'Wonderful! Could you please introduce yourself and tell us where you are from?'",
+        "Student: 'My name is Alex. I am from Chennai, and I am very happy to learn with everyone.'"
+      ],
+      [
+        "David: 'Excuse me, could you tell me where the main library is located?'",
+        "Emma: 'Certainly! Walk straight ahead and turn right at the reception desk.'",
+        "David: 'Thank you so much for your kind help!'",
+        "Emma: 'You are welcome! Have a fantastic day ahead!'"
+      ]
+    ]
+  },
   french: {
     topics: {
       a1: [
@@ -364,13 +416,29 @@ export function getLanguageSyllabusItem(
     [];
 
   // 1. Check if user provided custom uploaded source materials or topic
-  const hasCustomTopic = Boolean(userCustomTopic && userCustomTopic.trim().length > 3);
   const topicIdx = (dayNumber - 1) % topicsList.length;
   const baseTopicName = topicsList[topicIdx] || `Linguistic Core Module ${dayNumber}`;
 
-  const resolvedTopic = hasCustomTopic
-    ? `${userCustomTopic!.trim()} • ${baseTopicName}`
+  // Clean custom topic of noise headers like "ISML FACULTY & STUDENT MASTER CURRICULUM BLUEPRINT" or "Comprehensive French Complete Course"
+  const cleanUserCustom = (userCustomTopic || '')
+    .replace(/(isml|faculty|student|master|curriculum|blueprint|edition|multi-period|scheduled unit|executive lecture|comprehensive|complete course)/gi, '')
+    .replace(/^(period|session)\s*\d+:?\s*/i, '')
+    .trim();
+
+  // If user passed a specific topic (e.g. "Restaurant ordering", "Passé composé"), use it cleanly, otherwise use authentic syllabus topic
+  let resolvedTopic = (cleanUserCustom && cleanUserCustom.length > 3 && !cleanUserCustom.toLowerCase().includes('complete') && !cleanUserCustom.toLowerCase().includes('course'))
+    ? cleanUserCustom
     : baseTopicName;
+
+  // Purge any raw level tags like A1, A1.1, English A1.1 from the topic string
+  resolvedTopic = resolvedTopic
+    .replace(/\b(English|French|German|Spanish|Japanese|Korean)\s+(A1|A1\.1|A1\.2|A2|B1|B2)\b/gi, '')
+    .replace(/\b(A1|A1\.1|A1\.2|A2|B1|B2)\b/gi, '')
+    .trim();
+
+  if (!resolvedTopic || resolvedTopic.length < 3) {
+    resolvedTopic = baseTopicName;
+  }
 
   // 2. Select rich vocabulary items dynamically shifting per day (never repeating the same 3 words)
   const vocabPool = bank.vocabulary;
@@ -408,10 +476,15 @@ export function getLanguageSyllabusItem(
     }
   ];
 
+  // Meaningful grammar anchor derived from the topic
+  const cleanGrammar = resolvedTopic.includes(':') 
+    ? resolvedTopic.split(':')[1].trim() 
+    : resolvedTopic;
+
   return {
     topic: resolvedTopic,
-    grammarFocus: `Target Syntax & Morpho-Phonology: ${resolvedTopic}`,
-    pedagogicalObjective: `Achieve situational automaticity, vocabulary mastery, and spoken confidence in ${language} (${level.toUpperCase()}).`,
+    grammarFocus: cleanGrammar,
+    pedagogicalObjective: `Master ${cleanGrammar} to achieve natural situational fluency and spoken confidence in ${language} (${level.toUpperCase()}).`,
     vocabulary: vocabSelected,
     dialogue: activeDlg,
     drills

@@ -9,6 +9,28 @@
 import { getLinguisticUnit } from './curriculumLanguageBanks';
 import { getLanguageSyllabusItem } from './comprehensiveLanguageBanks';
 
+const GLOBAL_STOP_WORDS = new Set([
+  'the', 'and', 'for', 'are', 'but', 'not', 'you', 'all', 'any', 'can', 'had', 'her', 'was', 'one', 'our', 'out', 'everything', 'within',
+  'day', 'get', 'has', 'him', 'his', 'how', 'man', 'new', 'now', 'old', 'see', 'two', 'way', 'who', 'boy', 'did',
+  'its', 'let', 'put', 'say', 'she', 'too', 'use', 'part', 'verb', 'hours', 'mins', 'doc', 'docx', 'pdf', 'txt',
+  'this', 'that', 'with', 'from', 'have', 'video', 'lesson', 'learn', 'words', 'about', 'your', 'will',
+  'what', 'there', 'their', 'which', 'would', 'could', 'should', 'today', 'first', 'second', 'these',
+  'those', 'where', 'when', 'into', 'just', 'more', 'some', 'them', 'then', 'than', 'other', 'only',
+  'also', 'back', 'after', 'used', 'using', 'here', 'make', 'well', 'over', 'even', 'most', 'such',
+  'reference', 'upload', 'transcript', 'insights', 'audio', 'notes', 'content', 'channel', 'creator', 'tutor',
+  'period', 'exhaustive', 'course', 'master', 'theory', 'complete', 'multi', 'edition', 'curriculum',
+  'blueprint', 'student', 'faculty', 'isml', 'session', 'level', 'french', 'spanish', 'german', 'japanese',
+  'korean', 'english', 'comprehensive', 'syllabus', 'academic', 'studio', 'page', 'table', 'contents', 'guide',
+  'overview', 'system', 'manual', 'scheduled', 'unit', 'phase', 'stage', 'rule', 'focus', 'click', 'edit',
+  'chapter', 'requests', 'items', 'item', 'agaran', 'edtech', 'zhi', 'portal', 'learning', 'testing',
+  'between', 'through', 'under', 'before', 'while', 'both', 'each', 'such', 'same', 'other', 'each',
+  'shall', 'might', 'must', 'been', 'being', 'having', 'done', 'does', 'doing', 'went', 'gone', 'going',
+  'very', 'much', 'many', 'more', 'most', 'less', 'least', 'well', 'good', 'great', 'high', 'low',
+  'answer', 'answers', 'paper', 'papers', 'sample', 'question', 'questions', 'template', 'mcq', 'mcqs',
+  'neet', 'exam', 'examination', 'test', 'tests', 'option', 'options', 'section', 'marks', 'score',
+  'correct', 'incorrect', 'true', 'false', 'fill', 'blank', 'choice', 'multiple'
+]);
+
 export interface DayCurriculumItem {
   day_number: number;
   month_number: number;
@@ -238,17 +260,34 @@ Language: **${language}** • Certified CEFR **${level}** • Topic: **${baseTop
       .map((l: string) => l.trim())
       .filter((l: string) => l.length > 10 && !l.startsWith('[Tutor') && !l.startsWith('[YouTube'));
 
-    // 2. Extract potential video concepts / topics from high-information sentences
-    lines.forEach((line: string, idx: number) => {
-      if (line.length >= 15 && line.length <= 95) {
-        // Strip common transcript noise
-        const clean = line.replace(/^[\d\s\.\-\:\*]+/, '').trim();
-        if (clean.length > 12 && !parsedSourceTopics.includes(clean)) {
+    // 2. Extract authentic educational topics from headings, bullet points, and section dividers
+    const rawLines = sourceContext.split(/\r?\n+/);
+    rawLines.forEach((rawLine: string) => {
+      const line = rawLine.trim();
+      if (!line) return;
+
+      // Detect Headings (Markdown # or numbered 1.1 / Section / Chapter / Module)
+      let clean = line
+        .replace(/^#{1,6}\s+/, "")
+        .replace(/^[\d\s\.\-\:\*\•]+/, "")
+        .replace(/\.(docx|doc|pdf|txt|pptx|xlsx|csv|zip)\b/gi, "")
+        .replace(/_FINAL_V\d+|_V\d+|\(1\)|\(\d+\)/gi, "")
+        .replace(/[_\-]+/g, " ")
+        .trim();
+
+      const isFileNoise = /\.(docx|doc|pdf|txt|pptx|xlsx|csv)\b/i.test(line) ||
+        /^(file|document|upload|tutor|material)\s*['"\d]/i.test(line) ||
+        /(_v\d+|_final|sample_question|question_paper|sample_template|template)/i.test(line);
+
+      const isDocHeaderNoise = isFileNoise || /(isml|faculty|student|master|curriculum|blueprint|edition|multi-period|table of contents|contents|page|complete|scheduled unit|executive lecture|hour|mins|period \d+)/i.test(clean);
+
+      if (clean.length >= 6 && clean.length <= 80 && !isDocHeaderNoise && !clean.endsWith("?") && !clean.includes("http")) {
+        if (!parsedSourceTopics.includes(clean)) {
           parsedSourceTopics.push(clean);
         }
       }
-      // Look for natural dialogue structures (e.g. quotes or conversational phrases)
-      if (line.includes('?') || line.includes('!') || line.includes(':') || line.length < 80) {
+      // Dialogues extraction
+      if ((line.includes(':') || line.includes('«') || line.includes('"') || line.includes('?') || line.includes('!')) && line.length < 90 && !isDocHeaderNoise) {
         if (!parsedSourceDialogues.includes(line) && parsedSourceDialogues.length < 30) {
           parsedSourceDialogues.push(line);
         }
@@ -261,14 +300,17 @@ Language: **${language}** • Certified CEFR **${level}** • Topic: **${baseTop
       'what', 'there', 'their', 'which', 'would', 'could', 'should', 'today', 'first', 'second', 'these',
       'those', 'where', 'when', 'into', 'just', 'more', 'some', 'them', 'then', 'than', 'other', 'only',
       'also', 'back', 'after', 'used', 'using', 'here', 'make', 'well', 'over', 'even', 'most', 'such',
-      'reference', 'upload', 'transcript', 'insights', 'audio', 'notes', 'content', 'channel', 'creator', 'tutor'
+      'reference', 'upload', 'transcript', 'insights', 'audio', 'notes', 'content', 'channel', 'creator', 'tutor',
+      'period', 'exhaustive', 'course', 'master', 'theory', 'day', 'complete', 'multi', 'edition', 'curriculum',
+      'blueprint', 'student', 'faculty', 'isml', 'session', 'level', 'french', 'spanish', 'german', 'japanese',
+      'korean', 'english', 'comprehensive', 'syllabus', 'academic', 'studio', 'page', 'table', 'contents', 'guide'
     ]);
 
     const words = sourceContext
       .replace(/[\[\]\(\)\{\}<>\"\/\\\|#@*~_+=0-9]/g, ' ')
       .split(/\s+/)
       .map((w: string) => w.trim())
-      .filter((w: string) => w.length >= 3 && w.length <= 22 && !stopWords.has(w.toLowerCase()));
+      .filter((w: string) => w.length >= 3 && w.length <= 22 && !GLOBAL_STOP_WORDS.has(w.toLowerCase()));
 
     const freq: Record<string, number> = {};
     words.forEach((w: string) => {
@@ -355,16 +397,42 @@ Language: **${language}** • Certified CEFR **${level}** • Topic: **${baseTop
   const comprehensiveSyllabus = getLanguageSyllabusItem(language, level, dayNumber, baseTopic, sourceContext);
   const linguisticUnit = getLinguisticUnit(language, level, dayNumber);
 
-  // Strictly dynamic topic synthesis directly from parsed video/web/document sources
-  const mergedSourceTopics = [...parsedSourceTopics, ...collectedGrammar];
-  const analyzedGrammar = mergedSourceTopics.length > 0
-    ? mergedSourceTopics
-    : (comprehensiveSyllabus.topic ? [comprehensiveSyllabus.topic] : [`${baseTopic}: Core Foundations in ${language}`]);
+  // Strictly authentic topic synthesis: Use clean parsed topics if authentic, otherwise CEFR language bank topics
+  const cleanParsedTopics = parsedSourceTopics.filter(t => 
+    !/(complete|multi-period|edition|master|curriculum|blueprint|comprehensive|isml|course|hours|table of contents)/i.test(t) &&
+    t.length > 8 && t.length < 80
+  );
 
-  const mergedSourceVocab = [...collectedVocab, ...parsedSourceVocab];
-  const analyzedVocab = mergedSourceVocab.length > 0
-    ? mergedSourceVocab
-    : comprehensiveSyllabus.vocabulary;
+  // 100% PURE GROUNDING IN UPLOADED MATERIALS & LINKS (NO A1/B1 ARTIFICIAL OVERRIDES)
+  let analyzedGrammar: string[] = [];
+
+  if (cleanParsedTopics.length > 0) {
+    // Every period receives a genuine chapter, module or concept extracted directly from the uploaded documents & links
+    const topicFromDoc = cleanParsedTopics[(dayNumber - 1) % cleanParsedTopics.length]
+      .replace(/\b(English|French|German|Spanish|Japanese|Korean)\s+(A1|A1\.1|A1\.2|A2|B1|B2)\b/gi, '')
+      .replace(/\b(A1|A1\.1|A1\.2|A2|B1|B2)\b/gi, '')
+      .trim();
+    analyzedGrammar = [topicFromDoc];
+  } else if (collectedGrammar.length > 0) {
+    analyzedGrammar = [collectedGrammar[(dayNumber - 1) % collectedGrammar.length]];
+  } else {
+    analyzedGrammar = [baseTopic || 'Core Subject Module'];
+  }
+
+  const cleanParsedVocab = parsedSourceVocab.filter(v => 
+    !GLOBAL_STOP_WORDS.has((v.word || '').toLowerCase()) && (v.word || '').length >= 3
+  );
+  
+  let analyzedVocab: Array<{ word: string; meaning: string; pronunciation?: string; example_sentence?: string }> = [];
+
+  if (cleanParsedVocab.length > 0) {
+    // 100% extracted from the uploaded files/links
+    analyzedVocab = cleanParsedVocab;
+  } else if (collectedVocab.length > 0) {
+    analyzedVocab = collectedVocab;
+  } else {
+    analyzedVocab = comprehensiveSyllabus.vocabulary || linguisticUnit.vocabulary;
+  }
 
   // Derive pacing & depth based on total course hours (User request: 40h short, 60h standard, 80h/100h elaborate)
   let depthTier: 'CONDENSED_FAST_TRACK' | 'BALANCED_ACADEMIC' | 'ELABORATED_MASTERY' = 'BALANCED_ACADEMIC';
@@ -441,7 +509,32 @@ Language: **${language}** • Certified CEFR **${level}** • Topic: **${baseTop
     example_sentence: v.example_sentence || `In this unit, students apply "${v.word}" to express key concepts.`
   }));
 
-  const unitTopic = `${unitLabel}: ${currentGrammarFocus || comprehensiveSyllabus.topic}`;
+  // Strip any accidental 'Period X:' or 'Session X:' prefix so unitLabel isn't duplicated
+  // Strip filenames, extensions, version tags, and noisy document artifacts
+  let rawTopicFocus = currentGrammarFocus || comprehensiveSyllabus.topic || "Core Subject Analysis";
+  let cleanGrammarLabel = rawTopicFocus
+    .replace(/^(Period|Session)\s*\d+:?\s*/i, "")
+    .replace(/\.(docx|doc|pdf|txt|pptx|xlsx|csv|zip)\b/gi, "")
+    .replace(/_FINAL_V\d+|_V\d+|\(1\)|\(\d+\)/gi, "")
+    .replace(/\b(English|French|German|Spanish|Japanese|Korean)\s+(A1|A1\.1|A1\.2|A2|B1|B2)\b/gi, "")
+    .replace(/\b(A1|A1\.1|A1\.2|A2|B1|B2)\b/gi, "")
+    .replace(/\(Applied Context:\s*/gi, "— ")
+    .replace(/\)/g, "")
+    .replace(/[_\-]+/g, " ")
+    .replace(/(Durkkas|EMS|Final|Sample Question Paper|MCQ Question Paper Sample|Template)/gi, (match) => {
+      if (/Durkkas|EMS/i.test(match)) return "Enterprise Platform Services";
+      return "";
+    })
+    .replace(/\s{2,}/g, " ")
+    .trim();
+
+  if (!cleanGrammarLabel || cleanGrammarLabel.length < 5 || /(docx|pdf|txt|template|sample)/i.test(cleanGrammarLabel)) {
+    cleanGrammarLabel = comprehensiveSyllabus.topic || "Enterprise Architecture & System Operations";
+  }
+  const unitTopic = `${unitLabel}: ${cleanGrammarLabel}`;
+
+  // Check whether session is based on custom uploaded documents/materials or pure CEFR language training
+  const isDocContentMode = parsedSourceTopics.length > 0 || Boolean(sourceContext && sourceContext.trim().length > 40);
 
   // Construct dynamic syntactic formula and paradigm matrix directly derived from inputs
   const dynamicFormula = `Unit ${dayNumber} [${depthTier}] Syntactic Rule in ${language}:\n` +
@@ -464,32 +557,33 @@ Language: **${language}** • Certified CEFR **${level}** • Topic: **${baseTop
     ? collectedDialogues
     : (comprehensiveSyllabus.dialogue.length > 0 ? comprehensiveSyllabus.dialogue : linguisticUnit.dialogue);
 
-  // Dynamic in-class exercises and solutions - Authentic CEFR drills categorized across LSRW
-  const exerciseSolutions = (mergedSourceTopics.length > 0 || currentVocabList.length > 0)
-    ? [
-        {
-          question: `[R - Reading & Syntax] Construct an affirmative clause in ${language} integrating "${primaryWord}" adhering strictly to: "${currentGrammarFocus}".`,
-          answer: `Sentence following standard syntax: Subject + ${currentGrammarFocus} + ${primaryWord}.`,
-          explanation: `Tests active reading comprehension, syntactic formulation, and CEFR ${level} agreement in ${language}.`
-        },
-        {
-          question: `[S - Spoken Interaction] Formulate an authentic conversational question applying "${secondaryWord}" in spoken discourse.`,
-          answer: `Interrogative pattern utilizing inverted verb-subject syntax or formal question markers in ${language}.`,
-          explanation: `Develops situational speaking confidence, pragmatic tone, and auditory responsiveness.`
-        },
-        {
-          question: `[L - Auditory & Error Discrimination] Identify and rectify the structural or inflection error in applying "${primaryWord}" in auditory dialogue.`,
-          answer: `Correct the tense marker, phonetic liaison, or gender/number agreement according to ${currentGrammarFocus}.`,
-          explanation: `Eliminates habitual auditory confusion and mother-tongue interference errors.`
-        },
-        {
-          question: `[W - Contextual Writing] Draft a cohesive 2-sentence micro-dialogue or written response using today's target vocabulary: ${currentVocabList.map(v => v.word).join(', ')}.`,
-          answer: `Cohesive two-turn response demonstrating natural written cohesion and authentic CEFR ${level} register.`,
-          explanation: `Consolidates active retention and bridges conceptual understanding to written communicative mastery.`
-        }
-      ]
-    : linguisticUnit.drills;
-
+  // Dynamic in-class exercises grounded directly in the document topic and core concepts
+  // Dynamic in-class exercises strictly grounded in actual topics & vocabulary (ZERO filename mentions)
+  const tertiaryWord = currentVocabList[2]?.word || "Integration";
+  // 15+ Yrs Language Acquisition Specialist Design: Audio-Immersion & Spoken Fluency Drills
+  const audioTrackTitle = `Native Audio Lesson: ${cleanGrammarLabel}`;
+  const exerciseSolutions = [
+    {
+      question: `🎧 [Audio Track 1: Native Ear Tuning & Auditory Decoding] Listen to the audio scenario for "${cleanGrammarLabel}". Identify the exact native sentence where "${primaryWord}" is articulated and transcribe its communicative meaning.`,
+      answer: `Auditory decoding focus: Isolate acoustic stress, pitch accent, and contextual phrase usage for ${primaryWord}.`,
+      explanation: `Trains auditory discrimination and native speech decoding before any theoretical text reading.`
+    },
+    {
+      question: `🗣️ [Speech Shadowing & Native Echo Drill] Play Audio Track & Repeat: Perform choral repetition matching the native speaker's exact rhythm, intonation, and pronunciation when expressing "${secondaryWord}".`,
+      answer: `Verbal shadowing response reproducing standard vowel purity, liaison boundaries, and natural speech cadence.`,
+      explanation: `Develops mouth muscle memory and spontaneous oral automaticity through active audio mirroring.`
+    },
+    {
+      question: `💬 [Interactive Situational Exchange] Roleplay Simulation: Enact a live 2-person spoken dialogue in ${language}. Respond dynamically to the prompt using today's core term "${primaryWord}" within 15 seconds without hesitation.`,
+      answer: `Spontaneous communicative exchange demonstrating natural conversational turn-taking and polite register in ${language}.`,
+      explanation: `Eliminates mental translation lag and bridges auditory input to immediate spoken confidence.`
+    },
+    {
+      question: `📝 [Active Sentence Construction & Spoken Wrap] Record or draft an authentic communicative response applying "${primaryWord}", "${secondaryWord}", and "${tertiaryWord}" in an authentic daily or professional scenario.`,
+      answer: `Cohesive oral or written response applying today's functional terms in clear ${language} syntax.`,
+      explanation: `Consolidates end-to-end active production and long-term memory retention.`
+    }
+  ]
   const inClassExercises = exerciseSolutions.map(e => e.question);
 
   const homeworkTasks = [
@@ -543,9 +637,9 @@ Conduct structured guided drills where learners actively construct original sent
     week_number: weekNum,
     module_week: `Week ${weekNum} • ${unitLabel.split(' ')[0]} ${periodInWeek}/${weeklyCadence} (${unitLabel} of ${totalDays})`,
     day_topic: unitTopic,
-    grammar_rules_detail: (collectedGrammar.length > 0)
-      ? `Senior Faculty Lecture for ${unitLabel} (Week ${weekNum}, ${weeklyCadence} ${unitLabel.split(' ')[0]}s/wk): Core Target: ${currentGrammarFocus}. Grounded in ${courseHours}-hour curriculum syllabus (${depthTier}).`
-      : `${currentGrammarFocus}. Objectif pédagogique : ${currentObjective}`,
+    grammar_rules_detail: isDocContentMode
+      ? `Core Concept: ${cleanGrammarLabel}. Objective: Master the functional architecture, implementation details, and operational workflows defined in the source materials.`
+      : `Focus: ${cleanGrammarLabel}. Objective: ${currentObjective.replace(/^(Focus:|Objectif pédagogique :?|Learning Goal:?)\s*/i, '').trim()}`,
     study_notes_markdown: studyNotesMarkdown,
     vocabulary_bank: currentVocabList,
     classroom_dialogues: classroomDialogues,

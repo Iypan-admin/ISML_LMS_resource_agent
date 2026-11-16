@@ -83,7 +83,7 @@ import { fetchBackendWithFallback, fetchWithEndpointFallback } from '@/utils/api
 
 export default function FacultyStudioPage() {
   // 3-Step Sequential Workflow: 1 = Setup, 2 = Session Planner & Timetable, 3 = Content Package
-  const [studioStep, setStudioStep] = useState<1 | 2 | 3>(1);
+  const [studioStep, setStudioStep] = useState<1 | 2 | 3 | 4>(1);
   // Institutional Stream Switcher: SCHOOL vs COLLEGE
   const [institutionType, setInstitutionType] = useState<InstitutionType>('SCHOOL');
   const [schoolCategory, setSchoolCategory] = useState<SchoolCategoryKey | 'CUSTOM'>('CAT_1');
@@ -99,7 +99,7 @@ export default function FacultyStudioPage() {
   const [selectedLevel, setSelectedLevel] = useState('A1');
   const [selectedTrack, setSelectedTrack] = useState<'STANDARD' | 'INTERNSHIP' | 'SUPER_INTERNSHIP' | 'CUSTOM'>('CUSTOM');
   const [customDays, setCustomDays] = useState<number | ''>(2);
-  const [courseDurationMode, setCourseDurationMode] = useState<'INSTITUTIONAL' | 'CUSTOM'>('INSTITUTIONAL');
+  const [courseDurationMode, setCourseDurationMode] = useState<'INSTITUTIONAL' | 'CUSTOM'>('CUSTOM');
   // Editable Institutional & Session Metrics overrides
   const [customPeriodMins, setCustomPeriodMins] = useState<number | ''>('');
   const [customTeachingHours, setCustomTeachingHours] = useState<number | ''>('');
@@ -108,6 +108,7 @@ export default function FacultyStudioPage() {
   const [customHumanSpeakingMins, setCustomHumanSpeakingMins] = useState<number | ''>('');
   const [customAiPracticePerDay, setCustomAiPracticePerDay] = useState<number | ''>('');
   const [isCustomMetricsOpen, setIsCustomMetricsOpen] = useState<boolean>(false);
+  const [isCustomTeachingHoursManual, setIsCustomTeachingHoursManual] = useState<boolean>(false);
   const [isCustomPeriodsPerWeekManual, setIsCustomPeriodsPerWeekManual] = useState<boolean>(false);
   const [isCustomAssessmentsManual, setIsCustomAssessmentsManual] = useState<boolean>(false);
   const [isCustomHumanSpeakingManual, setIsCustomHumanSpeakingManual] = useState<boolean>(false);
@@ -850,6 +851,8 @@ export default function FacultyStudioPage() {
     setUnreachableLinksPrompt(null);
     setSessionPackage(null);
     setProposedPlanner(null);
+    setPlannerLoading(true);
+    setPlannerLoading(true);
 
     // Required check: language must be selected
     if (!selectedLanguage) {
@@ -912,7 +915,7 @@ export default function FacultyStudioPage() {
     const validUrls = sourceUrls.map(u => u.trim()).filter(Boolean);
     let extractedSourceContextFromValidation = '';
     if (validUrls.length > 0 || uploadedFiles.length > 0) {
-      setLoading(true);
+      setPlannerLoading(true);
       try {
         const formData = new FormData();
         formData.append('language', selectedLanguage);
@@ -930,7 +933,7 @@ export default function FacultyStudioPage() {
             const mismatchMsg = valData.message || valData.mismatch_error || `Language mismatch detected: Uploaded material is not in ${selectedLanguage}`;
             setMismatchError(mismatchMsg);
             setProposedPlanner(null);
-            setLoading(false);
+            setPlannerLoading(false);
             setTimeout(() => {
               errorAlertRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
             }, 50);
@@ -942,8 +945,6 @@ export default function FacultyStudioPage() {
         }
       } catch (err) {
         console.warn('Backend material validation skipped:', err);
-      } finally {
-        setLoading(false);
       }
     }
 
@@ -958,20 +959,41 @@ export default function FacultyStudioPage() {
     let courseHours = 60;
     let trackLabel = '';
 
-    if (isSchool) {
-      const sc = getSchoolSchedule(schoolLevel, schoolCategory);
-      totalDays = sc.totalPeriods;
-      periodMins = sc.periodDurationMinutes;
-      weeklyCadence = sc.periodsPerWeek;
-      courseHours = sc.courseDurationHours;
-      trackLabel = `School Matrix: ${sc.categoryLabel} (${sc.courseDurationHours} Hours • ${sc.totalPeriods} Periods)`;
+    if (courseDurationMode === 'CUSTOM' && customDays && Number(customDays) > 0) {
+      totalDays = Number(customDays);
+      periodMins = isSchool 
+        ? (schoolCategory === 'CUSTOM' && customSchoolCategoryMins !== '' ? Number(customSchoolCategoryMins) : (customPeriodMins !== '' ? Number(customPeriodMins) : 35))
+        : (customCollegeTrackMins !== '' ? Number(customCollegeTrackMins) : 60);
+      weeklyCadence = isSchool ? (customPeriodsPerWeek !== '' ? Number(customPeriodsPerWeek) : 3) : 2;
+      courseHours = customTeachingHours !== '' ? Number(customTeachingHours) : Math.round((totalDays * periodMins) / 60) || 1;
+      trackLabel = `Custom Plan: ${totalDays} ${isSchool ? 'Periods' : 'Sessions'} (${courseHours} Hours)`;
+    } else if (isSchool) {
+      const fallbackCat = schoolCategory === 'CUSTOM' ? 'CAT_1' : schoolCategory;
+      const fallbackLvl = schoolLevel === 'CUSTOM' ? 'A1.1' : schoolLevel;
+      const sc = getSchoolSchedule(fallbackLvl, fallbackCat);
+
+      periodMins = schoolCategory === 'CUSTOM' && customSchoolCategoryMins !== '' 
+        ? Number(customSchoolCategoryMins) 
+        : (customPeriodMins !== '' ? Number(customPeriodMins) : sc.periodDurationMinutes);
+
+      courseHours = customTeachingHours !== '' 
+        ? Number(customTeachingHours) 
+        : sc.courseDurationHours;
+
+      weeklyCadence = customPeriodsPerWeek !== '' 
+        ? Number(customPeriodsPerWeek) 
+        : sc.periodsPerWeek;
+
+      // Auto-calculate total periods from Teaching Hours and Period Minutes!
+      totalDays = Math.max(2, Math.round((courseHours * 60) / periodMins));
+      trackLabel = `School Matrix: ${schoolCategory === 'CUSTOM' ? 'Custom School' : sc.categoryLabel} (${courseHours} Hours • ${totalDays} Periods)`;
     } else {
       const cc = getCollegeSchedule(selectedLanguage, selectedLevel, collegeTrack);
-      totalDays = cc.sessionsRequired;
-      periodMins = cc.sessionMinutes;
+      periodMins = customCollegeTrackMins !== '' ? Number(customCollegeTrackMins) : cc.sessionMinutes;
+      courseHours = customCollegeTeachingHours !== '' ? Number(customCollegeTeachingHours) : (customTeachingHours !== '' ? Number(customTeachingHours) : cc.courseDurationHours);
       weeklyCadence = cc.sessionsPerWeek;
-      courseHours = cc.courseDurationHours;
-      trackLabel = `College Track: ${cc.trackLabel} (${cc.courseDurationHours} Hours • ${cc.sessionsRequired} Sessions)`;
+      totalDays = Math.max(2, Math.round((courseHours * 60) / periodMins));
+      trackLabel = `College Track: ${collegeTrack === 'CUSTOM' ? 'Custom College' : cc.trackLabel} (${courseHours} Hours • ${totalDays} Sessions)`;
     }
 
     const totalModules = Math.ceil(totalDays / unitsPerBlock);
@@ -1049,12 +1071,15 @@ export default function FacultyStudioPage() {
         selected_lsrw_skills: selectedLsrwSkills,
         source_urls_count: sourceUrls.filter(u => u.trim()).length,
         uploaded_files_count: uploadedFiles.length,
+        uploaded_files_list: uploadedFiles.map(f => ({ name: f.name, size: f.size, type: f.type })),
+        source_urls_list: sourceUrls.filter(u => u.trim()),
         extracted_source_context: extractedSourceContextFromValidation || undefined,
       };
       setProposedPlanner(newPlanner);
       setPlannerActiveModule(1);
       setPlannerConfirmed(false);
       setIsFullScreen(true);
+      setStudioStep(3);
       setPlannerLoading(false);
 
       // Auto-save blueprint to database & localStorage so session is stored in chatbot history immediately
@@ -1066,7 +1091,7 @@ export default function FacultyStudioPage() {
     setIsEditingPlanner(true);
   };
 
-  const updateDayInPlanner = (dayNum: number, field: 'day_topic' | 'grammar_rules_detail', value: string) => {
+  const updateDayInPlanner = (dayNum: number, field: string, value: any) => {
     if (!proposedPlanner) return;
     setProposedPlanner((prev: any) => {
       if (!prev) return prev;
@@ -1094,6 +1119,15 @@ export default function FacultyStudioPage() {
         all_days: updatedDays,
         modules: updatedModules,
       };
+
+      // Also mirror into periodOverrides so downstream package generation retains all interactive modifications
+      setPeriodOverrides(overrides => ({
+        ...overrides,
+        [dayNum]: {
+          ...(overrides[dayNum] || {}),
+          [field]: value
+        }
+      }));
 
       // Auto-save manual edits as well
       autoSaveCurriculum(updatedPlanner, `Edited Period ${dayNum}`);
@@ -1233,13 +1267,13 @@ export default function FacultyStudioPage() {
     // Dynamic level and duration resolution based on institutionType
     let effectiveLevel: string = selectedLevel;
     let effectiveTrackMode: string = selectedTrack;
-    let targetDaysNumber: number = 60;
+    let targetDaysNumber: number = (courseDurationMode === "CUSTOM" && customDays && Number(customDays) > 0) ? Number(customDays) : 60;
 
     if (institutionType === 'SCHOOL') {
       effectiveLevel = schoolLevel;
       effectiveTrackMode = 'CUSTOM';
       const schoolSched = getSchoolSchedule(schoolLevel, schoolCategory);
-      targetDaysNumber = schoolSched.totalPeriods;
+      targetDaysNumber = (courseDurationMode === "CUSTOM" && customDays && Number(customDays) > 0) ? Number(customDays) : schoolSched.totalPeriods;
       formData.append('institution_type', 'SCHOOL');
       formData.append('school_category', schoolCategory);
       formData.append('school_level', schoolLevel);
@@ -1254,7 +1288,7 @@ export default function FacultyStudioPage() {
     } else {
       // COLLEGE
       const colSched = getCollegeSchedule(selectedLanguage, selectedLevel, collegeTrack);
-      targetDaysNumber = colSched.sessionsRequired;
+      targetDaysNumber = (courseDurationMode === "CUSTOM" && customDays && Number(customDays) > 0) ? Number(customDays) : colSched.sessionsRequired;
       effectiveTrackMode = collegeTrack;
       formData.append('institution_type', 'COLLEGE');
       formData.append('college_track', collegeTrack);
@@ -1358,6 +1392,8 @@ export default function FacultyStudioPage() {
       }
 
       setSessionPackage(data);
+      setStudioStep(4);
+      setStudioStep(4);
 
       // Save to Backend Database (NestJS / Prisma)
       try {
@@ -1590,7 +1626,7 @@ export default function FacultyStudioPage() {
   }
 
   return (
-    <div className={`min-h-screen bg-[#F8FAFC] text-slate-900 p-0 sm:p-4 md:p-6 max-w-full space-y-0 sm:space-y-5 mx-auto transition-all duration-300`}>
+    <div className={`min-h-screen bg-[#F8FAFC] text-slate-900 p-0 sm:p-4 max-w-full space-y-3 sm:space-y-4 w-full transition-all duration-300`}>
       {/* Clean Light-Theme Agent Control Bar */}
       <div className="sticky top-0 z-30 bg-white/95 backdrop-blur-md border-b border-slate-200 px-4 py-3 sm:px-6 flex items-center justify-between gap-3">
         <div className="flex items-center gap-3">
@@ -1843,15 +1879,13 @@ export default function FacultyStudioPage() {
       )}
 
       
-      {/* 🧭 Professional 3-Step Sequential Workflow Navigation */}
+      {/* 🧭 Professional 4-Step Sequential Workflow Navigation */}
       <div className="bg-white border-y sm:border sm:rounded-2xl border-slate-200 px-4 py-3 sm:px-6">
-        <div className="flex items-center justify-between max-w-3xl mx-auto">
-          {/* Step 1 */}
+        <div className="flex items-center justify-between w-full mx-auto">
+          {/* Step 1: Course Setup */}
           <button
             type="button"
-            onClick={() => {
-              if (studioStep > 1) setStudioStep(1);
-            }}
+            onClick={() => setStudioStep(1)}
             className={`flex items-center gap-2 cursor-pointer transition-all ${
               studioStep === 1 ? 'text-blue-600 font-bold' : studioStep > 1 ? 'text-slate-800 font-semibold' : 'text-slate-400'
             }`}
@@ -1868,18 +1902,18 @@ export default function FacultyStudioPage() {
             <span className="text-xs sm:text-sm">Course Setup</span>
           </button>
 
-          <div className={`flex-1 h-0.5 mx-2 sm:mx-4 transition-colors ${studioStep >= 2 ? 'bg-blue-600' : 'bg-slate-200'}`} />
+          <div className={`flex-1 h-0.5 mx-2 sm:mx-3 transition-colors ${studioStep >= 2 ? 'bg-blue-600' : 'bg-slate-200'}`} />
 
-          {/* Step 2 */}
+          {/* Step 2: Upload Study Materials */}
           <button
             type="button"
             onClick={() => {
-              if (proposedPlanner) setStudioStep(2);
+              if (selectedLanguage) setStudioStep(2);
             }}
-            disabled={!proposedPlanner}
+            disabled={!selectedLanguage}
             className={`flex items-center gap-2 transition-all ${
               studioStep === 2 ? 'text-blue-600 font-bold' : studioStep > 2 ? 'text-slate-800 font-semibold' : 'text-slate-400'
-            } ${!proposedPlanner ? 'cursor-not-allowed opacity-60' : 'cursor-pointer'}`}
+            } ${!selectedLanguage ? 'cursor-not-allowed opacity-60' : 'cursor-pointer'}`}
           >
             <span className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${
               studioStep === 2
@@ -1888,36 +1922,60 @@ export default function FacultyStudioPage() {
                 ? 'bg-blue-100 text-blue-700 font-bold'
                 : 'bg-slate-100 text-slate-400'
             }`}>
-              {studioStep > 3 ? '✓' : '2'}
+              {studioStep > 2 ? '✓' : '2'}
             </span>
-            <span className="text-xs sm:text-sm">Session Planner & Timetable</span>
+            <span className="text-xs sm:text-sm">Study Materials</span>
           </button>
 
-          <div className={`flex-1 h-0.5 mx-2 sm:mx-4 transition-colors ${studioStep >= 3 ? 'bg-blue-600' : 'bg-slate-200'}`} />
+          <div className={`flex-1 h-0.5 mx-2 sm:mx-3 transition-colors ${studioStep >= 3 ? 'bg-blue-600' : 'bg-slate-200'}`} />
 
-          {/* Step 3 */}
+          {/* Step 3: Session Planner & Timetable */}
           <button
             type="button"
             onClick={() => {
-              if (sessionPackage) setStudioStep(3);
+              if (proposedPlanner) setStudioStep(3);
             }}
-            disabled={!sessionPackage}
+            disabled={!proposedPlanner}
             className={`flex items-center gap-2 transition-all ${
-              studioStep === 3 ? 'text-blue-600 font-bold' : 'text-slate-400'
-            } ${!sessionPackage ? 'cursor-not-allowed opacity-60' : 'cursor-pointer'}`}
+              studioStep === 3 ? 'text-blue-600 font-bold' : studioStep > 3 ? 'text-slate-800 font-semibold' : 'text-slate-400'
+            } ${!proposedPlanner ? 'cursor-not-allowed opacity-60' : 'cursor-pointer'}`}
           >
             <span className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${
               studioStep === 3
                 ? 'bg-blue-600 text-white shadow-xs'
+                : studioStep > 3
+                ? 'bg-blue-100 text-blue-700 font-bold'
                 : 'bg-slate-100 text-slate-400'
             }`}>
-              3
+              {studioStep > 3 ? '✓' : '3'}
+            </span>
+            <span className="text-xs sm:text-sm">Planner & Timetable</span>
+          </button>
+
+          <div className={`flex-1 h-0.5 mx-2 sm:mx-3 transition-colors ${studioStep >= 4 ? 'bg-blue-600' : 'bg-slate-200'}`} />
+
+          {/* Step 4: Teaching Kit */}
+          <button
+            type="button"
+            onClick={() => {
+              if (sessionPackage) setStudioStep(4);
+            }}
+            disabled={!sessionPackage}
+            className={`flex items-center gap-2 transition-all ${
+              studioStep === 4 ? 'text-blue-600 font-bold' : 'text-slate-400'
+            } ${!sessionPackage ? 'cursor-not-allowed opacity-60' : 'cursor-pointer'}`}
+          >
+            <span className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${
+              studioStep === 4
+                ? 'bg-blue-600 text-white shadow-xs'
+                : 'bg-slate-100 text-slate-400'
+            }`}>
+              4
             </span>
             <span className="text-xs sm:text-sm">Teaching Kit</span>
           </button>
         </div>
       </div>
-
       {/* Target anchor for auto-scrolling to errors */}
       <div ref={errorAlertRef} className="scroll-mt-8 space-y-4">
         {/* Language Mismatch Error Banner */}
@@ -2029,10 +2087,11 @@ export default function FacultyStudioPage() {
       </div>
 
       {/* Main Grid: Responsive Split vs Fullscreen View */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-0 sm:gap-6 items-start">
+      <div className="w-full max-w-full mx-auto space-y-6">
         {/* Left Column: Course Setup Form (Desktop 4 cols, stacks naturally on mobile, hidden on desktop only when viewing active planner/package/loading in fullscreen) */}
-        <div ref={formContainerRef} className={`space-y-6 scroll-mt-24 ${(isFullScreen && (Boolean(proposedPlanner) || Boolean(sessionPackage) || plannerLoading)) ? 'hidden' : 'lg:col-span-4'}`}>
-          <div className="bg-white border-b sm:border sm:rounded-2xl border-slate-200 p-4 sm:p-5">
+        {studioStep === 1 && !loading && (
+          <div ref={formContainerRef} className="space-y-6 scroll-mt-24 w-full w-full mx-auto animate-in fade-in">
+          <div className="bg-white border-b sm:border sm:rounded-2xl border-slate-200 p-4 sm:p-6 lg:p-8 w-full">
             {/* Unified Form Header */}
             <div className="flex items-center justify-between pb-3.5 mb-4 border-b border-slate-100">
               <div className="flex items-center gap-2">
@@ -2322,12 +2381,12 @@ export default function FacultyStudioPage() {
                             <span className="text-[10px] text-slate-500 font-bold block uppercase tracking-wider">
                               Teaching Hours:
                             </span>
-                            <div className="flex items-center gap-1.5">
+                            {!isCustomTeachingHoursManual ? (
                               <select
                                 value={[10, 20, 40, 60, 80, 100, 120, 150].includes(effectiveHours) ? effectiveHours : 'CUSTOM'}
                                 onChange={(e) => {
                                   if (e.target.value === 'CUSTOM') {
-                                    // keep current or leave for typing
+                                    setIsCustomTeachingHoursManual(true);
                                   } else {
                                     setCustomTeachingHours(parseInt(e.target.value));
                                   }
@@ -2337,9 +2396,31 @@ export default function FacultyStudioPage() {
                                 {[10, 20, 40, 60, 80, 100, 120, 150].map((h) => (
                                   <option key={h} value={h}>{h} Hours</option>
                                 ))}
-                                <option value="CUSTOM">Custom Hours ({effectiveHours}h)</option>
+                                <option value="CUSTOM">Custom Hours...</option>
                               </select>
-                            </div>
+                            ) : (
+                              <div className="flex items-center gap-1">
+                                <input
+                                  type="number"
+                                  min="1"
+                                  max="500"
+                                  value={customTeachingHours !== '' ? customTeachingHours : effectiveHours}
+                                  onChange={(e) => setCustomTeachingHours(e.target.value ? parseInt(e.target.value) : '')}
+                                  className="w-full bg-white border border-blue-500 rounded-lg px-2 py-1 text-xs font-bold text-slate-900 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                                  placeholder="Hours"
+                                  autoFocus
+                                />
+                                <span className="text-[10px] font-bold text-slate-500">Hrs</span>
+                                <button
+                                  type="button"
+                                  onClick={() => setIsCustomTeachingHoursManual(false)}
+                                  className="px-1.5 py-1 text-[10px] bg-slate-200 hover:bg-slate-300 text-slate-700 rounded font-bold"
+                                  title="Back to dropdown presets"
+                                >
+                                  ✕
+                                </button>
+                              </div>
+                            )}
                           </div>
 
                           {/* Assessments (Tests) */}
@@ -2645,70 +2726,89 @@ export default function FacultyStudioPage() {
               </div>
 
               
-              {/* Course Duration Selector (Institutional Standard vs 100% Custom 2 to 365 Days) */}
-              <div className="space-y-2 pt-2 border-t border-slate-100">
-                <div className="flex items-center justify-between">
-                  <label className="text-xs font-bold text-slate-700 uppercase tracking-wider">
-                    Course Duration Mode
-                  </label>
-                  <div className="flex items-center gap-1 bg-slate-100 p-0.5 rounded-lg border border-slate-200 text-[11px] font-bold">
-                    <button
-                      type="button"
-                      onClick={() => setCourseDurationMode('INSTITUTIONAL')}
-                      className={`px-2 py-0.5 rounded-md transition-all ${
-                        courseDurationMode === 'INSTITUTIONAL' ? 'bg-white text-blue-700 shadow-2xs' : 'text-slate-500'
-                      }`}
-                    >
-                      Institutional
-                    </button>
+              {/* Cou{/* User-Friendly Course Days & Duration Picker */}
+              <div className="bg-slate-50 border border-slate-200/90 rounded-2xl p-4 sm:p-5 space-y-4">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-200/80 pb-3">
+                  <div>
+                    <label className="text-xs sm:text-sm font-bold text-slate-900 flex items-center gap-2">
+                      <span>How many days / periods is this course?</span>
+                      <span className="text-[10px] font-bold text-blue-700 bg-blue-100/70 px-2 py-0.5 rounded-full">
+                        {courseDurationMode === 'CUSTOM' ? `Custom (${customDays || 2} Days)` : 'Institutional Default'}
+                      </span>
+                    </label>
+                    <p className="text-[11px] text-slate-500 mt-0.5">
+                      Select how many days or enter exact count — your curriculum and lessons will be structured for this exact duration.
+                    </p>
+                  </div>
+
+                  <div className="flex items-center gap-1 bg-white p-1 rounded-xl border border-slate-200 text-xs font-bold shrink-0 self-start sm:self-auto shadow-2xs">
                     <button
                       type="button"
                       onClick={() => setCourseDurationMode('CUSTOM')}
-                      className={`px-2 py-0.5 rounded-md transition-all ${
-                        courseDurationMode === 'CUSTOM' ? 'bg-white text-blue-700 shadow-2xs' : 'text-slate-500'
+                      className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer ${
+                        courseDurationMode === 'CUSTOM' ? 'bg-blue-600 text-white shadow-xs' : 'text-slate-600 hover:text-slate-900'
                       }`}
                     >
                       Custom Days
                     </button>
+                    <button
+                      type="button"
+                      onClick={() => setCourseDurationMode('INSTITUTIONAL')}
+                      className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer ${
+                        courseDurationMode === 'INSTITUTIONAL' ? 'bg-blue-600 text-white shadow-xs' : 'text-slate-600 hover:text-slate-900'
+                      }`}
+                    >
+                      Institutional
+                    </button>
                   </div>
                 </div>
 
-                {courseDurationMode === 'CUSTOM' && (
-                  <div className="bg-blue-50/50 border border-blue-200/80 rounded-xl p-3 space-y-2 animate-in fade-in">
-                    <span className="text-[11px] font-bold text-blue-900 block">
-                      Quick Course Presets:
-                    </span>
-                    <div className="grid grid-cols-4 gap-1.5 text-xs font-bold">
-                      {[2, 5, 30, 60, 103, 120, 180, 365].map((preset) => (
-                        <button
-                          key={preset}
-                          type="button"
-                          onClick={() => setCustomDays(preset)}
-                          className={`py-1 px-1.5 rounded-lg border text-center transition-all cursor-pointer ${
-                            customDays === preset
-                              ? 'bg-blue-600 text-white border-blue-600 shadow-xs'
-                              : 'bg-white hover:bg-slate-50 text-slate-700 border-slate-200'
-                          }`}
-                        >
-                          {preset}d
-                        </button>
-                      ))}
+                {courseDurationMode === 'CUSTOM' ? (
+                  <div className="space-y-3 animate-in fade-in">
+                    <div>
+                      <span className="text-xs font-bold text-slate-700 block mb-2">
+                        Quick Select Number of Days:
+                      </span>
+                      <div className="grid grid-cols-4 sm:grid-cols-8 gap-2">
+                        {[1, 2, 3, 5, 10, 15, 30, 60].map((preset) => (
+                          <button
+                            key={preset}
+                            type="button"
+                            onClick={() => setCustomDays(preset)}
+                            className={`py-2.5 px-2 rounded-xl border text-center font-bold text-xs transition-all cursor-pointer ${
+                              customDays === preset
+                                ? 'bg-blue-600 text-white border-blue-600 shadow-sm scale-105'
+                                : 'bg-white hover:bg-slate-100 text-slate-700 border-slate-300 shadow-2xs'
+                            }`}
+                          >
+                            {preset} {preset === 1 ? 'Day' : 'Days'}
+                          </button>
+                        ))}
+                      </div>
                     </div>
 
-                    <div className="pt-1 flex items-center justify-between gap-2">
-                      <span className="text-xs text-slate-600 font-semibold">Or enter custom count:</span>
-                      <div className="flex items-center gap-1">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white p-3.5 rounded-xl border border-slate-200 shadow-2xs">
+                      <div>
+                        <span className="text-xs font-bold text-slate-800 block">Or Type Exact Number of Days:</span>
+                        <span className="text-[11px] text-slate-500">From 1 to 365 days / periods</span>
+                      </div>
+                      <div className="flex items-center gap-2">
                         <input
                           type="number"
                           min="1"
                           max="365"
                           value={customDays}
                           onChange={(e) => setCustomDays(e.target.value ? Math.max(1, Math.min(365, parseInt(e.target.value))) : '')}
-                          className="w-16 px-2 py-1 bg-white border border-slate-300 rounded-lg text-xs font-bold text-slate-900 text-center focus:outline-none focus:ring-1 focus:ring-blue-500"
+                          placeholder="2"
+                          className="w-20 px-3 py-2 bg-slate-50 border-2 border-blue-400 rounded-xl text-sm font-bold text-slate-900 text-center focus:outline-none focus:ring-2 focus:ring-blue-500"
                         />
-                        <span className="text-xs font-bold text-slate-500">Days</span>
+                        <span className="text-xs font-bold text-slate-700">Days Course</span>
                       </div>
                     </div>
+                  </div>
+                ) : (
+                  <div className="bg-white p-3.5 rounded-xl border border-slate-200 text-xs text-slate-600 shadow-2xs">
+                    Using Standard Institutional Term Schedule ({institutionType === 'SCHOOL' ? '60 Hours • 103 Periods' : 'Standard Semester Track'}). Switch to <strong>Custom Days</strong> above to specify your own course length.
                   </div>
                 )}
               </div>
@@ -2718,17 +2818,29 @@ export default function FacultyStudioPage() {
                 <button
                   type="button"
                   onClick={(e) => {
-                    setIsFullScreen(true);
-                    handlePreviewPlanner(e);
+                    e.preventDefault();
+                    if (!selectedLanguage) {
+                      setSelectedLanguage('English'); // auto-select English if user clicked next
+                      setStudioStep(2);
+                      window.scrollTo({ top: 0, behavior: 'smooth' });
+                      return;
+                      setTimeout(() => {
+                        errorAlertRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                      }, 50);
+                      return;
+                    }
+                    setMismatchError(null);
+                    setStudioStep(2);
+                    window.scrollTo({ top: 0, behavior: 'smooth' });
                   }}
-                  disabled={loading || !selectedLanguage}
+                  disabled={!selectedLanguage}
                   className={`w-full py-3.5 px-4 font-bold rounded-xl shadow-md flex items-center justify-center gap-2 transition-all cursor-pointer text-sm ${
                     !selectedLanguage
                       ? 'bg-slate-200 text-slate-400 cursor-not-allowed shadow-none'
                       : 'bg-blue-600 hover:bg-blue-700 text-white shadow-blue-600/20 active:scale-[0.99]'
                   }`}
                 >
-                  <span>Create Session Planner & Timetable</span>
+                  <span>Next: Add Study Materials & Links →</span>
                 </button>
 
                 {!selectedLanguage && (
@@ -2740,11 +2852,12 @@ export default function FacultyStudioPage() {
             </form>
           </div>
         </div>
+        )}
 
         {/* Right Column: Generated Curriculum Workspace (Full width if isFullScreen with active planner/package/loading, otherwise 8 cols) */}
-        <div className={`space-y-6 ${(isFullScreen && (Boolean(proposedPlanner) || Boolean(sessionPackage) || plannerLoading)) ? 'lg:col-span-12' : 'lg:col-span-8'}`}>
+        <div className="space-y-6 w-full animate-in fade-in">
           {/* 1. Proposed Lesson Planner Review & Confirmation Card (Strictly blocked if mismatch error exists) */}
-          {proposedPlanner && !sessionPackage && !loading && !mismatchError && proposedPlanner.language === selectedLanguage && (
+          {studioStep === 3 && Boolean(proposedPlanner) && !sessionPackage && !loading && (
             <div className="bg-white rounded-2xl border border-blue-200/90 shadow-md overflow-hidden animate-in fade-in slide-in-from-top-3 duration-300">
               {/* Course Lesson Planner Header */}
               <div className="p-4 sm:p-5 bg-slate-900 border-b border-slate-800 text-white">
@@ -2772,18 +2885,24 @@ export default function FacultyStudioPage() {
                     <button
                       type="button"
                       onClick={() => {
-                        setIsFullScreen(false);
-                        setProposedPlanner(null);
-                        setIsEditingPlanner(false);
-                        setTimeout(() => {
-                          formContainerRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-                        }, 50);
+                        setStudioStep(2);
+                        window.scrollTo({ top: 0, behavior: 'smooth' });
                       }}
-                      className="px-3.5 py-2 rounded-xl text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700 transition-all flex items-center gap-1.5 cursor-pointer shadow-xs"
-                      title="Return to the configuration form to adjust parameters"
+                      className="px-3.5 py-2 rounded-xl text-xs sm:text-sm font-bold bg-white hover:bg-slate-100 text-slate-800 transition-all flex items-center gap-1.5 cursor-pointer shadow-sm active:scale-[0.98] border border-slate-300"
+                      title="Return to materials and files upload"
                     >
-                      <ArrowLeft className="w-3.5 h-3.5" />
-                      <span>Back to Setup</span>
+                      <span>← Back to Materials</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setStudioStep(1);
+                        window.scrollTo({ top: 0, behavior: 'smooth' });
+                      }}
+                      className="px-3 py-2 rounded-xl text-xs sm:text-sm font-medium bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition-all flex items-center gap-1 cursor-pointer border border-slate-700 active:scale-[0.98]"
+                      title="Return to course parameters setup"
+                    >
+                      <span>Course Setup</span>
                     </button>
                     <button
                       type="button"
@@ -2910,6 +3029,10 @@ export default function FacultyStudioPage() {
                 setExpandedPeriodId={setExpandedPeriodId}
                 updateDayInPlanner={updateDayInPlanner}
                 setCoPilotPrompt={setCoPilotPrompt}
+                onRefinePrompt={handleRefineWithCopilot}
+                coPilotLoading={coPilotLoading}
+                uploadedFiles={uploadedFiles}
+                sourceUrls={sourceUrls}
               />
 
               {/* Bottom Simple Action Bar */}
@@ -2965,76 +3088,39 @@ export default function FacultyStudioPage() {
           )}
 
           {/* 1.1 Autonomous Planner Blueprint Compilation Loader Animation */}
-          {plannerLoading && (
-            <div className="bg-slate-900 text-white rounded-3xl border border-slate-800 p-8 sm:p-14 shadow-2xl relative overflow-hidden animate-in fade-in duration-300">
-              {/* Subtle ambient lighting */}
-              <div className="absolute -right-20 -top-20 w-80 h-80 bg-blue-600/15 rounded-full blur-3xl pointer-events-none" />
-              <div className="absolute -left-20 -bottom-20 w-80 h-80 bg-indigo-600/15 rounded-full blur-3xl pointer-events-none" />
-
-              <div className="max-w-lg mx-auto text-center space-y-6 relative z-10">
-                {/* Pulsing Central Agent Icon */}
-                <div className="relative inline-block">
-                  <div className="w-18 h-18 rounded-3xl bg-gradient-to-tr from-blue-600 to-indigo-600 flex items-center justify-center mx-auto shadow-2xl shadow-blue-500/30 border border-blue-400/30">
-                    <Bot className="w-9 h-9 text-white animate-pulse" />
+          {plannerLoading && !mismatchError && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/20 backdrop-blur-xs animate-in fade-in duration-150">
+              <div className="bg-white border border-slate-200/80 rounded-2xl p-6 sm:p-8 shadow-xl text-center max-w-sm w-full animate-in zoom-in-95 duration-150 space-y-5">
+                
+                {/* Minimalist AI Pulse Icon */}
+                <div className="relative mx-auto w-12 h-12 flex items-center justify-center">
+                  <div className="w-12 h-12 rounded-xl bg-blue-50 border border-blue-200 flex items-center justify-center text-blue-600">
+                    <span className="w-2.5 h-2.5 rounded-full bg-blue-600 animate-ping absolute opacity-40" />
+                    <span className="w-2.5 h-2.5 rounded-full bg-blue-600" />
                   </div>
-                  <span className="absolute -top-1 -right-1 flex h-4 w-4">
-                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
-                    <span className="relative inline-flex rounded-full h-4 w-4 bg-amber-500"></span>
-                  </span>
                 </div>
 
-                <div className="space-y-2">
-                  <div className="inline-flex items-center gap-2 bg-white/10 px-3 py-1 rounded-full text-[11px] font-mono text-cyan-300 border border-white/10">
-                    <span className="w-2 h-2 rounded-full bg-cyan-400 animate-ping" />
-                    <span>Compiling Curriculum Blueprint • {selectedLanguage}</span>
-                  </div>
-                  <h3 className="text-xl sm:text-2xl font-black text-white tracking-tight">
-                    Autonomous Lesson Planner Agent
+                {/* Minimalist Title */}
+                <div className="space-y-1">
+                  <h3 className="text-base font-bold text-slate-800">
+                    Creating Session Planner
                   </h3>
-                  <p className="text-xs text-slate-300 max-w-md mx-auto leading-relaxed">
-                    Structuring period-wise grammar anchors, LSRW communicative balance, and CEFR milestone distribution...
+                  <p className="text-xs text-slate-500">
+                    AI agent is organizing your timetable & lessons...
                   </p>
                 </div>
 
-                {/* Progress bar animation */}
-                <div className="space-y-2 max-w-sm mx-auto">
-                  <div className="w-full h-2 bg-slate-800 rounded-full overflow-hidden border border-slate-700">
-                    <div className="h-full bg-gradient-to-r from-blue-500 via-indigo-500 to-cyan-400 rounded-full animate-pulse w-3/4 transition-all duration-500" />
-                  </div>
-                  <div className="flex items-center justify-between text-[10px] font-mono text-slate-400">
-                    <span>Synthesizing Period Matrix</span>
-                    <span className="text-cyan-300">Live Studio Engine</span>
-                  </div>
-                </div>
-
-                {/* Micro Steps Indicator */}
-                <div className="grid grid-cols-3 gap-2 pt-2 text-left">
-                  <div className="bg-slate-800/80 border border-slate-700/60 p-2.5 rounded-xl">
-                    <div className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Step 1</div>
-                    <div className="text-xs font-bold text-white mt-0.5 flex items-center gap-1">
-                      <span className="text-emerald-400">✓</span> Module Cadence
-                    </div>
-                  </div>
-                  <div className="bg-slate-800/80 border border-slate-700/60 p-2.5 rounded-xl">
-                    <div className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Step 2</div>
-                    <div className="text-xs font-bold text-cyan-300 mt-0.5 flex items-center gap-1">
-                      <Loader2 className="w-3 h-3 animate-spin text-cyan-300" /> Grammar Rules
-                    </div>
-                  </div>
-                  <div className="bg-slate-800/80 border border-slate-700/60 p-2.5 rounded-xl">
-                    <div className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Step 3</div>
-                    <div className="text-xs font-bold text-slate-400 mt-0.5 flex items-center gap-1">
-                      <span>•</span> Milestone Drills
-                    </div>
-                  </div>
+                {/* Simple Smooth Progress Bar */}
+                <div className="w-full h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                  <div className="h-full bg-blue-600 rounded-full animate-pulse w-3/4" />
                 </div>
               </div>
             </div>
           )}
 
           {/* 2. Ready State (Before Planner or Package) - Conversational AI Assistant Workspace with Instant Upload & Prompting */}
-          {!proposedPlanner && !plannerLoading && !sessionPackage && !loading && (
-            <div className="bg-white border-y sm:border sm:rounded-2xl border-slate-200 overflow-hidden flex flex-col">
+          {studioStep === 2 && !loading && (
+            <div className="bg-white border-y sm:border sm:rounded-2xl border-slate-200 overflow-hidden flex flex-col w-full">
               {/* Header Bar */}
               <div className="p-4 sm:p-5 bg-white text-slate-900 flex items-center justify-between border-b border-slate-200">
                 <div className="flex items-center gap-3">
@@ -3061,6 +3147,23 @@ export default function FacultyStudioPage() {
 
               {/* Chat-Like Interactive Body */}
               <div className="p-4 sm:p-6 space-y-4 bg-white">
+                  {/* Top Navigation Row: Back to Course Setup */}
+                  <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setStudioStep(1);
+                        setIsFullScreen(false);
+                        window.scrollTo({ top: 0, behavior: "smooth" });
+                      }}
+                      className="px-4 py-2 bg-slate-100 hover:bg-slate-200 active:bg-slate-300 text-slate-800 font-bold text-xs rounded-xl transition-all cursor-pointer border border-slate-300 flex items-center gap-2 shadow-xs"
+                    >
+                      <span>← Back to Course Setup</span>
+                    </button>
+                    <span className="text-xs font-semibold text-slate-500 hidden sm:inline">
+                      Step 2: Upload study files or drop web links
+                    </span>
+                  </div>
                 {/* AI Welcome Message Bubble */}
                 <div className="flex gap-3 items-start max-w-2xl">
                   
@@ -3215,14 +3318,26 @@ export default function FacultyStudioPage() {
                   </div>
 
                   {/* Dual Action Buttons (Review Planner or Directly Generate Full Teaching Kit) */}
-                  <div className="flex flex-col sm:flex-row items-center gap-2.5 pt-1">
+                  {/* Dual Action Buttons (Back to Setup OR Create Session Planner) */}
+                  <div className="flex flex-col sm:flex-row items-center gap-3 pt-3 border-t border-slate-100">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setStudioStep(1);
+                        setIsFullScreen(false);
+                        window.scrollTo({ top: 0, behavior: "smooth" });
+                      }}
+                      className="w-full sm:w-auto px-6 py-3.5 bg-slate-100 hover:bg-slate-200 active:bg-slate-300 text-slate-800 font-bold text-sm rounded-xl transition-all cursor-pointer border border-slate-300 flex items-center justify-center gap-2 shadow-xs"
+                    >
+                      <span>← Back to Course Setup</span>
+                    </button>
                     <button
                       type="button"
                       onClick={() => handlePreviewPlanner()}
                       disabled={!selectedLanguage || loading}
-                      className="w-full py-3.5 px-4 bg-blue-600 hover:bg-blue-700 text-white font-bold text-sm rounded-xl shadow-md transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-40 active:scale-[0.99]"
+                      className="w-full sm:flex-1 py-3.5 px-4 bg-blue-600 hover:bg-blue-700 text-white font-bold text-sm rounded-xl shadow-md transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-40 active:scale-[0.99]"
                     >
-                      <span>Create Session Planner & Timetable</span>
+                      <span>Create Session Planner & Timetable →</span>
                     </button>
                   </div>
 
@@ -3238,7 +3353,7 @@ export default function FacultyStudioPage() {
           )}
 
           {loading && (
-            <div className="bg-gradient-to-br from-slate-950 via-indigo-950 to-slate-900 text-white rounded-3xl border-2 border-indigo-500/50 p-6 sm:p-10 shadow-2xl space-y-7 animate-in fade-in zoom-in-95 duration-300 relative overflow-hidden">
+            <div className="bg-white text-slate-800 rounded-2xl border border-blue-100 p-6 sm:p-10 shadow-sm space-y-6 animate-in fade-in duration-300 relative overflow-hidden">
               {/* Background ambient glow */}
               <div className="absolute -right-20 -top-20 w-72 h-72 bg-indigo-600/20 rounded-full blur-3xl pointer-events-none" />
               <div className="absolute -left-20 -bottom-20 w-72 h-72 bg-blue-600/20 rounded-full blur-3xl pointer-events-none" />
@@ -3428,7 +3543,7 @@ export default function FacultyStudioPage() {
             </div>
           )}
 
-          {sessionPackage && !loading && (
+          {(studioStep === 4 || sessionPackage) && !loading && (
             <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
               {/* Senior Agent Studio Header Bar with Quality & Accuracy Check */}
               <div className="p-5 sm:p-6 bg-gradient-to-r from-slate-900 via-indigo-950 to-blue-950 text-white border-b border-slate-200 flex flex-wrap items-center justify-between gap-4">
@@ -3606,7 +3721,7 @@ export default function FacultyStudioPage() {
                         <span className="text-xs text-blue-200">
                           Total Scope:{' '}
                           <strong className="text-white">
-                            {sessionPackage.target_days_number || sessionPackage.session_plan.total_curriculum_days || 60}{' '}
+                            {(courseDurationMode === 'CUSTOM' && customDays && Number(customDays) > 0) ? Number(customDays) : (proposedPlanner?.total_days || sessionPackage.target_days_number || sessionPackage.session_plan?.total_curriculum_days || 2)}{' '}
                             {sessionPackage.institution_type === 'SCHOOL' ? 'Periods' : 'Sessions'}
                           </strong>
                         </span>
@@ -3723,11 +3838,9 @@ export default function FacultyStudioPage() {
                     const unitsPerBlock = isSchool ? 10 : 10;
 
                     // Compute dynamic targetDays based on institutional schedule or sessionPackage
-                    const totalDays = sessionPackage.target_days_number ||
-                      sessionPackage.session_plan.total_curriculum_days ||
-                      (sessionPackage.institution_type === 'SCHOOL' && sessionPackage.school_meta?.totalPeriods) ||
-                      (sessionPackage.institution_type === 'COLLEGE' && sessionPackage.college_meta?.sessionsRequired) ||
-                      60;
+                    const totalDays = (courseDurationMode === 'CUSTOM' && customDays && Number(customDays) > 0)
+                      ? Number(customDays)
+                      : (proposedPlanner?.total_days || sessionPackage.target_days_number || sessionPackage.session_plan?.total_curriculum_days || 2);
 
                     // Generate full days array mapped directly to sequential curriculum units
                     const rawDays = sessionPackage.session_plan.day_wise_syllabus || [];
@@ -3752,27 +3865,44 @@ export default function FacultyStudioPage() {
                         rawDay,
                         sessionPackage
                       );
+                      // Priority: planner period card (from Step 3) + user live overrides
+                      const plannerDay = proposedPlanner?.all_days?.[d - 1];
                       const customOverride = periodOverrides[d];
+
+                      let finalDay = { ...dayItem };
+                      if (plannerDay) {
+                        finalDay.day_topic = plannerDay.day_topic || finalDay.day_topic;
+                        finalDay.grammar_rules_detail = plannerDay.grammar_rules_detail || finalDay.grammar_rules_detail;
+                        if (plannerDay.vocabulary_bank && plannerDay.vocabulary_bank.length > 0) {
+                          finalDay.vocabulary_bank = plannerDay.vocabulary_bank;
+                        }
+                        if (plannerDay.in_class_exercises && plannerDay.in_class_exercises.length > 0) {
+                          finalDay.in_class_exercises = plannerDay.in_class_exercises;
+                        }
+                        if (plannerDay.exercise_solutions && plannerDay.exercise_solutions.length > 0) {
+                          finalDay.exercise_solutions = plannerDay.exercise_solutions;
+                        }
+                      }
+
                       if (customOverride) {
-                        allDays.push({
-                          ...dayItem,
+                        finalDay = {
+                          ...finalDay,
                           ...customOverride,
-                          day_topic: customOverride.day_topic || dayItem.day_topic,
-                          grammar_rules_detail: customOverride.grammar_rules_detail || dayItem.grammar_rules_detail,
-                          study_notes_markdown: customOverride.study_notes_markdown || dayItem.study_notes_markdown,
-                          vocabulary_bank: customOverride.vocabulary_bank || dayItem.vocabulary_bank,
-                          classroom_dialogues: customOverride.classroom_dialogues || dayItem.classroom_dialogues,
-                          homework_tasks: customOverride.homework_tasks || dayItem.homework_tasks,
-                          in_class_exercises: customOverride.in_class_exercises || dayItem.in_class_exercises,
-                          exercise_solutions: customOverride.exercise_solutions || dayItem.exercise_solutions,
+                          day_topic: customOverride.day_topic || finalDay.day_topic,
+                          grammar_rules_detail: customOverride.grammar_rules_detail || finalDay.grammar_rules_detail,
+                          study_notes_markdown: customOverride.study_notes_markdown || finalDay.study_notes_markdown,
+                          vocabulary_bank: customOverride.vocabulary_bank || finalDay.vocabulary_bank,
+                          classroom_dialogues: customOverride.classroom_dialogues || finalDay.classroom_dialogues,
+                          homework_tasks: customOverride.homework_tasks || finalDay.homework_tasks,
+                          in_class_exercises: customOverride.in_class_exercises || finalDay.in_class_exercises,
+                          exercise_solutions: customOverride.exercise_solutions || finalDay.exercise_solutions,
                           student_lsrw_practice: {
-                            ...(dayItem.student_lsrw_practice || {}),
+                            ...(finalDay.student_lsrw_practice || {}),
                             ...(customOverride.student_lsrw_practice || {})
                           }
-                        });
-                      } else {
-                        allDays.push(dayItem);
+                        };
                       }
+                      allDays.push(finalDay);
                     }
 
                     // Build Module Blocks (e.g. Module 1: Periods 1-10, Module 2: Periods 11-20...)
