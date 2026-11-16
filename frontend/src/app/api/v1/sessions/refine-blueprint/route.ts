@@ -1,6 +1,11 @@
 import { NextResponse } from 'next/server';
 import { FRENCH_CURRICULUM_DATA, getLinguisticUnit } from '@/app/faculty/studio/curriculumLanguageBanks';
 import { COMPREHENSIVE_LANGUAGE_BANKS, getLanguageSyllabusItem } from '@/app/faculty/studio/comprehensiveLanguageBanks';
+import {
+  sanitizeSourceTextForVocabulary,
+  isValidLinguisticWord,
+  resolveThematicPedagogicalKit
+} from '@/app/faculty/studio/thematicCurriculumResolver';
 
 // =============================================================================
 // ISML SMART INTENT CLASSIFICATION ENGINE
@@ -168,14 +173,17 @@ function extractDocumentIntelligence(sourceText: string, language: string): Extr
     return null;
   }
 
-  const cleanText = sourceText
+  // Pre-sanitize text to strip all URLs, Google redirect parameters (CAES..., &sa=t), hashes, and noise
+  const sanitized = sanitizeSourceTextForVocabulary(sourceText);
+
+  const cleanText = sanitized
     .replace(/\[Binary Document Attachment:[^\]]*\]/gi, '')
     .replace(/\[Uploaded File Reference:[^\]]*\]/gi, '');
 
   const sentences = cleanText
     .split(/(?<=[.?!])\s+|\n{2,}/)
     .map(s => s.trim().replace(/\s+/g, ' '))
-    .filter(s => s.length >= 20 && s.length <= 320 && !/(durkkas|dipl-|aruppukottai|private limited)/i.test(s));
+    .filter(s => s.length >= 20 && s.length <= 320 && !/(durkkas|dipl-|aruppukottai|private limited|http|https|www\.)/i.test(s));
 
   const lKey = (language || 'english').toLowerCase();
 
@@ -186,6 +194,12 @@ function extractDocumentIntelligence(sourceText: string, language: string): Extr
     'pronounce', 'repeat', 'conjugate', 'develop', 'interact', 'discuss', 'study',
     'review', 'produce', 'acquire', 'master', 'enhance', 'consolidate', 'reinforce',
     'engage', 'collaborate', 'deliver', 'implement', 'explore', 'connect', 'determine'
+  ];
+
+  const germanVerbs = [
+    'sein', 'haben', 'werden', 'können', 'müssen', 'wollen', 'sollen', 'dürfen',
+    'machen', 'gehen', 'sehen', 'sprechen', 'lernen', 'schreiben', 'lesen', 'hören',
+    'verstehen', 'arbeiten', 'wohnen', 'kaufen', 'kommen', 'sagen', 'geben', 'finden'
   ];
 
   const frenchVerbs = [
@@ -202,14 +216,15 @@ function extractDocumentIntelligence(sourceText: string, language: string): Extr
     'pensar', 'salir', 'volver', 'tomar', 'conocer', 'escribir', 'leer', 'aprender'
   ];
 
-  const targetVerbPool = lKey.includes('french') ? frenchVerbs
-    : (lKey.includes('spanish') ? spanishVerbs : englishVerbs);
+  const targetVerbPool = lKey.includes('german') || lKey.includes('deutsch') ? germanVerbs
+    : (lKey.includes('french') ? frenchVerbs
+    : (lKey.includes('spanish') ? spanishVerbs : englishVerbs));
 
   const minedVerbs: Array<{ verb: string; sentence: string }> = [];
   const usedVerbs = new Set<string>();
 
   for (const v of targetVerbPool) {
-    const rx = new RegExp(`\\b${v}(?:s|es|ed|ing|d)?\\b`, 'i');
+    const rx = new RegExp(`\\b${v}(?:s|es|ed|ing|d|t|en|st)?\\b`, 'i');
     const matchedSentence = sentences.find(s => rx.test(s));
     if (matchedSentence && !usedVerbs.has(v)) {
       usedVerbs.add(v);
@@ -224,10 +239,10 @@ function extractDocumentIntelligence(sourceText: string, language: string): Extr
   // If few verbs found via dictionary, extract action verbs following pronouns
   if (minedVerbs.length < 3) {
     for (const s of sentences) {
-      const match = s.match(/\b(?:to|we|they|students|learners|you|i|he|she)\s+([a-z]{3,15})\b/i);
+      const match = s.match(/\b(?:to|we|they|students|learners|you|i|he|she|wir|sie|ich|du)\s+([a-z]{3,15})\b/i);
       if (match) {
         const candidate = match[1].toLowerCase();
-        if (!['the', 'this', 'that', 'with', 'from', 'have', 'been', 'will', 'also'].includes(candidate) && !usedVerbs.has(candidate)) {
+        if (!['the', 'this', 'that', 'with', 'from', 'have', 'been', 'will', 'also', 'nicht', 'oder', 'und'].includes(candidate) && !usedVerbs.has(candidate) && isValidLinguisticWord(candidate, language)) {
           usedVerbs.add(candidate);
           minedVerbs.push({
             verb: candidate,
@@ -239,18 +254,19 @@ function extractDocumentIntelligence(sourceText: string, language: string): Extr
     }
   }
 
-  // Vocabulary mining
-  const wordsRaw = cleanText.match(/\b[A-Za-zÀ-ÿ]{4,20}\b/g) || [];
-  const stopWords = new Set(['this', 'that', 'with', 'from', 'they', 'will', 'have', 'were', 'been', 'their', 'which', 'about', 'would', 'there', 'could', 'other', 'into', 'more', 'these', 'first', 'then', 'also', 'some', 'than', 'when', 'what', 'page', 'slide', 'unit', 'period', 'tutor', 'upload', 'document', 'file']);
+  // Vocabulary mining - strictly filtered with isValidLinguisticWord
+  const wordsRaw = cleanText.match(/\b[A-Za-zÀ-ÿ]{3,25}\b/g) || [];
+  const stopWords = new Set(['this', 'that', 'with', 'from', 'they', 'will', 'have', 'were', 'been', 'their', 'which', 'about', 'would', 'there', 'could', 'other', 'into', 'more', 'these', 'first', 'then', 'also', 'some', 'than', 'when', 'what', 'page', 'slide', 'unit', 'period', 'tutor', 'upload', 'document', 'file', 'http', 'https', 'html', 'href']);
   const freq: Record<string, number> = {};
   for (const w of wordsRaw) {
     const lower = w.toLowerCase();
-    if (!stopWords.has(lower) && lower.length >= 4) {
+    if (!stopWords.has(lower) && lower.length >= 3 && isValidLinguisticWord(w, language)) {
       freq[lower] = (freq[lower] || 0) + 1;
     }
   }
 
   const topVocabWords = Object.keys(freq)
+    .filter(w => isValidLinguisticWord(w, language))
     .sort((a, b) => freq[b] - freq[a])
     .slice(0, 10);
 
@@ -259,14 +275,14 @@ function extractDocumentIntelligence(sourceText: string, language: string): Extr
     const capitalized = w.charAt(0).toUpperCase() + w.slice(1);
     return {
       word: capitalized,
-      meaning: `Core conceptual term from uploaded document: ${capitalized}`,
+      meaning: `Core conceptual term from course material: ${capitalized}`,
       pronunciation: `/${w}/`,
       example_sentence: matchingSentence
     };
   });
 
   const ruleSentences = sentences.filter(s =>
-    /\b(rule|grammar|syntax|structure|equation|must|always|formulation|conjugat|agreement)\b/i.test(s)
+    /\b(rule|grammar|syntax|structure|equation|must|always|formulation|conjugat|agreement|regel|satzbau)\b/i.test(s)
   ).slice(0, 4);
 
   const finalGrammarRules = ruleSentences.length > 0
@@ -332,25 +348,32 @@ export async function POST(req: Request) {
         const topicIdx = i % topicsList.length;
         const currUnit = getLinguisticUnit(language, level, dNum);
         const enrichedTopic = topicsList[topicIdx] || currUnit.topic;
+        const thematicKit = resolveThematicPedagogicalKit(language, level, enrichedTopic, dNum);
 
         const isFr = (language || '').toLowerCase().includes('french') || (language || '').toLowerCase().includes('français');
+        const vocabBank = (thematicKit && thematicKit.vocabulary.length > 0)
+          ? thematicKit.vocabulary
+          : currUnit.vocabulary.filter((v: any) => isValidLinguisticWord(v.word || v.term || '', language));
+        const dialogues = thematicKit?.dialogue || currUnit.dialogue;
+        const drills = thematicKit?.drills || currUnit.drills;
+
         regeneratedDays.push({
           day_number: dNum,
           month_number: Math.ceil(dNum / 10),
-          day_topic: `Period ${dNum}: ${enrichedTopic}`,
-          grammar_rules_detail: currUnit.grammarFocus,
-          study_notes_markdown: `# Study Guide: Period ${dNum} (${language} ${level})\n\n### Pedagogical Objective:\n${currUnit.pedagogicalObjective}\n\n### Blackboard Equation & Grammar Formula:\n\`${currUnit.boardNotes}\`\n\n### Common Gotchas & L1 Pitfalls:\n${currUnit.commonGotchas.map(g => `- ${g}`).join('\n')}`,
-          vocabulary_bank: currUnit.vocabulary,
-          classroom_dialogues: currUnit.dialogue,
-          in_class_exercises: currUnit.drills.map(d => d.question),
-          exercise_solutions: currUnit.drills,
-          homework_tasks: isFr ? [
+          day_topic: thematicKit ? `Period ${dNum}: ${thematicKit.topicTitle}` : `Period ${dNum}: ${enrichedTopic}`,
+          grammar_rules_detail: thematicKit?.grammarFocus || currUnit.grammarFocus,
+          study_notes_markdown: `# Study Guide: Period ${dNum} (${language} ${level})\n\n### Pedagogical Objective:\n${thematicKit?.pedagogicalObjective || currUnit.pedagogicalObjective}\n\n### Blackboard Equation & Grammar Formula:\n\`${thematicKit?.boardNotes || currUnit.boardNotes}\`\n\n### Common Gotchas & L1 Pitfalls:\n${currUnit.commonGotchas.map(g => `- ${g}`).join('\n')}`,
+          vocabulary_bank: vocabBank,
+          classroom_dialogues: dialogues,
+          in_class_exercises: drills.map((d: any) => d.question),
+          exercise_solutions: drills,
+          homework_tasks: thematicKit?.homework || (isFr ? [
             `Mémoriser le vocabulaire cible de la Period ${dNum}.`,
             `Rédiger 3 phrases affirmatives en appliquant la formule du tableau.`
           ] : [
             `Memorize target vocabulary items and review key structures for Period ${dNum}.`,
             `Write 3 complete sentences in ${language} applying today's grammar equation.`
-          ]
+          ])
         });
       }
 
@@ -414,12 +437,12 @@ export async function POST(req: Request) {
             : `${activeTopicClean}: Practical Dialogue & Core Vocabulary`;
           turns = [
             { speaker: "Teacher", text: `Good morning class! Welcome to today's English listening practice on ${activeTopicClean}.` },
-            { speaker: "Student (Alex)", text: `Good morning Teacher! In our study guide, we have the key word "${pWord}". How do we apply it in a natural sentence?` },
-            { speaker: "Teacher", text: `Great question, Alex! In our material, "${pWord}" is used in context: "${pExample}".` },
+            { speaker: "Student (David)", text: `Good morning Teacher! In our study guide, we have the key word "${pWord}". How do we apply it in a natural sentence?` },
+            { speaker: "Teacher", text: `Great question, David! In our material, "${pWord}" is used in context: "${pExample}".` },
             { speaker: "Student (Sarah)", text: `Can we also connect "${pWord}" with "${sWord}"?` },
             { speaker: "Teacher", text: `Exactly, Sarah! For instance: "${sExample}". Listen carefully to the pronunciation and word stress.` },
-            { speaker: "Alex", text: `Let me practice saying that: "${pWord} is essential when working with ${sWord}." Did I pronounce it clearly?` },
-            { speaker: "Teacher", text: `Spot on, Alex! Your rhythm and tone were very natural. Now everyone, repeat this key phrase together and complete today's comprehension exercise.` }
+            { speaker: "David", text: `Let me practice saying that: "${pWord} is essential when working with ${sWord}." Did I pronounce it clearly?` },
+            { speaker: "Teacher", text: `Spot on, David! Your rhythm and tone were very natural. Now everyone, repeat this key phrase together and complete today's comprehension exercise.` }
           ];
           questions = [
             { question: `What is the core topic of this English audio lesson?`, answer: activeTopicClean },
@@ -530,25 +553,31 @@ export async function POST(req: Request) {
     const baseLangUnit = getLinguisticUnit(language, level, effectivePeriod);
     const enrichedSyllabus = getLanguageSyllabusItem(language, level, effectivePeriod);
 
-    // Dynamic repoUnit grounded in activeDay, uploaded document/book intelligence, or authentic language bank:
-    let resolvedTopic = activeDay?.day_topic || baseLangUnit.topic;
-    let resolvedGrammarFocus = activeDay?.grammar_rules_detail || baseLangUnit.grammarFocus;
-    let resolvedBoardNotes = (activeDay as any)?.board_notes || baseLangUnit.boardNotes;
-    let resolvedVocab = (activeDay?.vocabulary_bank && activeDay.vocabulary_bank.length > 0)
-      ? activeDay.vocabulary_bank
-      : baseLangUnit.vocabulary;
-    let resolvedDialogues = (activeDay?.classroom_dialogues && activeDay.classroom_dialogues.length > 0)
+    // Resolve specialized thematic kit if matching topic exists in pedagogical library
+    const topicToMatch = activeDay?.day_topic || intent.topicKeyword || user_prompt || topic || `Period ${effectivePeriod}`;
+    const thematicKit = resolveThematicPedagogicalKit(language, level, topicToMatch, effectivePeriod);
+
+    // Dynamic repoUnit grounded in thematic kit (highest fidelity), activeDay, uploaded document/book intelligence, or authentic language bank:
+    let resolvedTopic = thematicKit?.topicTitle || activeDay?.day_topic || baseLangUnit.topic;
+    let resolvedGrammarFocus = thematicKit?.grammarFocus || activeDay?.grammar_rules_detail || baseLangUnit.grammarFocus;
+    let resolvedBoardNotes = thematicKit?.boardNotes || (activeDay as any)?.board_notes || baseLangUnit.boardNotes;
+    let resolvedVocab = (thematicKit && thematicKit.vocabulary.length > 0)
+      ? thematicKit.vocabulary
+      : ((activeDay?.vocabulary_bank && activeDay.vocabulary_bank.length > 0)
+          ? activeDay.vocabulary_bank.filter((v: any) => isValidLinguisticWord(v.word || v.term || '', language))
+          : baseLangUnit.vocabulary.filter((v: any) => isValidLinguisticWord(v.word || v.term || '', language)));
+    let resolvedDialogues = thematicKit?.dialogue || (activeDay?.classroom_dialogues && activeDay.classroom_dialogues.length > 0
       ? activeDay.classroom_dialogues
-      : baseLangUnit.dialogue;
-    let resolvedDrills = (activeDay?.exercise_solutions && activeDay.exercise_solutions.length > 0)
+      : baseLangUnit.dialogue);
+    let resolvedDrills = thematicKit?.drills || (activeDay?.exercise_solutions && activeDay.exercise_solutions.length > 0
       ? activeDay.exercise_solutions
-      : baseLangUnit.drills;
+      : baseLangUnit.drills);
 
     if (docIntel && docIntel.hasDocument) {
       if (isVerbFocus && docIntel.verbs.length > 0) {
         const v1 = docIntel.verbs[0].verb;
         const v2 = docIntel.verbs.length > 1 ? docIntel.verbs[1].verb : v1;
-        resolvedTopic = `Period ${effectivePeriod}: Action Verbs & Structural Syntax from Uploaded Material`;
+        resolvedTopic = `Period ${effectivePeriod}: Action Verbs & Structural Syntax from Course Material`;
         resolvedGrammarFocus = `Action Verbs & Syntactic Paradigm from Uploaded Text:\n• Identified Verbs: ${docIntel.verbs.map(v => `"${v.verb}"`).join(', ')}\n• Syntactic Formula: [Subject] + [Target Verb Conjugation] + [Contextual Object]\n• Evidence Sentence: "${docIntel.verbs[0].sentence}"`;
         resolvedBoardNotes = `Grammar Paradigm: [Subject] + [Verb: ${v1}] + [Object: ${docIntel.verbs[0].sentence.slice(0, 35)}...]`;
         resolvedVocab = docIntel.verbs.slice(0, 8).map(v => ({
@@ -558,15 +587,15 @@ export async function POST(req: Request) {
           example_sentence: v.sentence
         }));
         resolvedDialogues = [
-          `Teacher: "Good morning class! Today we are mastering the action verbs directly from our uploaded course material."`,
-          `Student (Alex): "In our text, we observed: '${docIntel.verbs[0].sentence}'. How do we conjugate '${v1}' in a practical conversation?"`,
+          `Teacher: "Good morning class! Today we are mastering the action verbs directly from our course material."`,
+          `Student: "In our text, we observed: '${docIntel.verbs[0].sentence}'. How do we conjugate '${v1}' in a practical conversation?"`,
           `Teacher: "Notice how '${v1}' establishes clear action. Let's combine it with '${v2}': '${docIntel.verbs.length > 1 ? docIntel.verbs[1].sentence : docIntel.verbs[0].sentence}'."`,
           `Student (Sarah): "That makes the syntactic formula very clear! Let us practice repeating it together with accurate pronunciation."`
         ];
         resolvedDrills = docIntel.verbs.slice(0, Math.max(intent.count, 5)).map((v, vIdx) => ({
           question: `[Q${vIdx + 1}] Using the verb "${v.verb}" from your uploaded material, construct an authentic sentence based on the context: "${v.sentence}".`,
           answer: `Authentic ${language} ${level} formulation using "${v.verb}". Context: ${v.sentence}`,
-          explanation: `Assesses active verb conjugation, morphological agreement, and retention of uploaded book terminology.`
+          explanation: `Assesses active verb conjugation, morphological agreement, and retention of course terminology.`
         }));
       } else if (docIntel.vocabulary.length > 0) {
         resolvedVocab = docIntel.vocabulary;
@@ -706,7 +735,9 @@ export async function POST(req: Request) {
       const lKey = language.toLowerCase().trim();
       const bank = COMPREHENSIVE_LANGUAGE_BANKS[lKey] || COMPREHENSIVE_LANGUAGE_BANKS.french;
       const allVocab = [...repoUnit.vocabulary, ...bank.vocabulary];
-      const uniqueVocab = allVocab.filter((v, i, arr) => arr.findIndex(x => x.word === v.word) === i);
+      const uniqueVocab = allVocab
+        .filter((v, i, arr) => arr.findIndex(x => (x.word || '').toLowerCase() === (v.word || '').toLowerCase()) === i)
+        .filter(v => isValidLinguisticWord(v.word || v.term || '', language));
       const selectedVocab = uniqueVocab.slice(0, Math.max(intent.count, 10));
 
       return NextResponse.json({
@@ -739,7 +770,10 @@ export async function POST(req: Request) {
     const lKey = language.toLowerCase().trim();
     const bank = COMPREHENSIVE_LANGUAGE_BANKS[lKey] || COMPREHENSIVE_LANGUAGE_BANKS.french;
     const combinedVocab = [...repoUnit.vocabulary, ...bank.vocabulary.slice(0, 5)];
-    const uniqueVocab = combinedVocab.filter((v, i, arr) => arr.findIndex(x => x.word.toLowerCase() === v.word.toLowerCase()) === i).slice(0, 8);
+    const uniqueVocab = combinedVocab
+      .filter((v, i, arr) => arr.findIndex(x => (x.word || '').toLowerCase() === (v.word || '').toLowerCase()) === i)
+      .filter(v => isValidLinguisticWord(v.word || v.term || '', language))
+      .slice(0, 8);
 
     const updatedSingleDay: any = {
       day_number: effectivePeriod,
@@ -882,11 +916,11 @@ function buildDialogues(unit: any, language: string, count: number) {
   const extrasMap: Record<string, string[]> = {
     english: [
       `Teacher: "Very well done! Now let's practice repeating this phrase with natural stress."`,
-      `Student (Alex): "I will focus on clear pronunciation and syllable emphasis."`,
+      `Student: "I will focus on clear pronunciation and syllable emphasis."`,
       `Teacher: "Notice how these words connect smoothly in everyday conversation."`,
-      `Student (Sarah): "Could you please give another example of this pattern in use?"`,
+      `Student: "Could you please give another example of this pattern in use?"`,
       `Teacher: "Certainly! Remember: subject + auxiliary verb + core action."`,
-      `Student (Alex): "Thank you Teacher, this makes the concept much easier to apply."`
+      `Student: "Thank you Teacher, this makes the concept much easier to apply."`
     ],
     french: [
       `Professeur: "Très bien ! Maintenant, répétez après moi avec la bonne intonation."`,
@@ -900,11 +934,37 @@ function buildDialogues(unit: any, language: string, count: number) {
       `Profesor: "¡Muy bien! Ahora repitan conmigo con la entonación adecuada."`,
       `Estudiante: "De acuerdo profesor, pronunciaré cada término con claridad."`,
       `Profesor: "Recuerden la concordancia entre el sujeto y el verbo."`,
-      `Estudiante: "¿Podría darnos otro ejemplo práctico para reforzar el concepto?"`
+      `Estudiante: "¿Podría darnos otro ejemplo práctico para reforzar el concepto?"`,
+      `Profesor: "¡Por supuesto! Observen la relación directa en esta frase."`,
+      `Estudiante: "¡Muchas gracias! Ya entiendo la estructura con claridad."`
+    ],
+    german: [
+      `Lehrer: "Sehr gut! Wiederholen Sie diesen Satz bitte mit klarer Aussprache."`,
+      `Schüler: "Gerne, Herr Lehrer. Ich achte besonders auf die Wortstellung und Grammatik."`,
+      `Lehrer: "Beachten Sie die Endung und die richtige Betonung im Satz."`,
+      `Schülerin: "Könnten Sie bitte noch ein konkretes Beispiel dafür nennen?"`,
+      `Lehrer: "Natürlich! Subjekt + finites Verb + Ergänzungen im Satz."`,
+      `Schüler: "Vielen Dank, jetzt ist mir die Struktur vollkommen klar!"`
+    ],
+    japanese: [
+      `先生: "よくできました！イントネーションに注意してもう一度繰り返しましょう。"`,
+      `学生: "はい、先生。発音と助詞の使い方に気をつけて話してみます。"`,
+      `先生: "自然な会話のスピードを意識して声に出してみましょう。"`,
+      `学生: "日常生活ではどのような場面でよく使われますか？"`,
+      `先生: "挨拶や日常的な質問でとても自然に使われますよ。"`,
+      `学生: "ありがとうございます！しっかり復習して覚えます。"`
+    ],
+    korean: [
+      `선생님: "아주 잘하셨어요! 자연스러운 억양으로 다시 한번 따라 해보세요."`,
+      `학생: "네, 선생님. 발음과 문장 구조에 신경 쓰면서 연습하겠습니다."`,
+      `선생님: "일상 대화에서 자연스럽게 이어지도록 소리 내어 말해보세요."`,
+      `학생: "이 표현은 실제 일상생활에서 어떤 상황에 자주 쓰이나요?"`,
+      `선생님: "일상 질문과 정중한 대화에서 매우 유용하게 쓰입니다."`,
+      `학생: "감사합니다, 선생님! 정확한 문장으로 복습하겠습니다."`
     ]
   };
 
-  const extras = extrasMap[lKey] || extrasMap.english;
+  const extras = extrasMap[lKey] || (lKey.includes('deutsch') || lKey.includes('german') ? extrasMap.german : extrasMap.english);
 
   while (baseDialogues.length < count) {
     baseDialogues.push(extras[baseDialogues.length % extras.length]);

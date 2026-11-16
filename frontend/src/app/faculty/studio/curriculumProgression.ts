@@ -8,6 +8,12 @@
 
 import { getLinguisticUnit } from './curriculumLanguageBanks';
 import { getLanguageSyllabusItem } from './comprehensiveLanguageBanks';
+import {
+  resolveThematicPedagogicalKit,
+  isValidLinguisticWord,
+  sanitizeSourceTextForVocabulary,
+  ThematicPedagogicalKit
+} from './thematicCurriculumResolver';
 
 const GLOBAL_STOP_WORDS = new Set([
   'the', 'and', 'for', 'are', 'but', 'not', 'you', 'all', 'any', 'can', 'had', 'her', 'was', 'one', 'our', 'out', 'everything', 'within',
@@ -311,8 +317,10 @@ Language: **${language}** • Certified CEFR **${level}** • Topic: **${baseTop
           .replace(/_FINAL_V\d+|_V\d+|\(1\)|\(\d+\)/gi, "")
           .trim();
 
-        if (titleBefore && titleBefore.length >= 3) {
+        if (titleBefore && titleBefore.length >= 2) {
           detectedTopic = titleBefore;
+        } else if (parsedSourceTopics.length > 0 && !parsedSourceUrls[parsedSourceTopics[parsedSourceTopics.length - 1]]) {
+          parsedSourceUrls[parsedSourceTopics[parsedSourceTopics.length - 1]] = detectedUrl;
         }
       } else {
         let clean = line
@@ -351,46 +359,59 @@ Language: **${language}** • Certified CEFR **${level}** • Topic: **${baseTop
       }
     });
 
-    // 3. Extract distinct high-value vocabulary tokens and key linguistic constructs from source material
-    const stopWords = new Set([
-      'this', 'that', 'with', 'from', 'have', 'video', 'lesson', 'learn', 'words', 'about', 'your', 'will',
-      'what', 'there', 'their', 'which', 'would', 'could', 'should', 'today', 'first', 'second', 'these',
-      'those', 'where', 'when', 'into', 'just', 'more', 'some', 'them', 'then', 'than', 'other', 'only',
-      'also', 'back', 'after', 'used', 'using', 'here', 'make', 'well', 'over', 'even', 'most', 'such',
-      'reference', 'upload', 'transcript', 'insights', 'audio', 'notes', 'content', 'channel', 'creator', 'tutor',
-      'period', 'exhaustive', 'course', 'master', 'theory', 'day', 'complete', 'multi', 'edition', 'curriculum',
-      'blueprint', 'student', 'faculty', 'isml', 'session', 'level', 'french', 'spanish', 'german', 'japanese',
-      'korean', 'english', 'comprehensive', 'syllabus', 'academic', 'studio', 'page', 'table', 'contents', 'guide'
-    ]);
+    // 3. Extract distinct high-value vocabulary tokens only if source text is an actual educational passage (not a list of reference links/URLs)
+    const isLinkReferenceIndex = (sourceContext.match(/https?:\/\//gi) || []).length >= 1 || 
+      /(share\.google|netlify\.app|youtube\.com|google\.com\/url|\/shorts\/|CAES)/i.test(sourceContext);
 
-    const words = sourceContext
-      .replace(/[\[\]\(\)\{\}<>\"\/\\\|#@*~_+=0-9]/g, ' ')
-      .split(/\s+/)
-      .map((w: string) => w.trim())
-      .filter((w: string) => w.length >= 3 && w.length <= 22 && !GLOBAL_STOP_WORDS.has(w.toLowerCase()));
+    // If the input is primarily a list of links / syllabus URLs, NEVER mine vocabulary tokens from it!
+    // The URLs are reference links for the topics; the educational contents come from the target language curriculum repository!
+    if (!isLinkReferenceIndex) {
+      const sanitizedSource = sanitizeSourceTextForVocabulary(sourceContext);
+      const words = sanitizedSource
+        .replace(/[\[\]\(\)\{\}<>\"\/\\\|#@*~_+=0-9]/g, ' ')
+        .split(/\s+/)
+        .map((w: string) => w.trim())
+        .filter((w: string) => isValidLinguisticWord(w, language) && !GLOBAL_STOP_WORDS.has(w.toLowerCase()));
 
-    const freq: Record<string, number> = {};
-    words.forEach((w: string) => {
-      const lower = w.toLowerCase();
-      freq[lower] = (freq[lower] || 0) + 1;
-    });
-
-    // Extract rich contextual sentences for each word from source context
-    const sourceSentences = sourceContext.split(/[\n\.!?]+/).map((s: string) => s.trim()).filter((s: string) => s.length > 15);
-
-    Object.entries(freq)
-      .sort((a, b) => b[1] - a[1])
-      .slice(0, 50)
-      .forEach(([w, count]) => {
-        const matchingSentence = sourceSentences.find((s: string) => s.toLowerCase().includes(w)) || 
-          `Target application of ${w} derived directly from uploaded source materials.`;
-        parsedSourceVocab.push({
-          word: w.charAt(0).toUpperCase() + w.slice(1),
-          meaning: `Domain vocabulary extracted from verified source materials (Frequency: ${count}x)`,
-          pronunciation: `/${w.toLowerCase()}/`,
-          example_sentence: matchingSentence.slice(0, 140)
-        });
+      const freq: Record<string, number> = {};
+      words.forEach((w: string) => {
+        const lower = w.toLowerCase();
+        freq[lower] = (freq[lower] || 0) + 1;
       });
+
+      // Extract rich contextual sentences strictly rejecting any URL or query residue
+      const sourceSentences = sanitizedSource
+        .split(/[\n\.!?]+/)
+        .map((s: string) => s.trim())
+        .filter((s: string) => s.length > 15 && !/(https?:|www\.|\.app|\.com|\/shorts|sa=t|source=web|url=|caes|&|%)/i.test(s));
+
+      const isDe = /german|deutsch/i.test(language);
+      const isFr = /french|fran/i.test(language);
+      const isEs = /spanish|espa/i.test(language);
+
+      Object.entries(freq)
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 50)
+        .forEach(([w, count]) => {
+          if (!isValidLinguisticWord(w, language)) return;
+          const cleanSentences = sourceSentences.filter(s => new RegExp(`\\b${w}\\b`, 'i').test(s));
+          const fallbackSentence = isDe
+            ? `In diesem Kontext üben wir "${w}" in vollständigen deutschen Sätzen.`
+            : (isFr
+                ? `Nous appliquons "${w}" en contexte communicatif en français.`
+                : (isEs
+                    ? `Usamos "${w}" en situaciones conversacionales en español.`
+                    : `Applying "${w}" in natural communicative discourse.`));
+
+          const matchingSentence = cleanSentences[0] || fallbackSentence;
+          parsedSourceVocab.push({
+            word: w.charAt(0).toUpperCase() + w.slice(1),
+            meaning: isDe ? `Thematischer Begriff für ${baseTopic}` : `Thematic vocabulary item for ${baseTopic}`,
+            pronunciation: `/${w.toLowerCase()}/`,
+            example_sentence: matchingSentence.slice(0, 140)
+          });
+        });
+    }
   }
 
   // Extract all AI-analyzed vocabulary from the session package
@@ -528,20 +549,18 @@ Language: **${language}** • Certified CEFR **${level}** • Topic: **${baseTop
   }
 
   const cleanParsedVocab = parsedSourceVocab.filter(v => 
-    !GLOBAL_STOP_WORDS.has((v.word || '').toLowerCase()) && (v.word || '').length >= 3
+    !GLOBAL_STOP_WORDS.has((v.word || '').toLowerCase()) && (v.word || '').length >= 3 && isValidLinguisticWord(v.word, language)
   );
 
   let analyzedVocab: Array<{ word: string; meaning: string; pronunciation?: string; example_sentence?: string }> = [];
 
-  // PRIORITY 1 FOR VOCABULARY: Source Document Vocabulary!
-  if (cleanParsedVocab.length >= 3) {
-    analyzedVocab = cleanParsedVocab;
-  } else if (cleanParsedVocab.length > 0) {
-    analyzedVocab = cleanParsedVocab.concat(comprehensiveSyllabus?.vocabulary || []);
-  } else if (collectedVocab.length > 0) {
-    analyzedVocab = collectedVocab;
-  } else if (comprehensiveSyllabus?.vocabulary && comprehensiveSyllabus.vocabulary.length > 0) {
+  // Authentic target-language syllabus vocabulary is always higher fidelity than raw extracted tokens
+  if (comprehensiveSyllabus?.vocabulary && comprehensiveSyllabus.vocabulary.length > 0) {
     analyzedVocab = comprehensiveSyllabus.vocabulary;
+  } else if (cleanParsedVocab.length >= 3) {
+    analyzedVocab = cleanParsedVocab;
+  } else if (collectedVocab.length > 0) {
+    analyzedVocab = collectedVocab.filter(v => isValidLinguisticWord(v.word, language));
   } else {
     analyzedVocab = linguisticUnit.vocabulary || [];
   }
@@ -580,10 +599,10 @@ Language: **${language}** • Certified CEFR **${level}** • Topic: **${baseTop
   const activeGrammarIndex = analyzedGrammar.length > totalDays
     ? (dayNumber - 1)
     : (dayNumber - 1) % analyzedGrammar.length;
-  const currentGrammarFocus = analyzedGrammar[activeGrammarIndex] || comprehensiveSyllabus.grammarFocus;
+  let currentGrammarFocus = analyzedGrammar[activeGrammarIndex] || comprehensiveSyllabus.grammarFocus;
 
   const activeObjectiveIndex = (dayNumber - 1) % collectedObjectives.length;
-  const currentObjective = collectedObjectives.length > 0 && !collectedObjectives[0].startsWith('Master core')
+  let currentObjective = collectedObjectives.length > 0 && !collectedObjectives[0].startsWith('Master core')
     ? collectedObjectives[activeObjectiveIndex]
     : comprehensiveSyllabus.pedagogicalObjective;
 
@@ -614,8 +633,8 @@ Language: **${language}** • Certified CEFR **${level}** • Topic: **${baseTop
   const finalV2 = pickUnique(v2raw, vocabStartIdx + goldenStride);
   const finalV3 = pickUnique(v3raw, vocabStartIdx + goldenStride * 2);
 
-  // Strictly filter out document/table noise from vocabulary
-  const isNoisyWord = (w: string) => !w || w.length < 2 || /^(pdf|docx|txt|tutor|upload|durkkas|aruppukottai|dipl-|private|limited|report|branch|active)$/i.test(w.trim());
+  // Strictly filter out document/table noise and invalid non-linguistic tokens from vocabulary
+  const isNoisyWord = (w: string) => !w || !isValidLinguisticWord(w, language) || /^(pdf|docx|txt|tutor|upload|durkkas|aruppukottai|dipl-|private|limited|report|branch|active)$/i.test(w.trim());
 
   let rawVocabList = [v1, finalV2, finalV3].filter(Boolean).filter(v => v && !isNoisyWord(v.word));
   if (rawVocabList.length < 3 && cleanParsedVocab.length > 0) {
@@ -628,7 +647,7 @@ Language: **${language}** • Certified CEFR **${level}** • Topic: **${baseTop
       : linguisticUnit.vocabulary.slice(0, 3);
   }
 
-  const currentVocabList = rawVocabList.map((v, i) => ({
+  let currentVocabList = rawVocabList.map((v, i) => ({
     word: v.word,
     meaning: v.meaning || `Contextual usage in ${baseTopic}`,
     pronunciation: v.pronunciation || `/${v.word.toLowerCase()}/`,
@@ -685,67 +704,169 @@ Language: **${language}** • Certified CEFR **${level}** • Topic: **${baseTop
   const primaryWord = currentVocabList[0]?.word || linguisticUnit.vocabulary[0]?.word || 'terme clé';
   const secondaryWord = currentVocabList[1]?.word || linguisticUnit.vocabulary[1]?.word || 'expression';
 
-  const isDialogueNoisy = (dlgs: string[]) => {
-    return dlgs.some(d => 
-      /(durkkas|dipl-|syntactic rule|tutor upload|aruppukottai)/i.test(d) ||
-      (language.toLowerCase() !== 'french' && d.includes('Bonjour'))
-    );
-  };
+  // ---------------------------------------------------------------------------
+  // RESOLVE THEMATIC PEDAGOGICAL KIT (Topic-specific authentic vocabulary, drills, and dialogues)
+  // ---------------------------------------------------------------------------
+  const thematicKit = resolveThematicPedagogicalKit(language, level, cleanGrammarLabel, dayNumber);
 
-  const sourceContextualDialogue = [
-    `Teacher (${language}): "Today we are exploring ${cleanGrammarLabel}. How do we apply '${primaryWord}' in this context?"`,
-    `Student (${language}): "We use '${primaryWord}' to describe the key concepts, connecting it with '${secondaryWord}'."`,
-    `Teacher (${language}): "Exactly! Let's practice using '${primaryWord}' in a clear, complete sentence together."`,
-    `Student (${language}): "Thank you Teacher! That helps me understand '${cleanGrammarLabel}' clearly."`
-  ];
+  let classroomDialogues: string[];
+  let exerciseSolutions: Array<{ question: string; answer: string; explanation: string }>;
+  let inClassExercises: string[];
+  let homeworkTasks: string[];
 
-  const classroomDialogues = (collectedDialogues.length >= 2 && !collectedDialogues[0].includes('Engaging situational dialogue') && !isDialogueNoisy(collectedDialogues))
-    ? collectedDialogues
-    : (isDocContentMode ? sourceContextualDialogue : (comprehensiveSyllabus.dialogue.length > 0 ? comprehensiveSyllabus.dialogue : linguisticUnit.dialogue));
-
-  // Dynamic in-class exercises grounded directly in the document topic and core concepts
-  // Dynamic in-class exercises strictly grounded in actual topics & vocabulary (ZERO filename mentions)
-  const tertiaryWord = currentVocabList[2]?.word || "Integration";
-  // 15+ Yrs Language Acquisition Specialist Design: Audio-Immersion & Spoken Fluency Drills
-  const audioTrackTitle = `Native Audio Lesson: ${cleanGrammarLabel}`;
-  // Practical Classroom LSRW Drills
-  const exerciseSolutions = [
-    {
-      question: `🎧 [Listening] Listen to the dialogue for "${cleanGrammarLabel}". What greeting or key phrase did the speaker use to start politely?`,
-      answer: `The speaker used "${primaryWord}" to open the conversation with a warm, polite tone.`,
-      explanation: `Helps learners recognize everyday polite expressions and clear native tone.`
-    },
-    {
-      question: `🗣️ [Speaking] Practice saying this sentence aloud 3 times: "Hello, nice to meet you! My name is Alex."`,
-      answer: `Speak clearly with natural pauses and a friendly, confident tone.`,
-      explanation: `Builds mouth muscle memory and spoken pronunciation confidence.`
-    },
-    {
-      question: `💬 [Conversation] How would you reply politely if a classmate or teacher says "${secondaryWord}" to you?`,
-      answer: `Reply with a friendly greeting or "You're welcome!" depending on context.`,
-      explanation: `Develops two-way conversational turn-taking and polite social interaction.`
-    },
-    {
-      question: `📝 [Writing & Review] Write two short sentences introducing yourself using "${primaryWord}" and "${secondaryWord}".`,
-      answer: `Example: "Hello! My name is Alex. Could you please help me find the classroom?"`,
-      explanation: `Reinforces correct word order and everyday sentence construction.`
+  if (thematicKit) {
+    currentGrammarFocus = thematicKit.grammarFocus;
+    currentObjective = thematicKit.pedagogicalObjective;
+    currentVocabList = thematicKit.vocabulary.map(v => ({
+      word: v.word,
+      meaning: v.meaning,
+      pronunciation: v.pronunciation,
+      example_sentence: v.example_sentence
+    }));
+    classroomDialogues = thematicKit.dialogue;
+    exerciseSolutions = thematicKit.drills;
+    inClassExercises = thematicKit.drills.map(d => d.question);
+    homeworkTasks = [...thematicKit.homework];
+    if (courseHours >= 80) {
+      homeworkTasks.push(`Write a short paragraph (50-75 words) in ${language} applying today's grammatical structure.`);
     }
-  ];
-  const inClassExercises = exerciseSolutions.map(e => e.question);
+  } else {
+    // Non-formulaic authentic fallbacks for arbitrary custom topics (ZERO "Alex" templates)
+    const isDe = /german|deutsch/i.test(language);
+    const isFr = /french|fran/i.test(language);
+    const isEs = /spanish|espa/i.test(language);
 
-  const homeworkTasks = [
-    `Practice introducing yourself in ${language} out loud for 2 minutes using "${primaryWord}".`,
-    `Write 3 polite sentences in your notebook using "${primaryWord}" and "${secondaryWord}".`
-  ];
-
-  if (courseHours >= 80) {
-    homeworkTasks.push(`Write a short paragraph (50-75 words) in ${language} describing your daily routine.`);
+    if (isDe) {
+      classroomDialogues = [
+        `Dozent: "Guten Tag zusammen! Heute behandeln wir das Thema: ${cleanGrammarLabel}."`,
+        `Teilnehmer: "Guten Tag! Wie wenden wir '${primaryWord}' in diesem Satzmuster an?"`,
+        `Dozent: "Hervorragend! '${primaryWord}' bestimmt den Hauptsatz, während '${secondaryWord}' den Kontext präzisiert."`,
+        `Teilnehmer: "Verstanden, vielen Dank! Wir üben das jetzt direkt im Gespräch."`
+      ];
+      exerciseSolutions = [
+        {
+          question: `🎧 [Hörverstehen] Hören Sie den Beispielsatz für "${cleanGrammarLabel}". Welche grammatische Struktur wird verwendet?`,
+          answer: `Die Struktur verwendet "${primaryWord}" zur Einbettung von "${cleanGrammarLabel}".`,
+          explanation: `Schult das auditive Erfassen von Satzbau und Betonung.`
+        },
+        {
+          question: `🗣️ [Sprechen] Bilden Sie einen vollständigen deutschen Satz mit '${primaryWord}' zum Thema "${cleanGrammarLabel}".`,
+          answer: `Flüssige Äußerung: "Ich lerne '${primaryWord}' im Zusammenhang mit ${cleanGrammarLabel}."`,
+          explanation: `Festigt die mündliche Sprachkompetenz.`
+        },
+        {
+          question: `📖 [Lesen & Syntax] Bestimmen Sie die Satzstellung von [Subjekt] + [Verb] + ['${secondaryWord}'] im Kontext von "${cleanGrammarLabel}".`,
+          answer: `Verb an Position 2 im Hauptsatz mit '${secondaryWord}' im Mittelfeld.`,
+          explanation: `Prüft das syntaktische Strukturverständnis.`
+        },
+        {
+          question: `✍️ [Schreiben] Verfassen Sie zwei zusammenhängende Sätze mit '${primaryWord}' und '${secondaryWord}'.`,
+          answer: `Beispielsatz: "Heute üben wir '${primaryWord}'. '${secondaryWord}' hilft uns beim Verstehen."`,
+          explanation: `Entwickelt schriftliche Ausdrucksfähigkeit.`
+        }
+      ];
+    } else if (isFr) {
+      classroomDialogues = [
+        `Professeur : "Bonjour à tous ! Aujourd'hui nous étudions : ${cleanGrammarLabel}."`,
+        `Étudiant : "Bonjour Monsieur ! Comment utilise-t-on '${primaryWord}' dans ce contexte ?"`,
+        `Professeur : "Excellente question ! '${primaryWord}' ancre la structure tandis que '${secondaryWord}' précise la nuance."`,
+        `Étudiant : "Merci beaucoup ! C'est très clair pour nos échanges."`
+      ];
+      exerciseSolutions = [
+        {
+          question: `🎧 [Écoute] Écoutez le modèle pour "${cleanGrammarLabel}". Identifiez le terme clé "${primaryWord}".`,
+          answer: `L'interlocuteur applique "${primaryWord}" pour structurer l'énoncé.`,
+          explanation: `Développe la discrimination auditive des liaisons et du rythme.`
+        },
+        {
+          question: `🗣️ [Production orale] Prononcez à voix haute une phrase complète avec '${primaryWord}'.`,
+          answer: `Production orale fluide conforme aux normes CECRL du niveau ${level}.`,
+          explanation: `Développe l'aisance articulatoire.`
+        },
+        {
+          question: `📖 [Lecture & Syntaxe] Analysez l'accord morphosyntaxique autour de '${secondaryWord}'.`,
+          answer: `Accord correct en genre et en nombre selon la règle de ${cleanGrammarLabel}.`,
+          explanation: `Renforce la compétence grammaticale.`
+        },
+        {
+          question: `✍️ [Écriture] Rédigez deux phrases d'application avec '${primaryWord}' et '${secondaryWord}'.`,
+          answer: `Texte cohérent intégrant le lexique thématique.`,
+          explanation: `Évalue la précision orthographique et syntaxique.`
+        }
+      ];
+    } else if (isEs) {
+      classroomDialogues = [
+        `Profesor: "¡Buenos días a todos! Hoy exploramos el tema: ${cleanGrammarLabel}."`,
+        `Estudiante: "¡Hola profesor! ¿Cómo aplicamos '${primaryWord}' en esta estructura?"`,
+        `Profesor: "¡Muy bien! '${primaryWord}' funciona como núcleo mientras '${secondaryWord}' aporta la precisión comunicativa."`,
+        `Estudiante: "¡Entendido, muchas gracias! Vamos a practicarlo en parejas."`
+      ];
+      exerciseSolutions = [
+        {
+          question: `🎧 [Audición] Escuche el diálogo sobre "${cleanGrammarLabel}". ¿Cómo se introduce '${primaryWord}'?`,
+          answer: `Se utiliza '${primaryWord}' para abrir la interacción con registro cortés.`,
+          explanation: `Entrena la percepción auditiva de la entonación nativa.`
+        },
+        {
+          question: `🗣️ [Expresión oral] Formule una oración afirmativa en español empleando '${primaryWord}'.`,
+          answer: `Construcción estándar siguiendo la norma del nivel ${level}.`,
+          explanation: `Fomenta la fluidez oral y la pronunciación clara.`
+        },
+        {
+          question: `📖 [Lectura & Sintaxis] Identifique la concordancia gramatical con '${secondaryWord}'.`,
+          answer: `Concordancia de género y número adecuada al contexto.`,
+          explanation: `Verifica el dominio sintáctico.`
+        },
+        {
+          question: `✍️ [Escritura] Escriba dos frases funcionales usando '${primaryWord}' y '${secondaryWord}'.`,
+          answer: `Párrafo breve con correcta ortografía y signos de puntuación.`,
+          explanation: `Desarrolla la destreza escrita.`
+        }
+      ];
+    } else {
+      classroomDialogues = [
+        `Instructor: "Welcome everyone! Today we examine ${cleanGrammarLabel} in practical contexts."`,
+        `Learner: "Hello! How do we apply '${primaryWord}' together with '${secondaryWord}' in a natural conversation?"`,
+        `Instructor: "Great question! '${primaryWord}' anchors the target pattern, and '${secondaryWord}' provides conversational nuance."`,
+        `Learner: "Thank you! That makes the usage clear and practical."`
+      ];
+      exerciseSolutions = [
+        {
+          question: `🎧 [Listening] Listen to the audio for "${cleanGrammarLabel}". How is "${primaryWord}" applied in the sentence?`,
+          answer: `The speaker applies "${primaryWord}" to establish the core meaning of ${cleanGrammarLabel}.`,
+          explanation: `Trains auditory discrimination and recognition of native sentence stress.`
+        },
+        {
+          question: `🗣️ [Speaking] Deliver a clear spoken sentence incorporating "${primaryWord}" to state a fact or request.`,
+          answer: `Fluent spoken production adhering to CEFR ${level} accuracy standards.`,
+          explanation: `Develops spontaneous oral automaticity.`
+        },
+        {
+          question: `📖 [Reading & Syntax] Analyze the clause pattern around "${secondaryWord}" within ${cleanGrammarLabel}.`,
+          answer: `Accurate syntactic agreement and word order.`,
+          explanation: `Reinforces structural awareness.`
+        },
+        {
+          question: `✍️ [Writing] Compose two communicative sentences applying both "${primaryWord}" and "${secondaryWord}".`,
+          answer: `Coherent written expression matching everyday target communication.`,
+          explanation: `Assesses written morphological and lexical precision.`
+        }
+      ];
+    }
+    inClassExercises = exerciseSolutions.map(e => e.question);
+    homeworkTasks = [
+      `Practice speaking about "${cleanGrammarLabel}" out loud for 2 minutes using "${primaryWord}".`,
+      `Write 3 polite sentences in your notebook using "${primaryWord}" and "${secondaryWord}".`
+    ];
+    if (courseHours >= 80) {
+      homeworkTasks.push(`Write a short paragraph (50-75 words) in ${language} describing your daily routine.`);
+    }
   }
 
   // Synthesize clean, simple, student-friendly Master Study Guide
-  const sampleSentence1 = currentVocabList[0]?.example_sentence || `Hello! Welcome to our ${language} class.`;
-  const sampleSentence2 = currentVocabList[1]?.example_sentence || `Could you please repeat that? Thank you.`;
-  const sampleSentence3 = currentVocabList[2]?.example_sentence || `I am practicing ${language} today.`;
+  const sampleSentence1 = currentVocabList[0]?.example_sentence || `In this unit, students apply "${primaryWord}" in everyday discourse.`;
+  const sampleSentence2 = currentVocabList[1]?.example_sentence || `In this unit, students apply "${secondaryWord}" in practical dialogue.`;
+  const sampleSentence3 = currentVocabList[2]?.example_sentence || `Core communicative sentence demonstrating the target structure.`;
 
   let studyNotesMarkdown = `### 📘 ${unitLabel}: ${cleanGrammarLabel}
 **Language**: ${language} • **Level**: CEFR ${level} • **Duration**: ${unitMinutes} Minutes
@@ -753,20 +874,21 @@ Language: **${language}** • Certified CEFR **${level}** • Topic: **${baseTop
 ---
 
 #### 🎯 Lesson Objective
-Learn and practice **${cleanGrammarLabel}** to communicate politely and effectively in everyday ${language}.
+${currentObjective}
 
 ---
 
-#### 💡 Core Sentence Pattern
-- **Sentence Pattern**: Subject + Verb + Polite Expression / Context
-- **Example 1**: *"${sampleSentence1}"*
-- **Example 2**: *"${sampleSentence2}"*
-- **Example 3**: *"${sampleSentence3}"*
+#### 💡 Grammatical Focus & Core Patterns
+- **Target Structure**: ${currentGrammarFocus}
+${thematicKit?.cefrScaffoldingNote ? `\n> ℹ️ **Academic Level Scaffolding**: ${thematicKit.cefrScaffoldingNote}\n` : ''}
+- **Applied Model 1**: *"${sampleSentence1}"*
+- **Applied Model 2**: *"${sampleSentence2}"*
+- **Applied Model 3**: *"${sampleSentence3}"*
 
 ---
 
 #### 🗂️ Key Vocabulary & Daily Usage
-${currentVocabList.slice(0, 3).map(v => `• **${v.word}** (${v.pronunciation || ''}): ${v.meaning}\n  ↳ *"Example: ${v.example_sentence || 'Used in everyday polite conversation.'}"*`).join('\n\n')}
+${currentVocabList.slice(0, 4).map(v => `• **${v.word}** (${v.pronunciation || ''}): ${v.meaning}\n  ↳ *"Example: ${v.example_sentence || 'Used in everyday context.'}"*`).join('\n\n')}
 
 ---
 
@@ -775,10 +897,9 @@ ${classroomDialogues.slice(0, 4).map(d => `> ${d}`).join('\n>\n')}
 
 ---
 
-#### 🗣️ Classroom Practice Tips
-1. **Clear Pronunciation**: Speak slowly and clearly. Focus on standard native rhythm.
-2. **Polite Register**: Always use friendly polite phrases like *"Please"* and *"Thank you"* when speaking with classmates and teachers.
-3. **Daily Habit**: Practice speaking the model dialogue aloud for 2 minutes to gain oral confidence.`;
+#### 📋 Pedagogical Summary & Board Notes
+${thematicKit?.boardNotes ? thematicKit.boardNotes : `1. **Grammar Rule**: Adhere to ${language} ${level} standard word order.\n2. **Pronunciation**: Focus on clear native rhythm and intonation.\n3. **Application**: Practice conversational turn-taking with your study partner.`}
+`;
 
   if (currentDocUrl) {
     studyNotesMarkdown += `\n\n---\n\n#### 🔗 Primary Reference & Study Resource\n- **Target Lesson Resource:** [${cleanGrammarLabel}](${currentDocUrl})`;
@@ -794,7 +915,7 @@ ${classroomDialogues.slice(0, 4).map(d => `> ${d}`).join('\n>\n')}
     week_number: weekNum,
     module_week: `Week ${weekNum} • ${unitLabel.split(' ')[0]} ${periodInWeek}/${weeklyCadence} (${unitLabel} of ${totalDays})`,
     day_topic: unitTopic,
-    grammar_rules_detail: `Focus: ${cleanGrammarLabel} • Communicative Goal: ${domainStage.focus}.`,
+    grammar_rules_detail: thematicKit ? thematicKit.grammarFocus : `Focus: ${cleanGrammarLabel} • Communicative Goal: ${domainStage.focus}.`,
     study_notes_markdown: studyNotesMarkdown,
     vocabulary_bank: currentVocabList,
     classroom_dialogues: classroomDialogues,
@@ -813,9 +934,9 @@ ${classroomDialogues.slice(0, 4).map(d => `> ${d}`).join('\n>\n')}
         { phase: '3. Guided Pair Discourse & Drills', minutes: Math.max(15, Math.round(unitMinutes * 0.30)), instruction: `Students enact live classroom dialogues practicing oral fluency.` },
         { phase: '4. Formative Wrap-Up & Retention Task', minutes: Math.max(5, Math.round(unitMinutes * 0.20)), instruction: `Review common L1 pitfalls, assign homework, and conduct rapid exit-ticket Q&A.` }
       ],
-      board_notes: `Sentence Pattern: Subject + Verb + Polite Expression (e.g. "Hello, my name is Alex. Nice to meet you!")`,
-      remedial_activity: `Practice 2 simple sentences: introduce yourself with "Hello" and ask a polite question using "Please".`,
-      extension_activity: `Pair roleplay: 1-minute fluent dialogue greeting someone and introducing a friend in ${language}.`,
+      board_notes: thematicKit?.boardNotes || `Sentence Pattern: [Subject] + [${currentGrammarFocus}] + [Applied Direct/Indirect Clause]`,
+      remedial_activity: `Oral drill with ${primaryWord}: practice targeted pronunciation and simple sentence construction.`,
+      extension_activity: `Pair roleplay: 1-minute fluent dialogue integrating ${primaryWord} and ${secondaryWord} in dynamic discourse.`,
       common_gotchas: [
         `Phonetic interference on silent letters or liaison boundaries in ${language}.`,
         `Subject-verb inflection mismatch when conjugating around target patterns.`

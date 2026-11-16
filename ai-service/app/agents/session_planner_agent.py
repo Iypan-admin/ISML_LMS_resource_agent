@@ -16,6 +16,7 @@ import json
 import logging
 import math
 import uuid
+import re
 from typing import Optional, Dict, Any, List
 
 import httpx
@@ -860,11 +861,26 @@ class SessionPlannerAgent:
         day_wise_syllabus = []
         slides = []
         vocab_pool = []
+        from app.services.thematic_curriculum_resolver import is_valid_linguistic_word
         for v in (analysis.vocabulary_items or []):
-            if hasattr(v, 'item'):
-                vocab_pool.append({"item": v.item, "category": getattr(v, "category", "lexicon"), "evidence_excerpt": getattr(v, "evidence_excerpt", "")})
-            elif isinstance(v, dict):
-                vocab_pool.append(v)
+            item_str = str(v.item if hasattr(v, 'item') else (v.get("item") or v.get("word") or "")).strip()
+            ev_str = str(getattr(v, "evidence_excerpt", "") if hasattr(v, 'item') else v.get("evidence_excerpt", "")).strip()
+            cat_str = str(getattr(v, "category", "lexicon") if hasattr(v, 'item') else v.get("category", "lexicon")).strip()
+            
+            # Reject URL tokens or tracking noise
+            if re.search(r'(https?://|www\.|\.app|\.com|/shorts|sa=t|source=web|url=|caes|&[a-z]+=)', item_str, re.I):
+                continue
+            if re.search(r'(shorts|scwu|erbgh|bdz|tfch|zgxodmx|aebxcjf)', item_str, re.I):
+                continue
+            if not is_valid_linguistic_word(item_str, language):
+                continue
+            vocab_pool.append({"item": item_str, "category": cat_str, "evidence_excerpt": ev_str})
+
+        grammar_pool = [
+            str(g.item if hasattr(g, 'item') else g.get("item", "")).strip()
+            for g in (analysis.grammar_structures or [])
+            if str(g.item if hasattr(g, 'item') else g.get("item", "")).strip()
+        ]
 
         topics_pool = []
         if analysis.main_topics:
@@ -910,8 +926,8 @@ class SessionPlannerAgent:
                     f"Master core {language} competencies for {topic}",
                     f"Achieve CEFR {level} communicative fluency",
                 ],
-                "grammar_focus": [g.item for g in grammar_pool[:5]] or [f"Grammar focus for {topic}"],
-                "key_vocabulary": [v.item for v in vocab_pool[:15]] or [f"Key terms for {topic}"],
+                "grammar_focus": grammar_pool[:5] or [f"Grammar focus for {topic}"],
+                "key_vocabulary": [v["item"] for v in vocab_pool[:15]] or [f"Key terms for {topic}"],
                 "day_wise_syllabus": day_wise_syllabus,
                 "homework_and_practice": [
                     "Complete daily exercises and review vocabulary from source materials.",

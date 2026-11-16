@@ -63,7 +63,7 @@ export const COMPREHENSIVE_LANGUAGE_BANKS: Record<
         "Teacher: 'Good morning everyone! Welcome to our first spoken session. How are you today?'",
         "Student: 'Good morning Teacher! I am doing well, thank you. Nice to meet you!'",
         "Teacher: 'Wonderful! Could you please introduce yourself and tell us where you are from?'",
-        "Student: 'My name is Alex. I am from Chennai, and I am very happy to learn with everyone.'"
+        "Student: 'My name is David. I am very happy to practice with everyone today.'"
       ],
       [
         "David: 'Excuse me, could you tell me where the main library is located?'",

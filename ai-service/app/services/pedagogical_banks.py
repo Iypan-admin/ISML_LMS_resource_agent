@@ -8,8 +8,10 @@ from typing import Dict, Any, List, Optional
 import math
 try:
     from .master_curriculum_120 import get_master_120_period_py
+    from .thematic_curriculum_resolver import resolve_thematic_kit, is_valid_linguistic_word
 except ImportError:
     from master_curriculum_120 import get_master_120_period_py
+    from thematic_curriculum_resolver import resolve_thematic_kit, is_valid_linguistic_word
 
 # =============================================================================
 # CURRICULUM PROGRESSION MILESTONES BY LANGUAGE
@@ -310,7 +312,7 @@ def resolve_pedagogical_unit(
     """
     lang_lower = (language or "french").lower().strip()
 
-    # Filter mined vocabulary to remove raw document/table dump noise
+    # Filter mined vocabulary to remove raw document/table dump noise and URL tokens
     clean_mined = []
     if mined_vocab:
         import re
@@ -318,16 +320,33 @@ def resolve_pedagogical_unit(
             w = (v.get("item") or v.get("word") or "").strip()
             if not w or len(w) < 2 or len(w) > 30:
                 continue
+            if not is_valid_linguistic_word(w, language):
+                continue
+            if re.search(r'(https?://|www\.|\.app|\.com|/shorts|sa=t|source=web|url=|caes|&[a-z]+=)', w, re.IGNORECASE):
+                continue
             if re.search(r'(pdf|docx?|durkkas|dipl-|aruppukottai|branch|employee|private|limited|workforce|report|standup|meeting|syntactic rule|id name|option|marks)', w, re.IGNORECASE):
                 continue
-            clean_mined.append(v)
+            
+            ev = v.get("evidence_excerpt") or ""
+            if re.search(r'(https?://|www\.|\.app|\.com|/shorts|sa=t|source=web|url=|caes|&[a-z]+=)', ev, re.IGNORECASE):
+                if "german" in lang_lower or "deutsch" in lang_lower:
+                    ev = f'Wir verwenden "{w}" im alltäglichen Kontext auf Deutsch.'
+                elif "french" in lang_lower or "fran" in lang_lower:
+                    ev = f'Nous utilisons "{w}" en contexte pratique en français.'
+                elif "spanish" in lang_lower or "espa" in lang_lower:
+                    ev = f'Usamos "{w}" en situaciones comunicativas en español.'
+                else:
+                    ev = f'Applying "{w}" in practical communicative discourse.'
+            v_copy = dict(v)
+            v_copy["evidence_excerpt"] = ev
+            clean_mined.append(v_copy)
 
     # 1. Fetch from Master 120-Period Progression Engine (Guaranteed 100% unique Day 1 to Day 120+)
     master_unit = get_master_120_period_py(language, level, day_number, topic)
 
     # 2. If user provided custom source document topics, PRIORITIZE THEM with zero cyclical repeats
     import re
-    clean_topics = [t for t in (mined_topics or []) if t and len(t) >= 4 and not re.search(r'(tutor upload|pdf|docx|table of contents|contents|report|standup)', t, re.I)]
+    clean_topics = [t for t in (mined_topics or []) if t and len(t) >= 2 and not re.search(r'(tutor upload|pdf|docx|table of contents|contents|report|standup)', t, re.I)]
     
     if clean_topics:
         if day_number <= len(clean_topics):
@@ -335,7 +354,27 @@ def resolve_pedagogical_unit(
         else:
             base_topic = clean_topics[(day_number - 1) % len(clean_topics)]
             cur_topic = f"{base_topic} — Part {day_number}: {master_unit['topic']}"
+    else:
+        cur_topic = topic or master_unit["topic"]
 
+    # 3. Check Authentic Thematic Curriculum Resolver first
+    thematic_kit = resolve_thematic_kit(language, level, cur_topic, day_number)
+
+    homework_tasks = [
+        f"Review the vocabulary bank and grammar rules for {cur_topic}.",
+        f"Record a 60-second audio note practicing the dialogue with correct intonation.",
+        f"Complete 3 written sentences in {language} applying today's grammatical structures."
+    ]
+
+    if thematic_kit:
+        unit_topic = f"Period {day_number}: {thematic_kit['topicTitle']}"
+        grammar_rule = thematic_kit["grammarFocus"]
+        vocab_items = list(thematic_kit["vocabulary"])
+        dialogues = list(thematic_kit["dialogue"])
+        drills = list(thematic_kit["drills"])
+        if thematic_kit.get("homework"):
+            homework_tasks = list(thematic_kit["homework"])
+    elif clean_topics:
         unit_topic = f"Period {day_number}: {cur_topic}"
         grammar_rule = f"{master_unit['grammar_rule']} (Applied to {cur_topic})"
 
@@ -370,16 +409,52 @@ def resolve_pedagogical_unit(
 
         p_word = vocab_items[0]["word"] if vocab_items else cur_topic.split()[0]
         s_word = vocab_items[1]["word"] if len(vocab_items) > 1 else "expression"
-        dialogues = [
-            f"Teacher: 'Today we explore {cur_topic}. How do we use the term \"{p_word}\"?'",
-            f"Student: 'In this topic, \"{p_word}\" helps us explain the core principles, connecting with \"{s_word}\".'",
-            f"Teacher: 'Excellent! Let us practice using \"{p_word}\" in a clear sentence together.'"
-        ]
-        drills = [
-            {"question": f"What is the key focus of {cur_topic}?", "answer": f"Core concepts and communication for {cur_topic}.", "explanation": "Target competency from study materials."},
-            {"question": f"Practice saying this key term out loud: '{p_word}'.", "answer": f"Clear spoken pronunciation of {p_word}.", "explanation": "Develops confidence and fluency."}
-        ]
-        greeting = f"Welcome everyone! Today we examine {cur_topic}."
+
+        if "german" in lang_lower or "deutsch" in lang_lower:
+            dialogues = [
+                f"Dozent: 'Guten Tag zusammen! Heute behandeln wir das Thema: {cur_topic}.'",
+                f"Teilnehmer: 'Guten Tag! Wie wenden wir das Schlüsselwort \"{p_word}\" in diesem Satzmuster an?'",
+                f"Dozent: 'Hervorragend! \"{p_word}\" bestimmt die Satzstruktur, während \"{s_word}\" den Kontext präzisiert.'",
+                f"Teilnehmer: 'Verstanden, vielen Dank! Wir üben das jetzt direkt im Gespräch.'"
+            ]
+            drills = [
+                {"question": f"[Hörverstehen] Hören Sie den Modellsatz für {cur_topic}. Identifizieren Sie das Schlüsselwort '{p_word}'.", "answer": f"Das Wort '{p_word}' wird im Kontext von {cur_topic} angewendet.", "explanation": "Schult das auditive Erfassen und die Aussprache."},
+                {"question": f"[Sprechen] Bilden Sie einen vollständigen deutschen Satz mit '{p_word}'.", "answer": f"Mündliche Äußerung unter Verwendung von '{p_word}'.", "explanation": "Festigt die mündliche Sprachkompetenz."},
+                {"question": f"[Syntax & Grammatik] Bestimmen Sie die grammatische Funktion von '{s_word}' in {cur_topic}.", "answer": "Korrekte Anwendung gemäß A1-Grammatikstandard.", "explanation": "Prüft das grammatische Regelverständnis."}
+            ]
+        elif "french" in lang_lower or "français" in lang_lower:
+            dialogues = [
+                f"Professeur : 'Bonjour à tous ! Aujourd'hui nous étudions : {cur_topic}.'",
+                f"Étudiant : 'Bonjour Monsieur ! Comment applique-t-on le terme \"{p_word}\" dans cette structure ?'",
+                f"Professeur : 'Excellente question ! \"{p_word}\" ancre l'énoncé tandis que \"{s_word}\" affine la nuance.'",
+                f"Étudiant : 'Merci beaucoup ! C'est très clair pour nos échanges.'"
+            ]
+            drills = [
+                {"question": f"[Écoute] Écoutez l'énoncé portant sur {cur_topic}. Repérez le terme '{p_word}'.", "answer": f"Application contextuelle de '{p_word}'.", "explanation": "Développe la discrimination auditive."},
+                {"question": f"[Production orale] Prononcez une phrase complète en français intégrant '{p_word}'.", "answer": "Énonciation orale fluide.", "explanation": "Développe l'aisance communicative."}
+            ]
+        elif "spanish" in lang_lower or "español" in lang_lower:
+            dialogues = [
+                f"Profesor: '¡Buenos días a todos! Hoy exploramos el tema: {cur_topic}.'",
+                f"Estudiante: '¡Hola profesor! ¿Cómo usamos \"{p_word}\" en esta estructura?'",
+                f"Profesor: '¡Muy bien! \"{p_word}\" sirve como núcleo sintáctico y \"{s_word}\" precisa el significado.'",
+                f"Estudiante: '¡Entendido, muchas gracias! Vamos a practicarlo.'"
+            ]
+            drills = [
+                {"question": f"[Audición] Escuche la frase modelo para {cur_topic}. Identifique el término '{p_word}'.", "answer": f"Uso comunicativo de '{p_word}'.", "explanation": "Entrena la percepción auditiva."},
+                {"question": f"[Expresión oral] Formule una frase afirmativa en español con '{p_word}'.", "answer": "Construcción correcta según la norma.", "explanation": "Fomenta la fluidez oral."}
+            ]
+        else:
+            dialogues = [
+                f"Instructor: 'Welcome everyone! Today we examine {cur_topic} in practical contexts.'",
+                f"Learner: 'Hello! How do we apply \"{p_word}\" together with \"{s_word}\" in conversation?'",
+                f"Instructor: 'Great question! \"{p_word}\" anchors the sentence pattern, while \"{s_word}\" refines the communicative nuance.'",
+                f"Learner: 'Thank you! That makes the usage clear and practical.'"
+            ]
+            drills = [
+                {"question": f"[Listening] Listen to the audio for {cur_topic}. Identify how '{p_word}' is positioned.", "answer": f"'{p_word}' establishes the core meaning for {cur_topic}.", "explanation": "Auditory discrimination drill."},
+                {"question": f"[Speaking] Deliver a clear spoken sentence incorporating '{p_word}'.", "answer": "Fluent spoken production.", "explanation": "Spoken fluency drill."}
+            ]
     else:
         # Pure authentic CEFR Master 120-Period Progression (zero repeats for up to 120+ days)
         unit_topic = f"Period {day_number}: {master_unit['topic']}"
@@ -387,57 +462,17 @@ def resolve_pedagogical_unit(
         vocab_items = list(master_unit.get("vocab", []))
         dialogues = list(master_unit.get("dialogue", []))
         drills = list(master_unit.get("drills", []))
-        greeting = f"Welcome everyone! Today in Period {day_number}, we focus on {master_unit['topic']}."
 
         if "french" in lang_lower or "français" in lang_lower:
             unit_topic = f"Séance {day_number} : {master_unit['topic']}"
-            greeting = f"Bonjour à tous ! Aujourd'hui dans la séance {day_number}, nous étudions {master_unit['topic']}."
         elif "spanish" in lang_lower or "español" in lang_lower:
             unit_topic = f"Sesión {day_number} : {master_unit['topic']}"
-            greeting = f"¡Buenos días a todos! Hoy en la sesión {day_number}, exploramos {master_unit['topic']}."
         elif "german" in lang_lower or "deutsch" in lang_lower:
             unit_topic = f"Einheit {day_number} : {master_unit['topic']}"
-            greeting = f"Guten Tag zusammen! Heute in Einheit {day_number} widmen wir uns {master_unit['topic']}."
         elif "japanese" in lang_lower or "nihongo" in lang_lower:
             unit_topic = f"第{day_number}課 : {master_unit['topic']}"
-            greeting = f"皆さん、こんにちは。第{day_number}課では {master_unit['topic']} について学びます。"
         elif "korean" in lang_lower or "hangul" in lang_lower:
             unit_topic = f"제{day_number}과 : {master_unit['topic']}"
-            greeting = f"여러분, 안녕하세요. 오늘 제{day_number}과에서는 {master_unit['topic']}에 대해 공부합니다."
-
-    # Filter mined vocabulary to remove raw document/table dump noise
-    clean_mined = []
-    if mined_vocab:
-        import re
-        for v in mined_vocab:
-            w = (v.get("item") or v.get("word") or "").strip()
-            if not w or len(w) < 2 or len(w) > 30:
-                continue
-            if re.search(r'(pdf|docx?|durkkas|dipl-|aruppukottai|branch|employee|private|limited|workforce|report|standup|meeting|syntactic rule|id name|option|marks)', w, re.IGNORECASE):
-                continue
-            clean_mined.append(v)
-
-    if clean_mined:
-        stride = max(1, int(len(clean_mined) * 0.618))
-        v_idx = ((day_number - 1) * 2) % len(clean_mined)
-        user_v1 = clean_mined[v_idx % len(clean_mined)]
-        user_v2 = clean_mined[(v_idx + stride) % len(clean_mined)]
-        
-        # Insert user-mined items at beginning of vocab list
-        vocab_items = [
-            {
-                "word": user_v1.get("item") or user_v1.get("word") or "Term",
-                "meaning": f"Vocabulary from uploaded materials: {user_v1.get('category', 'core')}",
-                "pronunciation": f"/{str(user_v1.get('item') or user_v1.get('word')).lower()}/",
-                "example_sentence": user_v1.get("evidence_excerpt") or f"In Unit {day_number}, students apply {user_v1.get('item') or user_v1.get('word')}."
-            },
-            {
-                "word": user_v2.get("item") or user_v2.get("word") or "Vocabulary",
-                "meaning": f"Vocabulary from source: {user_v2.get('category', 'lexicon')}",
-                "pronunciation": f"/{str(user_v2.get('item') or user_v2.get('word')).lower()}/",
-                "example_sentence": user_v2.get("evidence_excerpt") or f"Practical usage of {user_v2.get('item') or user_v2.get('word')} in lesson {day_number}."
-            }
-        ] + vocab_items[:2]
 
     # Grounding study notes (clean, simple, human format)
     study_notes = (
@@ -468,9 +503,5 @@ def resolve_pedagogical_unit(
         "pedagogical_instructions": f"Direct faculty instruction on {unit_topic}. Conduct active repetition with key lexicon: {', '.join(v['word'] for v in vocab_items[:3])}.",
         "in_class_exercises": in_class_exercises,
         "exercise_solutions": exercise_solutions,
-        "homework_tasks": [
-            f"Review the vocabulary bank and grammar rules for {unit_topic}.",
-            f"Record a 60-second audio note practicing the dialogue with correct intonation.",
-            f"Complete 3 written sentences in {language} applying today's grammatical structures."
-        ]
+        "homework_tasks": homework_tasks
     }

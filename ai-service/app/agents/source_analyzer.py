@@ -313,31 +313,69 @@ RULES:
         if not discovered_topics:
             discovered_topics = [f"{language} {level}: {topic}"]
 
-        # 2. Sentences extraction
-        sentences = [s.strip() for s in re.split(r'[.!?\n]+', text) if len(s.strip().split()) >= 3][:40]
+        # 2. Sentences extraction (from sanitized text)
+        clean_text_for_sentences = re.sub(r'https?://[^\s]+', ' ', text)
+        clean_text_for_sentences = re.sub(r'[a-zA-Z0-9-]+\.(?:netlify\.app|com|org|edu|de|io|ai|app|co|be)[^\s]*', ' ', clean_text_for_sentences)
+        clean_text_for_sentences = re.sub(r'(\?|&)[a-zA-Z0-9_=-]+', ' ', clean_text_for_sentences)
+        clean_text_for_sentences = re.sub(r'CAES[A-Za-z0-9_-]+', ' ', clean_text_for_sentences)
+        clean_text_for_sentences = re.sub(r'%[0-9A-Fa-f]{2}', ' ', clean_text_for_sentences)
+        sentences = [
+            s.strip() for s in re.split(r'[.!?\n]+', clean_text_for_sentences)
+            if len(s.strip().split()) >= 3 and not re.search(r'(https?:|www\.|\.app|\.com|/shorts|sa=t|source=web|url=|caes|&|%)', s, re.I)
+        ][:40]
 
-        # 3. Vocabulary extraction from source text
-        words = re.findall(r'\b[A-Za-zÀ-ÿ\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff\uac00-\ud7af]{3,}\b', text)
         stop_words = {
             "the", "and", "for", "with", "that", "this", "from", "have", "are", "was", "were",
             "tutor", "upload", "reference", "video", "transcript", "document", "slides", "word",
             "pdf", "docx", "file", "page", "table", "report", "total", "date", "time", "id", "name",
             "branch", "employee", "durkkas", "dipl", "aruppukottai", "private", "limited", "active",
-            "about", "your", "will", "what", "there", "their", "which", "would", "could", "should"
+            "about", "your", "will", "what", "there", "their", "which", "would", "could", "should",
+            "http", "https", "www", "com", "netlify", "google", "youtube", "sa", "ved", "opi", "usg",
+            "caes", "redirect", "url", "share", "post", "posts", "shorts", "links", "link"
         }
-        seen_words = set()
+
+        # Check if the source text is primarily a list of resource links / web bookmarks
+        is_link_reference_index = bool(re.search(r'https?://', text)) and (
+            len(re.findall(r'https?://', text)) >= 2 or
+            len(re.findall(r'(netlify|youtube|google|share\.)', text)) >= 2
+        )
+
         vocab_items = []
-        for w in words:
-            wl = w.lower()
-            if wl not in stop_words and wl not in seen_words and len(vocab_items) < 30:
-                seen_words.add(wl)
-                matching_sent = next((s for s in sentences if w.lower() in s.lower()), f"Applied in context: {w}")
-                vocab_items.append(EvidenceItem(
-                    item=w,
-                    category="vocabulary",
-                    evidence_excerpt=matching_sent[:120],
-                    confidence="high",
-                ))
+        if is_link_reference_index:
+            # If the user supplied reference links for topics, DO NOT mine tokens from the URL hashes or tracking queries!
+            # Instead, populate authentic vocabulary for each discovered topic using the certified thematic kits
+            from app.services.thematic_curriculum_resolver import resolve_thematic_kit
+            seen_words = set()
+            for top in discovered_topics:
+                kit = resolve_thematic_kit(language, level, top)
+                if kit and kit.get("vocabulary"):
+                    for item in kit["vocabulary"]:
+                        w = item["word"]
+                        wl = w.lower()
+                        if wl not in seen_words and len(vocab_items) < 30:
+                            seen_words.add(wl)
+                            vocab_items.append(EvidenceItem(
+                                item=w,
+                                category="vocabulary",
+                                evidence_excerpt=item.get("example_sentence", f"Applied in context: {w}")[:120],
+                                confidence="high",
+                            ))
+        else:
+            # 3. Vocabulary extraction from source text
+            from app.services.thematic_curriculum_resolver import is_valid_linguistic_word
+            words = re.findall(r'\b[A-Za-zÀ-ÿ\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff\uac00-\ud7af]{2,}\b', clean_text_for_sentences)
+            seen_words = set()
+            for w in words:
+                wl = w.lower()
+                if wl not in stop_words and wl not in seen_words and is_valid_linguistic_word(w, language) and len(vocab_items) < 30:
+                    seen_words.add(wl)
+                    matching_sent = next((s for s in sentences if w.lower() in s.lower()), f"Applied in context: {w}")
+                    vocab_items.append(EvidenceItem(
+                        item=w,
+                        category="vocabulary",
+                        evidence_excerpt=matching_sent[:120],
+                        confidence="high",
+                    ))
 
         # 4. Dialogue lines & expressions
         dialogue_lines = [l for l in lines if (':' in l or '"' in l or '?' in l) and not l.startswith('[')][:15]

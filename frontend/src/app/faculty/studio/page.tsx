@@ -67,6 +67,7 @@ const Split = ((_props: any) => null) as any;
 const FolderOpen = ((_props: any) => null) as any;
 import { splitTextIntoChunks, SourceChunk } from '@/utils/chunkingEngine';
 import { generateCurriculumDay } from './curriculumProgression';
+import { isValidLinguisticWord, resolveThematicPedagogicalKit } from './thematicCurriculumResolver';
 import { DayContentView } from './DayContentView';
 import {
   InstitutionType,
@@ -903,6 +904,15 @@ export default function FacultyStudioPage() {
       if (cached) {
         const parsed = JSON.parse(cached);
         if (parsed && parsed.all_days && parsed.modules && !proposedPlanner) {
+          const lang = parsed.language || 'german';
+          // Sanitize any legacy cached items that might have had bad tokens before the fix
+          parsed.all_days = parsed.all_days.map((d: any) => ({
+            ...d,
+            vocabulary_bank: (d.vocabulary_bank || []).filter((v: any) => {
+              const word = typeof v === 'string' ? v : (v?.word || v?.term || '');
+              return isValidLinguisticWord(word, lang);
+            })
+          }));
           setProposedPlanner(parsed);
           if (parsed.language) setSelectedLanguage(parsed.language);
           if (parsed.level) setSelectedLevel(parsed.level);
@@ -1804,6 +1814,27 @@ export default function FacultyStudioPage() {
     if (!sessionPackage) return;
     setDownloadingDocx(true);
     try {
+      let cleanVocab = (dayObj.vocabulary_bank || []).filter((v: any) => {
+        const word = typeof v === 'string' ? v : (v?.word || v?.term || '');
+        const eg = v?.example_sentence || '';
+        const isUrl = /(https?:\/\/|\.app|\.com|\/shorts|sa=t|source=web|url=|caes|&[a-z]+=)/i.test(word) ||
+          /(sa=t|source=web|url=|caes|com\/shorts)/i.test(eg);
+        return !isUrl && isValidLinguisticWord(word, sessionPackage.language);
+      });
+
+      if (cleanVocab.length < 3) {
+        const topicStr = dayObj.day_topic || dayObj.topic || sessionPackage.topic || '';
+        const kit = resolveThematicPedagogicalKit(sessionPackage.language, sessionPackage.level, topicStr, dayObj.day_number || 1);
+        if (kit && kit.vocabulary) {
+          cleanVocab = kit.vocabulary;
+        }
+      }
+
+      const cleanDayData = {
+        ...dayObj,
+        vocabulary_bank: cleanVocab
+      };
+
       const response = await fetchWithEndpointFallback('/api/v1/sessions/download/day-doc', {
         method: 'POST',
         headers: {
@@ -1815,7 +1846,7 @@ export default function FacultyStudioPage() {
           level: sessionPackage.level,
           topic: sessionPackage.topic,
           track_label: sessionPackage.track_duration_label || 'Comprehensive Track',
-          day_data: dayObj,
+          day_data: cleanDayData,
         }),
       });
 
@@ -1865,6 +1896,29 @@ export default function FacultyStudioPage() {
 
     setDownloadingFullDocx(true);
     try {
+      const sanitizedDaysList = listToDownload.map((d: any) => {
+        let cleanVocab = (d.vocabulary_bank || []).filter((v: any) => {
+          const word = typeof v === 'string' ? v : (v?.word || v?.term || '');
+          const eg = v?.example_sentence || '';
+          const isUrl = /(https?:\/\/|\.app|\.com|\/shorts|sa=t|source=web|url=|caes|&[a-z]+=)/i.test(word) ||
+            /(sa=t|source=web|url=|caes|com\/shorts)/i.test(eg);
+          return !isUrl && isValidLinguisticWord(word, currentLanguage);
+        });
+
+        if (cleanVocab.length < 3) {
+          const topicStr = d.day_topic || d.topic || currentTopic;
+          const kit = resolveThematicPedagogicalKit(currentLanguage, currentLevel, topicStr, d.day_number || 1);
+          if (kit && kit.vocabulary) {
+            cleanVocab = kit.vocabulary;
+          }
+        }
+
+        return {
+          ...d,
+          vocabulary_bank: cleanVocab
+        };
+      });
+
       const response = await fetchWithEndpointFallback('/api/v1/sessions/download/full-curriculum-doc', {
         method: 'POST',
         headers: {
@@ -1876,7 +1930,7 @@ export default function FacultyStudioPage() {
           level: currentLevel,
           topic: currentTopic,
           track_label: currentTrack,
-          days_list: listToDownload,
+          days_list: sanitizedDaysList,
           session_package: sessionPackage || null,
         }),
       });
@@ -4239,7 +4293,13 @@ export default function FacultyStudioPage() {
                         finalDay.day_topic = plannerDay.day_topic || finalDay.day_topic;
                         finalDay.grammar_rules_detail = plannerDay.grammar_rules_detail || finalDay.grammar_rules_detail;
                         if (plannerDay.vocabulary_bank && plannerDay.vocabulary_bank.length > 0) {
-                          finalDay.vocabulary_bank = plannerDay.vocabulary_bank;
+                          const cleanVocab = plannerDay.vocabulary_bank.filter((v: any) => {
+                            const word = typeof v === 'string' ? v : (v?.word || v?.term || '');
+                            return isValidLinguisticWord(word, selectedLanguage);
+                          });
+                          if (cleanVocab.length > 0) {
+                            finalDay.vocabulary_bank = cleanVocab;
+                          }
                         }
                         if (plannerDay.in_class_exercises && plannerDay.in_class_exercises.length > 0) {
                           finalDay.in_class_exercises = plannerDay.in_class_exercises;
@@ -4250,13 +4310,18 @@ export default function FacultyStudioPage() {
                       }
 
                       if (customOverride) {
+                        const cleanCustomVocab = customOverride.vocabulary_bank ? customOverride.vocabulary_bank.filter((v: any) => {
+                          const word = typeof v === 'string' ? v : (v?.word || v?.term || '');
+                          return isValidLinguisticWord(word, selectedLanguage);
+                        }) : finalDay.vocabulary_bank;
+
                         finalDay = {
                           ...finalDay,
                           ...customOverride,
                           day_topic: customOverride.day_topic || finalDay.day_topic,
                           grammar_rules_detail: customOverride.grammar_rules_detail || finalDay.grammar_rules_detail,
                           study_notes_markdown: customOverride.study_notes_markdown || finalDay.study_notes_markdown,
-                          vocabulary_bank: customOverride.vocabulary_bank || finalDay.vocabulary_bank,
+                          vocabulary_bank: cleanCustomVocab && cleanCustomVocab.length > 0 ? cleanCustomVocab : finalDay.vocabulary_bank,
                           classroom_dialogues: customOverride.classroom_dialogues || finalDay.classroom_dialogues,
                           homework_tasks: customOverride.homework_tasks || finalDay.homework_tasks,
                           in_class_exercises: customOverride.in_class_exercises || finalDay.in_class_exercises,
