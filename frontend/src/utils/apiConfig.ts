@@ -40,44 +40,48 @@ export function getBackendEndpoints(path: string): string[] {
   const endpoints: string[] = [];
   const cleanPath = path.startsWith('/') ? path : `/${path}`;
 
-  // 1. Configured Backend API URL (e.g. https://api.isml.edu/api/v1 or https://isml-resource-backend-production.up.railway.app/api/v1)
-  if (process.env.NEXT_PUBLIC_API_URL) {
-    const base = process.env.NEXT_PUBLIC_API_URL.replace(/\/+$/, '');
-    // If cleanPath starts with /api/v1, strip prefix if base already contains /api/v1
-    if (base.endsWith('/api/v1') && cleanPath.startsWith('/api/v1')) {
-      endpoints.push(`${base}${cleanPath.replace(/^\/api\/v1/, '')}`);
-    } else if (cleanPath.startsWith('/api/') && !cleanPath.startsWith('/api/v1')) {
-      // E.g. /api/sessions -> base + /sessions
-      endpoints.push(`${base}${cleanPath.replace(/^\/api/, '')}`);
-    } else {
-      endpoints.push(`${base}${cleanPath}`);
-    }
-  }
+  const isBrowser = typeof window !== 'undefined';
+  const isHttps = isBrowser && window.location.protocol === 'https:';
 
-  // 2. Production fallback to NestJS Backend on Railway
+  // 1. Same-origin Next.js serverless route / proxy (highest priority, 100% immune to CORS & mixed content)
+  endpoints.push(cleanPath);
+
+  // 2. Production NestJS Backend on Railway (direct HTTPS cloud persistence)
   const railwayBackend = 'https://isml-resource-backend-production.up.railway.app/api/v1';
   if (cleanPath.startsWith('/api/sessions')) {
     endpoints.push(`${railwayBackend}/sessions${cleanPath.replace(/^\/api\/sessions/, '')}`);
   } else if (cleanPath.startsWith('/api/v1')) {
     endpoints.push(`${railwayBackend}${cleanPath.replace(/^\/api\/v1/, '')}`);
+  } else {
+    endpoints.push(`${railwayBackend}${cleanPath}`);
   }
 
-  // 3. Relative Next.js rewrite/proxy or serverless route
-  endpoints.push(cleanPath);
+  // 3. Configured Backend API URL env var (if valid and not mixed-content localhost on HTTPS)
+  if (process.env.NEXT_PUBLIC_API_URL) {
+    const base = process.env.NEXT_PUBLIC_API_URL.replace(/\/+$/, '');
+    const isLocal = base.includes('localhost') || base.includes('127.0.0.1');
+    if (!isHttps || !isLocal) {
+      if (base.endsWith('/api/v1') && cleanPath.startsWith('/api/v1')) {
+        endpoints.push(`${base}${cleanPath.replace(/^\/api\/v1/, '')}`);
+      } else if (cleanPath.startsWith('/api/') && !cleanPath.startsWith('/api/v1')) {
+        endpoints.push(`${base}${cleanPath.replace(/^\/api/, '')}`);
+      } else {
+        endpoints.push(`${base}${cleanPath}`);
+      }
+    }
+  }
 
-  // 4. Localhost / LAN fallback (ports 3001, 4000)
-  if (typeof window !== 'undefined') {
+  // 4. Localhost / LAN fallback (for local development only)
+  if (isBrowser) {
     const hostname = window.location.hostname;
     const protocol = window.location.protocol;
     if (hostname === 'localhost' || hostname === '127.0.0.1') {
-      endpoints.push(`http://localhost:3001${cleanPath}`);
       endpoints.push(`http://localhost:4000/api/v1${cleanPath.replace(/^\/api\/v1/, '').replace(/^\/api/, '')}`);
+      endpoints.push(`http://localhost:3001${cleanPath}`);
       endpoints.push(`http://localhost:4000${cleanPath}`);
-    } else if (!hostname.includes('railway.app') && !hostname.includes('vercel.app')) {
-      // Running on mobile / external laptop accessing via LAN IP or domain:
-      endpoints.push(`${protocol}//${hostname}:3001${cleanPath}`);
+    } else if (!isHttps && !hostname.includes('railway.app') && !hostname.includes('vercel.app')) {
       endpoints.push(`${protocol}//${hostname}:4000/api/v1${cleanPath.replace(/^\/api\/v1/, '').replace(/^\/api/, '')}`);
-      endpoints.push(`${protocol}//${hostname}:4000${cleanPath}`);
+      endpoints.push(`${protocol}//${hostname}:3001${cleanPath}`);
     }
   }
 
@@ -119,7 +123,7 @@ export async function fetchBackendWithFallback(path: string, options: RequestIni
       if (resp.ok || resp.status === 400 || resp.status === 422 || resp.status === 403) {
         return resp;
       }
-      if (resp.status === 404 || resp.status === 500 || resp.status === 502) {
+      if (resp.status === 404 || resp.status === 413 || resp.status === 500 || resp.status === 502 || resp.status === 503 || resp.status === 504) {
         lastError = new Error(`Backend ${url} returned status ${resp.status}`);
         continue;
       }

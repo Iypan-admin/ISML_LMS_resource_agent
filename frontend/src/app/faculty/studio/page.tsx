@@ -261,6 +261,26 @@ export default function FacultyStudioPage() {
         };
       });
 
+      // Synchronously update proposedPlanner if active in Step 3 Session Planner
+      setProposedPlanner((prev: any) => {
+        if (!prev) return prev;
+        const prevContext = prev.extracted_source_context || '';
+        const updatedContext = [prevContext, extractedCombined].filter(Boolean).join('\n\n');
+        const prevFiles = prev.uploaded_files_list || [];
+        const newFileList = files.map(f => ({ name: f.name, size: f.size, type: f.type }));
+        const mergedFiles = [...prevFiles, ...newFileList];
+
+        const updatedPlanner = {
+          ...prev,
+          extracted_source_context: updatedContext,
+          uploaded_files_count: mergedFiles.length,
+          uploaded_files_list: mergedFiles,
+        };
+
+        autoSaveCurriculum(updatedPlanner, `Added Materials: ${files.map(f => f.name).join(', ')}`);
+        return updatedPlanner;
+      });
+
       const fileLabel = files.length === 1 ? `"${files[0].name}"` : `${files.length} materials`;
       const stats = totalWords > 0 ? ` (${totalPgs > 1 ? `${totalPgs} pgs • ` : ''}${totalWords.toLocaleString()} words)` : '';
       setHeaderMaterialToast(`✅ Successfully ingested ${fileLabel}${stats} into curriculum memory!`);
@@ -273,6 +293,32 @@ export default function FacultyStudioPage() {
     } finally {
       setIsExtractingHeaderMaterials(false);
     }
+  };
+
+  const handleAddLinkToPlanner = (urlToAdd: string) => {
+    const trimmed = urlToAdd.trim();
+    if (!trimmed) return;
+    setSourceUrls(prev => Array.from(new Set([...prev, trimmed])));
+
+    if (proposedPlanner) {
+      setProposedPlanner((prev: any) => {
+        if (!prev) return prev;
+        const prevUrls = prev.source_urls_list || [];
+        const updatedUrls = Array.from(new Set([...prevUrls, trimmed]));
+        const updatedContext = `${prev.extracted_source_context || ''}\n[Added Reference Link]: ${trimmed}`.trim();
+        const updatedPlanner = {
+          ...prev,
+          source_urls_list: updatedUrls,
+          source_urls_count: updatedUrls.length,
+          extracted_source_context: updatedContext,
+        };
+        autoSaveCurriculum(updatedPlanner, `Added Link: ${trimmed}`);
+        return updatedPlanner;
+      });
+    }
+
+    setHeaderMaterialToast(`✅ Added reference link "${trimmed.slice(0, 40)}..." to curriculum planner!`);
+    setTimeout(() => setHeaderMaterialToast(null), 5000);
   };
 
   const handleDragOver = (e: React.DragEvent) => {
@@ -359,6 +405,7 @@ export default function FacultyStudioPage() {
   const chatFileInputRef = useRef<HTMLInputElement | null>(null);
   const heroFileInputRef = useRef<HTMLInputElement | null>(null);
   const step4MaterialsInputRef = useRef<HTMLInputElement | null>(null);
+  const plannerMaterialsInputRef = useRef<HTMLInputElement | null>(null);
   const [isExtractingHeaderMaterials, setIsExtractingHeaderMaterials] = useState(false);
   const [headerMaterialToast, setHeaderMaterialToast] = useState<string | null>(null);
   const [sessionChunks, setSessionChunks] = useState<SourceChunk[]>([]);
@@ -593,6 +640,29 @@ export default function FacultyStudioPage() {
   };
 
 
+  // Helper to safely persist session items into localStorage archive without quota crashes
+  const safeSaveToLocalArchive = (newItem: any) => {
+    try {
+      const existingArchiveStr = localStorage.getItem('isml_saved_sessions_archive');
+      const existingArchive: any[] = existingArchiveStr ? JSON.parse(existingArchiveStr) : [];
+      const targetId = newItem.sessionId || newItem.id;
+      const filtered = existingArchive.filter(item => (item.sessionId || item.id) !== targetId);
+      filtered.unshift(newItem);
+
+      // Attempt saving progressively smaller slices to strictly avoid browser QuotaExceededError
+      for (const count of [50, 30, 20, 10, 5]) {
+        try {
+          localStorage.setItem('isml_saved_sessions_archive', JSON.stringify(filtered.slice(0, count)));
+          return;
+        } catch (_) {
+          continue;
+        }
+      }
+    } catch (err) {
+      console.warn('safeSaveToLocalArchive error:', err);
+    }
+  };
+
   // Load past curriculum sessions from Database with seamless localStorage fallback
   const fetchSavedSessions = async () => {
     setLoadingHistory(true);
@@ -607,17 +677,6 @@ export default function FacultyStudioPage() {
       }
     } catch (err) {
       console.warn('Backend history fetch offline, checking local cache:', err);
-    }
-
-    // If backend DB is connected and returned 0 sessions, respect the cleared DB state
-    if (isDbSuccess && dbSessions.length === 0) {
-      try {
-        localStorage.removeItem('isml_saved_sessions_archive');
-        localStorage.removeItem('isml_last_curriculum_blueprint');
-      } catch (_) {}
-      setSavedSessions([]);
-      setLoadingHistory(false);
-      return;
     }
 
     // Merge with client localStorage archive so history is NEVER empty
@@ -636,6 +695,29 @@ export default function FacultyStudioPage() {
         const id = s.sessionId || s.id;
         if (id && !sessionMap.has(id)) {
           sessionMap.set(id, s);
+
+          // 🔄 Auto-heal sync: Push local archive item to cloud DB in background if missing
+          if (isDbSuccess) {
+            try {
+              fetchBackendWithFallback('/api/sessions/save', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  sessionId: s.sessionId || s.id,
+                  title: s.title || `${s.language || 'Language'} ${s.level || ''} Curriculum`,
+                  language: s.language || 'English',
+                  level: s.level || 'A1',
+                  trackMode: s.trackMode || 'STANDARD',
+                  topic: s.topic || 'General Syllabus',
+                  sourceUrl: s.sourceUrl,
+                  tutorFileRef: s.tutorFileRef,
+                  sessionPlanJson: s.sessionPlanJson || {},
+                  teacherMaterialsJson: s.teacherMaterialsJson || {},
+                  studentLsrwJson: s.studentLsrwJson || {},
+                }),
+              }).catch(() => {});
+            } catch (_) {}
+          }
         }
       });
 
@@ -649,8 +731,8 @@ export default function FacultyStudioPage() {
             sessionMap.set(bpId, {
               sessionId: bpId,
               title: `${bp.language || 'Language'} ${bp.level || 'Curriculum'} - ${bp.topic || 'Curriculum Blueprint'}`,
-              language: bp.language || 'French (Français)',
-              level: bp.level || 'B1.3',
+              language: bp.language || 'German',
+              level: bp.level || 'A1',
               topic: bp.topic || 'General Syllabus',
               createdAt: bp.saved_at || new Date().toISOString(),
               sessionPlanJson: bp,
@@ -865,15 +947,8 @@ export default function FacultyStudioPage() {
         }
       };
 
-      try {
-        const existingArchiveStr = localStorage.getItem('isml_saved_sessions_archive');
-        const existingArchive: any[] = existingArchiveStr ? JSON.parse(existingArchiveStr) : [];
-        const filtered = existingArchive.filter(item => (item.sessionId || item.id) !== generatedSessionId);
-        filtered.unshift(newArchiveItem);
-        localStorage.setItem('isml_saved_sessions_archive', JSON.stringify(filtered.slice(0, 50)));
-      } catch (archErr) {
-        console.warn('Archive cache warning:', archErr);
-      }
+      // Safely persist to local archive without quota overflow
+      safeSaveToLocalArchive(newArchiveItem);
 
       if (res.ok) {
         setAutoSaveStatus('saved');
@@ -1678,7 +1753,7 @@ export default function FacultyStudioPage() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             sessionId: data.session_id,
-            title: data.session_plan.session_title,
+            title: data.session_plan?.session_title || `${data.language || selectedLanguage} ${data.level || selectedLevel} Master Guide`,
             language: data.language,
             level: data.level,
             trackMode: institutionType === 'SCHOOL' ? 'STANDARD' : (collegeTrack === 'INTENSIVE' ? 'INTERNSHIP' : collegeTrack === 'SUPER_INTENSIVE' ? 'SUPER_INTERNSHIP' : 'STANDARD'),
@@ -1694,8 +1769,8 @@ export default function FacultyStudioPage() {
             },
             teacherMaterialsJson: data.teacher_materials,
             studentLsrwJson: data.student_lsrw,
-            pptxFilePath: data.teacher_materials.pptx_download_url,
-            pptxDownloadUrl: data.teacher_materials.pptx_download_url,
+            pptxFilePath: data.teacher_materials?.pptx_download_url,
+            pptxDownloadUrl: data.teacher_materials?.pptx_download_url,
           }),
         });
 
@@ -1723,7 +1798,7 @@ export default function FacultyStudioPage() {
         // Save to local archive array as well
         const fullKitArchiveItem = {
           sessionId: data.session_id,
-          title: data.session_plan.session_title,
+          title: data.session_plan?.session_title || `${data.language || selectedLanguage} ${data.level || selectedLevel} Master Guide`,
           language: data.language,
           level: data.level,
           topic: data.topic,
@@ -1740,13 +1815,8 @@ export default function FacultyStudioPage() {
           studentLsrwJson: data.student_lsrw,
         };
 
-        try {
-          const existingArchiveStr = localStorage.getItem('isml_saved_sessions_archive');
-          const existingArchive: any[] = existingArchiveStr ? JSON.parse(existingArchiveStr) : [];
-          const filtered = existingArchive.filter(item => (item.sessionId || item.id) !== data.session_id);
-          filtered.unshift(fullKitArchiveItem);
-          localStorage.setItem('isml_saved_sessions_archive', JSON.stringify(filtered.slice(0, 50)));
-        } catch (_) {}
+        // Safely persist to local archive without quota overflow
+        safeSaveToLocalArchive(fullKitArchiveItem);
 
         // Immediately refresh saved chat history sessions in sidebar
         fetchSavedSessions();
@@ -2156,25 +2226,47 @@ export default function FacultyStudioPage() {
                     <div
                       key={sessionItem.sessionId || sessionItem.id}
                       onClick={() => {
-                        // Restore past curriculum package to live workspace
+                        // Restore past curriculum package or blueprint to live workspace
                         if (sessionItem.sessionPlanJson) {
-                          const restoredPkg = {
-                            session_id: sessionItem.sessionId,
-                            language: sessionItem.language,
-                            level: sessionItem.level,
-                            topic: sessionItem.topic,
-                            track_duration_label: `Restored Archive: ${sessionItem.language} ${sessionItem.level}`,
-                            institution_type: sessionItem.sessionPlanJson?.institution_type || 'SCHOOL',
-                            school_meta: sessionItem.sessionPlanJson?.school_meta,
-                            college_meta: sessionItem.sessionPlanJson?.college_meta,
-                            session_plan: sessionItem.sessionPlanJson,
-                            teacher_materials: sessionItem.teacherMaterialsJson || {},
-                            student_lsrw: sessionItem.studentLsrwJson || {},
-                          };
-                          setSessionPackage(restoredPkg);
+                          const planData = sessionItem.sessionPlanJson;
+                          const isBlueprint = Boolean(
+                            sessionItem.teacherMaterialsJson?.blueprint || 
+                            (planData?.all_days && !planData?.units && !sessionItem.teacherMaterialsJson?.slides)
+                          );
+
+                          if (isBlueprint) {
+                            // Restore as active proposed planner in Step 3
+                            setProposedPlanner(planData);
+                            if (sessionItem.language) setSelectedLanguage(sessionItem.language);
+                            if (sessionItem.level) setSelectedLevel(sessionItem.level);
+                            if (sessionItem.topic) setTopic(sessionItem.topic);
+                            setSessionPackage(null);
+                            setStudioStep(3);
+                            setIsFullScreen(true);
+                          } else {
+                            // Restore as full package in Step 4
+                            const restoredPkg = {
+                              session_id: sessionItem.sessionId || sessionItem.id || `session-${Date.now()}`,
+                              language: sessionItem.language,
+                              level: sessionItem.level,
+                              topic: sessionItem.topic,
+                              track_duration_label: `Restored Archive: ${sessionItem.language} ${sessionItem.level}`,
+                              institution_type: planData?.institution_type || 'SCHOOL',
+                              school_meta: planData?.school_meta,
+                              college_meta: planData?.college_meta,
+                              session_plan: planData || {},
+                              teacher_materials: sessionItem.teacherMaterialsJson || {},
+                              student_lsrw: sessionItem.studentLsrwJson || {},
+                            };
+                            setSessionPackage(restoredPkg);
+                            if (sessionItem.language) setSelectedLanguage(sessionItem.language);
+                            if (sessionItem.level) setSelectedLevel(sessionItem.level);
+                            setStudioStep(4);
+                            setIsFullScreen(true);
+                          }
+
                           setActiveSavedSession(sessionItem);
                           setIsHistoryOpen(false);
-                          // Do NOT open chat popup when clicking saved session
                           setIsChatOpen(false);
                         }
                       }}
@@ -2221,9 +2313,23 @@ export default function FacultyStudioPage() {
                           )}
                         </div>
                       )}
-                      <div className="pt-1 flex items-center justify-between text-[10px] text-slate-400 border-t border-slate-100">
-                        <span>Click to restore workspace</span>
-                        <span className="text-blue-600 font-bold group-hover:translate-x-0.5 transition-transform">Inspect →</span>
+                      <div className="pt-1.5 flex items-center justify-between text-[10px] text-slate-400 border-t border-slate-100">
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setActiveSavedSession(sessionItem);
+                            setShowChatFilesModal(true);
+                          }}
+                          className="px-2 py-0.5 rounded-md bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold flex items-center gap-1 transition-colors cursor-pointer border border-indigo-200/60"
+                          title="View all files and reference links uploaded for this session"
+                        >
+                          <Paperclip className="w-2.5 h-2.5" />
+                          <span>View Materials</span>
+                        </button>
+                        <span className="text-blue-600 font-bold group-hover:translate-x-0.5 transition-transform flex items-center gap-0.5">
+                          Open Session →
+                        </span>
                       </div>
                     </div>
                   ))
@@ -3237,6 +3343,60 @@ export default function FacultyStudioPage() {
                   </div>
 
                   <div className="flex items-center gap-2 shrink-0 flex-wrap">
+                    {/* 📎 Add More Materials Input for Step 3 Session Planner */}
+                    <input
+                      type="file"
+                      ref={plannerMaterialsInputRef}
+                      className="hidden"
+                      multiple
+                      accept="image/*,video/*,audio/*,.pdf,.txt,.docx,.csv,.pptx,.ppt"
+                      onChange={handleStep4AddMaterials}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => plannerMaterialsInputRef.current?.click()}
+                      disabled={isExtractingHeaderMaterials}
+                      className="flex items-center gap-1.5 px-3.5 py-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white rounded-xl text-xs font-black transition-all border border-emerald-400/50 cursor-pointer shadow-md shadow-emerald-950/20 disabled:opacity-50"
+                      title="Upload more study files, PDFs, Word docs, or audio to enrich this lesson planner blueprint"
+                    >
+                      {isExtractingHeaderMaterials ? (
+                        <>
+                          <Loader2 className="w-3.5 h-3.5 animate-spin text-amber-300" />
+                          <span>Ingesting Material...</span>
+                        </>
+                      ) : (
+                        <>
+                          <Upload className="w-3.5 h-3.5 text-amber-300" />
+                          <span>+ Add More Materials</span>
+                          {uploadedFiles.length > 0 && (
+                            <span className="bg-amber-400 text-slate-950 text-[10px] px-1.5 py-0.2 rounded-full font-black">
+                              {uploadedFiles.length}
+                            </span>
+                          )}
+                        </>
+                      )}
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const url = window.prompt("Enter YouTube video link or reference website URL to ingest into Session Planner:");
+                        if (url && url.trim()) {
+                          handleAddLinkToPlanner(url.trim());
+                        }
+                      }}
+                      className="flex items-center gap-1.5 px-3 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white rounded-xl text-xs font-bold transition-all border border-slate-700 cursor-pointer shadow-xs"
+                      title="Add a YouTube video, web article, or reference link to this session planner"
+                    >
+                      <Link2 className="w-3.5 h-3.5 text-cyan-400" />
+                      <span>+ Add Link</span>
+                      {sourceUrls.filter(u => u.trim()).length > 0 && (
+                        <span className="bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 text-[10px] px-1.5 py-0.2 rounded-full font-mono">
+                          {sourceUrls.filter(u => u.trim()).length}
+                        </span>
+                      )}
+                    </button>
+
                     <button
                       type="button"
                       onClick={() => {
@@ -3270,6 +3430,81 @@ export default function FacultyStudioPage() {
                   </div>
                 </div>
               </div>
+
+              {/* Header Ingestion Notification Toast */}
+              {headerMaterialToast && (
+                <div className="bg-emerald-500 text-slate-950 px-5 py-2.5 text-xs font-black flex items-center justify-between shadow-md animate-in fade-in">
+                  <div className="flex items-center gap-2">
+                    <CheckCircle2 className="w-4 h-4 text-slate-950 shrink-0" />
+                    <span>{headerMaterialToast}</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setHeaderMaterialToast(null)}
+                    className="text-slate-950 font-black hover:opacity-75 cursor-pointer ml-3"
+                  >
+                    ✕
+                  </button>
+                </div>
+              )}
+
+              {/* Active Ingested Materials Strip for Session Planner */}
+              {(uploadedFiles.length > 0 || sourceUrls.filter(u => u.trim()).length > 0) && (
+                <div className="bg-slate-950/70 border-b border-slate-800 px-5 py-2.5 flex flex-wrap items-center justify-between gap-2 text-xs">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="text-[10px] font-black uppercase text-indigo-400 tracking-wider flex items-center gap-1">
+                      <Paperclip className="w-3 h-3 text-indigo-400" />
+                      Active Ingested Materials ({uploadedFiles.length + sourceUrls.filter(u => u.trim()).length}):
+                    </span>
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      {uploadedFiles.map((file, i) => (
+                        <span
+                          key={i}
+                          className="inline-flex items-center gap-1 bg-slate-800 text-slate-200 border border-slate-700 px-2 py-0.5 rounded-md text-[10px] font-mono shadow-xs"
+                          title={file.name}
+                        >
+                          <FileText className="w-2.5 h-2.5 text-indigo-400" />
+                          <span className="truncate max-w-[140px] font-medium">{file.name}</span>
+                          <span className="text-slate-400">({(file.size / 1024).toFixed(0)}KB)</span>
+                          <button
+                            type="button"
+                            onClick={() => removeUploadedFile(i)}
+                            className="text-slate-400 hover:text-rose-400 ml-0.5 font-bold cursor-pointer"
+                            title="Remove file"
+                          >
+                            ✕
+                          </button>
+                        </span>
+                      ))}
+                      {sourceUrls.filter(u => u.trim()).map((url, i) => (
+                        <span
+                          key={`url-${i}`}
+                          className="inline-flex items-center gap-1 bg-cyan-950/60 text-cyan-300 border border-cyan-800 px-2 py-0.5 rounded-md text-[10px] font-mono shadow-xs"
+                          title={url}
+                        >
+                          <Link2 className="w-2.5 h-2.5 text-cyan-400" />
+                          <span className="truncate max-w-[160px] font-medium">{url.replace(/^https?:\/\/(www\.)?/, '')}</span>
+                          <button
+                            type="button"
+                            onClick={() => setSourceUrls(prev => prev.filter(u => u !== url))}
+                            className="text-cyan-400 hover:text-rose-400 ml-0.5 font-bold cursor-pointer"
+                            title="Remove link"
+                          >
+                            ✕
+                          </button>
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => plannerMaterialsInputRef.current?.click()}
+                    className="text-[10px] text-emerald-400 hover:text-emerald-300 font-bold underline cursor-pointer"
+                  >
+                    + Add More
+                  </button>
+                </div>
+              )}
 
               {/* Course Metrics Ribbon */}
               <div className="bg-slate-50 border-b border-slate-200 px-5 py-3 flex flex-wrap items-center justify-between gap-4 text-xs text-slate-600">
@@ -3411,6 +3646,45 @@ export default function FacultyStudioPage() {
                     <ArrowLeft className="w-3.5 h-3.5" />
                     <span>Back to Setup Form</span>
                   </button>
+                  {/* 📁 View Ingested Materials Button */}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (!activeSavedSession && sessionPackage) {
+                        setActiveSavedSession({
+                          sessionId: sessionPackage.session_id,
+                          title: sessionPackage.session_plan?.session_title || sessionPackage.title,
+                          language: sessionPackage.language,
+                          level: sessionPackage.level,
+                          topic: sessionPackage.topic,
+                          tutorFileRef: uploadedFiles.map(f => f.name).join(', ') || undefined,
+                          sourceUrl: sourceUrls.filter(u => u.trim()).join(', ') || undefined,
+                          sessionPlanJson: sessionPackage.session_plan,
+                        });
+                      }
+                      setShowChatFilesModal(true);
+                    }}
+                    className="flex items-center gap-1.5 px-3.5 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white rounded-xl text-xs font-black transition-all border border-slate-700 cursor-pointer shadow-md"
+                    title="View all uploaded documents, audio files, and reference web links used for this curriculum"
+                  >
+                    <Paperclip className="w-3.5 h-3.5 text-indigo-400" />
+                    <span>View Materials</span>
+                    {(() => {
+                      const fileCount = activeSavedSession?.tutorFileRef
+                        ? activeSavedSession.tutorFileRef.split(',').filter(Boolean).length
+                        : uploadedFiles.length;
+                      const urlCount = activeSavedSession?.sourceUrl
+                        ? activeSavedSession.sourceUrl.split(',').filter(Boolean).length
+                        : sourceUrls.filter(u => u.trim()).length;
+                      const total = fileCount + urlCount;
+                      return total > 0 ? (
+                        <span className="bg-indigo-500/30 text-indigo-300 border border-indigo-400/40 text-[10px] px-1.5 py-0.2 rounded-full font-mono font-bold">
+                          {total}
+                        </span>
+                      ) : null;
+                    })()}
+                  </button>
+
                   <button
                     type="button"
                     onClick={() => handleDownloadFullCurriculumDocx()}
@@ -3912,11 +4186,11 @@ export default function FacultyStudioPage() {
                       {sessionPackage.track_duration_label || 'Track: Standard (12m)'}
                     </span>
                     <span className="text-[11px] font-mono text-slate-300 bg-black/40 px-2.5 py-0.5 rounded-md border border-white/10">
-                      ID: {sessionPackage.session_id.slice(0, 16)}...
+                      ID: {(sessionPackage.session_id || sessionPackage.sessionId || '').slice(0, 16)}...
                     </span>
                   </div>
                   <h2 className="text-lg sm:text-2xl font-black text-white tracking-tight">
-                    {sessionPackage.session_plan.session_title}
+                    {sessionPackage.session_plan?.session_title || sessionPackage.title || `${sessionPackage.language || 'Language'} ${sessionPackage.level || ''} Master Guide`}
                   </h2>
                   <p className="text-xs text-slate-300 max-w-xl">
                     Autonomous Curriculum Delivery Plan • Verified against CEFR/JLPT Common Core Framework
@@ -3959,6 +4233,45 @@ export default function FacultyStudioPage() {
                         )}
                       </>
                     )}
+                  </button>
+
+                  {/* 📁 View Ingested Materials Button */}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (!activeSavedSession && sessionPackage) {
+                        setActiveSavedSession({
+                          sessionId: sessionPackage.session_id,
+                          title: sessionPackage.session_plan?.session_title || sessionPackage.title,
+                          language: sessionPackage.language,
+                          level: sessionPackage.level,
+                          topic: sessionPackage.topic,
+                          tutorFileRef: uploadedFiles.map(f => f.name).join(', ') || undefined,
+                          sourceUrl: sourceUrls.filter(u => u.trim()).join(', ') || undefined,
+                          sessionPlanJson: sessionPackage.session_plan,
+                        });
+                      }
+                      setShowChatFilesModal(true);
+                    }}
+                    className="flex items-center gap-1.5 px-3.5 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white rounded-xl text-xs font-black transition-all border border-slate-700 cursor-pointer shadow-md"
+                    title="View all uploaded documents, audio files, and reference web links used for this curriculum"
+                  >
+                    <Paperclip className="w-3.5 h-3.5 text-indigo-400" />
+                    <span>View Materials</span>
+                    {(() => {
+                      const fileCount = activeSavedSession?.tutorFileRef
+                        ? activeSavedSession.tutorFileRef.split(',').filter(Boolean).length
+                        : uploadedFiles.length;
+                      const urlCount = activeSavedSession?.sourceUrl
+                        ? activeSavedSession.sourceUrl.split(',').filter(Boolean).length
+                        : sourceUrls.filter(u => u.trim()).length;
+                      const total = fileCount + urlCount;
+                      return total > 0 ? (
+                        <span className="bg-indigo-500/30 text-indigo-300 border border-indigo-400/40 text-[10px] px-1.5 py-0.2 rounded-full font-mono font-bold">
+                          {total}
+                        </span>
+                      ) : null;
+                    })()}
                   </button>
 
                   <button
@@ -4040,6 +4353,70 @@ export default function FacultyStudioPage() {
                   </button>
                 </div>
               )}
+
+              {/* Grounded Ingested Materials Summary Strip for Step 4 Delivery Workspace */}
+              {(() => {
+                const fileNames = activeSavedSession?.tutorFileRef
+                  ? activeSavedSession.tutorFileRef.split(',').map((s: string) => s.trim()).filter(Boolean)
+                  : (activeSavedSession?.sessionPlanJson?.uploaded_files_list
+                      ? activeSavedSession.sessionPlanJson.uploaded_files_list.map((f: any) => typeof f === 'string' ? f : f?.name).filter(Boolean)
+                      : (sessionPackage?.tutorFileRef
+                          ? sessionPackage.tutorFileRef.split(',').map((s: string) => s.trim()).filter(Boolean)
+                          : uploadedFiles.map(f => f.name)));
+                const urls = activeSavedSession?.sourceUrl
+                  ? activeSavedSession.sourceUrl.split(',').map((s: string) => s.trim()).filter(Boolean)
+                  : (activeSavedSession?.sessionPlanJson?.source_urls_list
+                      ? activeSavedSession.sessionPlanJson.source_urls_list.map((u: any) => typeof u === 'string' ? u : u?.url).filter(Boolean)
+                      : (sessionPackage?.sourceUrl
+                          ? sessionPackage.sourceUrl.split(',').map((s: string) => s.trim()).filter(Boolean)
+                          : sourceUrls.filter(u => u.trim())));
+
+                if (fileNames.length === 0 && urls.length === 0) return null;
+
+                return (
+                  <div className="bg-slate-900 border-b border-slate-800 px-5 sm:px-6 py-2.5 flex flex-wrap items-center justify-between gap-3 text-xs">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="text-[10px] font-black uppercase text-indigo-400 tracking-wider flex items-center gap-1">
+                        <Paperclip className="w-3.5 h-3.5 text-indigo-400" />
+                        Grounded Sources & Study Materials ({fileNames.length + urls.length}):
+                      </span>
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        {fileNames.map((name: string, i: number) => (
+                          <span
+                            key={i}
+                            className="inline-flex items-center gap-1 bg-slate-800 text-slate-200 border border-slate-700 px-2.5 py-1 rounded-lg text-[11px] font-mono shadow-xs"
+                            title={name}
+                          >
+                            <FileText className="w-3 h-3 text-indigo-400 shrink-0" />
+                            <span className="truncate max-w-[150px] font-medium">{name}</span>
+                          </span>
+                        ))}
+                        {urls.map((url: string, i: number) => (
+                          <a
+                            key={`url-${i}`}
+                            href={url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center gap-1 bg-cyan-950/60 hover:bg-cyan-900/60 text-cyan-300 border border-cyan-800 px-2.5 py-1 rounded-lg text-[11px] font-mono shadow-xs transition-colors"
+                            title={url}
+                          >
+                            <Link2 className="w-3 h-3 text-cyan-400 shrink-0" />
+                            <span className="truncate max-w-[160px] font-medium">{url.replace(/^https?:\/\/(www\.)?/, '')}</span>
+                            <ExternalLink className="w-2.5 h-2.5 opacity-60 ml-0.5" />
+                          </a>
+                        ))}
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setShowChatFilesModal(true)}
+                      className="px-3 py-1 rounded-lg bg-indigo-600/30 hover:bg-indigo-600/50 text-indigo-300 hover:text-white border border-indigo-500/40 text-[11px] font-bold flex items-center gap-1 transition-colors cursor-pointer"
+                    >
+                      <span>Inspect Chunks & Details →</span>
+                    </button>
+                  </div>
+                );
+              })()}
 
               {/* Senior Academic Agent Pedagogical Rationale & Grounding Seal */}
               <div className="bg-slate-50 text-slate-800 px-5 sm:px-6 py-3 border-b border-slate-200 grid grid-cols-1 md:grid-cols-3 gap-3 text-xs">
@@ -4262,7 +4639,7 @@ export default function FacultyStudioPage() {
                       : (sessionPackage.target_days_number || sessionPackage.session_plan?.total_curriculum_days || sessionPackage.school_meta?.totalPeriods || sessionPackage.college_meta?.sessionsRequired || 60);
 
                     // Generate full days array mapped directly to sequential curriculum units
-                    const rawDays = sessionPackage.session_plan.day_wise_syllabus || [];
+                    const rawDays = sessionPackage.session_plan?.day_wise_syllabus || sessionPackage.session_plan?.all_days || [];
                     const allDays: any[] = [];
 
                     for (let d = 1; d <= totalDays; d++) {
@@ -4662,6 +5039,8 @@ export default function FacultyStudioPage() {
                 {(() => {
                   // Synthesize live chunks from current session context if not pre-fetched
                   const sourceContext = sessionPackage?.raw_source_context || 
+                    proposedPlanner?.extracted_source_context ||
+                    activeSavedSession?.sessionPlanJson?.extracted_source_context ||
                     activeSavedSession?.sourceUrl || 
                     (uploadedFiles.map(f => f.name).join(', ')) || 
                     '';
@@ -4725,7 +5104,11 @@ export default function FacultyStudioPage() {
                     {(() => {
                       const fileNames = activeSavedSession?.tutorFileRef
                         ? activeSavedSession.tutorFileRef.split(',').map((s: string) => s.trim()).filter(Boolean)
-                        : uploadedFiles.map(f => f.name);
+                        : (activeSavedSession?.sessionPlanJson?.uploaded_files_list
+                            ? activeSavedSession.sessionPlanJson.uploaded_files_list.map((f: any) => typeof f === 'string' ? f : f?.name).filter(Boolean)
+                            : (sessionPackage?.tutorFileRef
+                                ? sessionPackage.tutorFileRef.split(',').map((s: string) => s.trim()).filter(Boolean)
+                                : uploadedFiles.map(f => f.name)));
                       return `${fileNames.length} file(s)`;
                     })()}
                   </span>
@@ -4734,7 +5117,11 @@ export default function FacultyStudioPage() {
                 {(() => {
                   const fileNames = activeSavedSession?.tutorFileRef
                     ? activeSavedSession.tutorFileRef.split(',').map((s: string) => s.trim()).filter(Boolean)
-                    : uploadedFiles.map(f => f.name);
+                    : (activeSavedSession?.sessionPlanJson?.uploaded_files_list
+                        ? activeSavedSession.sessionPlanJson.uploaded_files_list.map((f: any) => typeof f === 'string' ? f : f?.name).filter(Boolean)
+                        : (sessionPackage?.tutorFileRef
+                            ? sessionPackage.tutorFileRef.split(',').map((s: string) => s.trim()).filter(Boolean)
+                            : uploadedFiles.map(f => f.name)));
 
                   if (fileNames.length === 0) {
                     return (
@@ -4774,7 +5161,11 @@ export default function FacultyStudioPage() {
                     {(() => {
                       const urls = activeSavedSession?.sourceUrl
                         ? activeSavedSession.sourceUrl.split(',').map((s: string) => s.trim()).filter(Boolean)
-                        : sourceUrls.filter(u => u.trim());
+                        : (activeSavedSession?.sessionPlanJson?.source_urls_list
+                            ? activeSavedSession.sessionPlanJson.source_urls_list.map((u: any) => typeof u === 'string' ? u : u?.url).filter(Boolean)
+                            : (sessionPackage?.sourceUrl
+                                ? sessionPackage.sourceUrl.split(',').map((s: string) => s.trim()).filter(Boolean)
+                                : sourceUrls.filter(u => u.trim())));
                       return `${urls.length} link(s)`;
                     })()}
                   </span>
@@ -4823,7 +5214,11 @@ export default function FacultyStudioPage() {
                 {(() => {
                   const urls = activeSavedSession?.sourceUrl
                     ? activeSavedSession.sourceUrl.split(',').map((s: string) => s.trim()).filter(Boolean)
-                    : sourceUrls.filter(u => u.trim());
+                    : (activeSavedSession?.sessionPlanJson?.source_urls_list
+                        ? activeSavedSession.sessionPlanJson.source_urls_list.map((u: any) => typeof u === 'string' ? u : u?.url).filter(Boolean)
+                        : (sessionPackage?.sourceUrl
+                            ? sessionPackage.sourceUrl.split(',').map((s: string) => s.trim()).filter(Boolean)
+                            : sourceUrls.filter(u => u.trim())));
 
                   if (urls.length === 0) {
                     return (

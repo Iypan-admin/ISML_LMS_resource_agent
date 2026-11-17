@@ -21,37 +21,53 @@ export class SessionsService {
     pptxFilePath?: string;
     pptxDownloadUrl?: string;
   }) {
+    // 🛡️ Ensure trackMode is valid Prisma enum ('STANDARD' | 'INTERNSHIP' | 'SUPER_INTERNSHIP')
+    let safeTrackMode: any = 'STANDARD';
+    if (data.trackMode === 'INTERNSHIP' || data.trackMode === 'SUPER_INTERNSHIP') {
+      safeTrackMode = data.trackMode;
+    } else if (typeof data.trackMode === 'string') {
+      const upper = data.trackMode.toUpperCase();
+      if (upper.includes('SUPER')) safeTrackMode = 'SUPER_INTERNSHIP';
+      else if (upper.includes('INTENSIVE') || upper.includes('INTERN')) safeTrackMode = 'INTERNSHIP';
+      else safeTrackMode = 'STANDARD';
+    }
+
+    const safeTitle = data.title || `${data.language || 'Language'} ${data.level || 'Course'} Curriculum`;
+    const safeTopic = data.topic || 'General Syllabus';
+    const safeLang = data.language || 'English';
+    const safeLevel = data.level || 'A1';
+
     return this.prisma.sessionPackage.upsert({
       where: { sessionId: data.sessionId },
       update: {
-        title: data.title,
-        language: data.language,
-        level: data.level,
-        trackMode: data.trackMode || 'STANDARD',
-        topic: data.topic,
-        sourceUrl: data.sourceUrl,
-        tutorFileRef: data.tutorFileRef,
-        sessionPlanJson: data.sessionPlanJson,
-        teacherMaterialsJson: data.teacherMaterialsJson,
-        studentLsrwJson: data.studentLsrwJson,
-        pptxFilePath: data.pptxFilePath,
-        pptxDownloadUrl: data.pptxDownloadUrl,
+        title: safeTitle,
+        language: safeLang,
+        level: safeLevel,
+        trackMode: safeTrackMode,
+        topic: safeTopic,
+        sourceUrl: data.sourceUrl || null,
+        tutorFileRef: data.tutorFileRef || null,
+        sessionPlanJson: data.sessionPlanJson || {},
+        teacherMaterialsJson: data.teacherMaterialsJson || {},
+        studentLsrwJson: data.studentLsrwJson || {},
+        pptxFilePath: data.pptxFilePath || null,
+        pptxDownloadUrl: data.pptxDownloadUrl || null,
         updatedAt: new Date(),
       },
       create: {
         sessionId: data.sessionId,
-        title: data.title,
-        language: data.language,
-        level: data.level,
-        trackMode: data.trackMode || 'STANDARD',
-        topic: data.topic,
-        sourceUrl: data.sourceUrl,
-        tutorFileRef: data.tutorFileRef,
-        sessionPlanJson: data.sessionPlanJson,
-        teacherMaterialsJson: data.teacherMaterialsJson,
-        studentLsrwJson: data.studentLsrwJson,
-        pptxFilePath: data.pptxFilePath,
-        pptxDownloadUrl: data.pptxDownloadUrl,
+        title: safeTitle,
+        language: safeLang,
+        level: safeLevel,
+        trackMode: safeTrackMode,
+        topic: safeTopic,
+        sourceUrl: data.sourceUrl || null,
+        tutorFileRef: data.tutorFileRef || null,
+        sessionPlanJson: data.sessionPlanJson || {},
+        teacherMaterialsJson: data.teacherMaterialsJson || {},
+        studentLsrwJson: data.studentLsrwJson || {},
+        pptxFilePath: data.pptxFilePath || null,
+        pptxDownloadUrl: data.pptxDownloadUrl || null,
       },
     });
   }

@@ -50,7 +50,7 @@ interface ScrapeResultData {
 }
 
 // Dynamic Copyright Safety Percentage & Licensing Calculator per Domain
-export const getDynamicCopyrightInfo = (url: string = '') => {
+const getDynamicCopyrightInfo = (url: string = '') => {
   const lower = url.toLowerCase();
 
   if (lower.includes('wikimedia') || lower.includes('wikipedia') || lower.includes('gutenberg') || lower.includes('archive.org')) {
