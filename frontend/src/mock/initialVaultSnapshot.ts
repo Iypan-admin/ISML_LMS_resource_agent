@@ -497,3 +497,4 @@ export const initialVaultSnapshot: Resource[] = [
     activity: []
   }
 ];
+

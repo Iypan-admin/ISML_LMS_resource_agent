@@ -331,10 +331,23 @@ export function ResourceProvider({ children }: { children: React.ReactNode }) {
           const mappedDbItems = rawData.map(mapBackendResource);
 
           // Keep genuine user uploads & published items (ignore mock test records)
-          const realDbItems = mappedDbItems.filter((d: any) => 
+          const rawDbItems = mappedDbItems.filter((d: any) => 
             !d.title?.includes('MicroBiology') &&
             !d.tags?.includes('MockData')
           );
+
+          // Deduplicate by normalized title, always preferring global records over legacy quarantine copies
+          const titleMap = new Map<string, Resource>();
+          for (const item of rawDbItems) {
+            const key = item.title.trim().toLowerCase();
+            const existing = titleMap.get(key);
+            if (!existing) {
+              titleMap.set(key, item);
+            } else if (existing.tenantId === 'inst_legacy_quarantine' && item.tenantId !== 'inst_legacy_quarantine') {
+              titleMap.set(key, item);
+            }
+          }
+          const realDbItems = Array.from(titleMap.values());
 
           // Build index of cloud titles & URLs for deduplication
           const cloudTitleSet = new Set(realDbItems.map((d: any) => d.title.trim().toLowerCase()));

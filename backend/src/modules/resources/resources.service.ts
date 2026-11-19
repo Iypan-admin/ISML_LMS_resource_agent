@@ -111,6 +111,12 @@ export class ResourcesService {
     const skip = (page - 1) * limit;
 
     const where: any = {};
+    const queryTenantId = (query as any).tenantId;
+    if (queryTenantId) {
+      where.tenantId = queryTenantId;
+    } else {
+      where.tenantId = { not: 'inst_legacy_quarantine' };
+    }
 
     if (query.languageId) where.languageId = query.languageId;
     if (query.resourceType) where.resourceType = query.resourceType;
