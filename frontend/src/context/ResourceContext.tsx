@@ -309,13 +309,13 @@ export function ResourceProvider({ children }: { children: React.ReactNode }) {
     }
 
     try {
-      // 1. Same-Origin Next.js API first (which connects to Railway / Supabase cloud)
-      let resp: Response | null = await fetch('/api/resources', { signal: AbortSignal.timeout(8000) }).catch(() => null);
+      // 1. Direct Railway Cloud Backend first (instant multi-device & cross-tab global synchronization)
+      const prodUrl = 'https://isml-resource-backend-production.up.railway.app/api/v1/resources?limit=500';
+      let resp: Response | null = await fetch(prodUrl, { signal: AbortSignal.timeout(8000) }).catch(() => null);
 
-      // 2. Direct Railway fallback (never hangs)
+      // 2. Same-Origin Next.js API fallback
       if (!resp || !resp.ok) {
-        const prodUrl = 'https://isml-resource-backend-production.up.railway.app/api/v1/resources?limit=500';
-        resp = await fetch(prodUrl, { signal: AbortSignal.timeout(8000) }).catch(() => null);
+        resp = await fetch('/api/resources', { signal: AbortSignal.timeout(6000) }).catch(() => null);
       }
 
       if (resp && resp.ok) {

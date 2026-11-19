@@ -42,12 +42,7 @@ export function getBackendEndpoints(path: string): string[] {
   const isBrowser = typeof window !== 'undefined';
   const isHttps = isBrowser && window.location.protocol === 'https:';
 
-  // 1. Same-origin Next.js serverless route / proxy (only if explicitly an API route)
-  if (cleanPath.startsWith('/api')) {
-    endpoints.push(cleanPath);
-  }
-
-  // 2. Production NestJS Backend on Railway (direct HTTPS cloud persistence)
+  // 1. Production NestJS Backend on Railway (direct HTTPS cloud persistence & global cross-device sync)
   const railwayBackend = 'https://isml-resource-backend-production.up.railway.app/api/v1';
   if (cleanPath.startsWith('/api/sessions')) {
     endpoints.push(`${railwayBackend}/sessions${cleanPath.replace(/^\/api\/sessions/, '')}`);
@@ -57,6 +52,11 @@ export function getBackendEndpoints(path: string): string[] {
     endpoints.push(`${railwayBackend}${cleanPath.replace(/^\/api/, '')}`);
   } else {
     endpoints.push(`${railwayBackend}${cleanPath}`);
+  }
+
+  // 2. Same-origin Next.js serverless route / proxy (only if explicitly an API route)
+  if (cleanPath.startsWith('/api')) {
+    endpoints.push(cleanPath);
   }
 
   // 3. Configured Backend API URL env var (if valid and not mixed-content localhost on HTTPS)
