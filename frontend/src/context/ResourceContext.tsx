@@ -3,6 +3,7 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react';
 import { Resource, ResourceStatus, SourceType } from '../types/resource';
 import { mockResources } from '../mock/resources';
+import { initialVaultSnapshot } from '../mock/initialVaultSnapshot';
 
 export interface FilterState {
   search: string;
@@ -110,20 +111,15 @@ export function ResourceProvider({ children }: { children: React.ReactNode }) {
           if (Array.isArray(parsed) && parsed.length > 0) return parsed;
         }
         const rawStorage = localStorage.getItem('isml_saved_external_resources');
-        return rawStorage ? JSON.parse(rawStorage) : [];
+        if (rawStorage) {
+          const parsed = JSON.parse(rawStorage);
+          if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+        }
       } catch (e) {}
     }
-    return [];
+    return initialVaultSnapshot;
   });
-  const [isLoading, setIsLoading] = useState<boolean>(() => {
-    if (typeof window !== 'undefined') {
-      try {
-        const raw = localStorage.getItem('isml_cached_cloud_materials');
-        if (raw && JSON.parse(raw)?.length > 0) return false;
-      } catch (_) {}
-    }
-    return true;
-  });
+  const [isLoading, setIsLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
   const [filters, setFilters] = useState<FilterState>(initialFilters);
 

@@ -30,7 +30,7 @@ export async function GET(req: NextRequest) {
   // 1. Fetch from Railway backend (cloud container with full IPv6 routing to Supabase)
   try {
     const resp = await fetch(RAILWAY_URL, {
-      signal: AbortSignal.timeout(6000),
+      signal: AbortSignal.timeout(2500),
       headers: { 'Accept': 'application/json' },
     });
     if (resp.ok) {
