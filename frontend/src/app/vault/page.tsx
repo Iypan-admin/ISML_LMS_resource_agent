@@ -548,14 +548,20 @@ export default function KnowledgeVaultPage() {
         total: stagedFiles.length,
         percentage: 100,
       });
-      setIsBatchProcessing(false);
-      await fetchResources();
-      // Auto-focus the catalog on the uploaded language so the user immediately sees their file in the table
-      setSelectedLanguage(uploadLang);
-      if (uploadLevel && uploadLevel !== 'AUTO_DETECT') {
-        setSelectedLevel(uploadLevel);
+
+      // Immediate transition to catalog table on success so the upload button NEVER re-renders or asks for a 2nd click
+      if (successCount > 0) {
+        setSelectedLanguage(activeUploadLang);
+        if (uploadLevel && uploadLevel !== 'AUTO_DETECT') {
+          setSelectedLevel(uploadLevel);
+        }
+        setStagedFiles([]);
+        setActiveTab('CATALOG');
+        setTimeout(() => {
+          document.getElementById('catalog-table-matrix')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }, 100);
       }
-      setActiveTab('CATALOG');
+      setIsBatchProcessing(false);
       setBatchSummary({
         successCount,
         failCount,
@@ -563,9 +569,8 @@ export default function KnowledgeVaultPage() {
           ? `Successfully uploaded and auto-indexed all ${successCount} learning materials into your Knowledge Vault!`
           : `Processed ${successCount} successfully (${failCount} failed). Check the items below.`,
       });
-      setTimeout(() => {
-        document.getElementById('catalog-table-matrix')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-      }, 150);
+      // Background sync to ensure all cloud records stay fully hydrated
+      fetchResources().catch(() => {});
     } else {
       if (stagedLinks.length === 0) {
         alert('Please add at least one YouTube video URL or website link.');
@@ -643,13 +648,19 @@ export default function KnowledgeVaultPage() {
         total: stagedLinks.length,
         percentage: 100,
       });
-      setIsBatchProcessing(false);
-      await fetchResources();
-      setSelectedLanguage(uploadLang);
-      if (uploadLevel && uploadLevel !== 'AUTO_DETECT') {
-        setSelectedLevel(uploadLevel);
+
+      if (successCount > 0) {
+        setSelectedLanguage(activeUploadLang);
+        if (uploadLevel && uploadLevel !== 'AUTO_DETECT') {
+          setSelectedLevel(uploadLevel);
+        }
+        setStagedLinks([]);
+        setActiveTab('CATALOG');
+        setTimeout(() => {
+          document.getElementById('catalog-table-matrix')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }, 100);
       }
-      setActiveTab('CATALOG');
+      setIsBatchProcessing(false);
       setBatchSummary({
         successCount,
         failCount,
@@ -657,9 +668,7 @@ export default function KnowledgeVaultPage() {
           ? `Successfully ingested and auto-transcribed all ${successCount} links into your Knowledge Vault!`
           : `Processed ${successCount} successfully (${failCount} failed). Check the items below.`,
       });
-      setTimeout(() => {
-        document.getElementById('catalog-table-matrix')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-      }, 150);
+      fetchResources().catch(() => {});
     }
   };
 

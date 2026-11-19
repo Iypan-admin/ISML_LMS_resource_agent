@@ -207,15 +207,17 @@ export async function POST(req: NextRequest) {
     // 5. Split full text into semantic pedagogical chunks for Vector DB
     const chunks = chunkText(extractedText, 800);
 
-    // 6. Compute real 768-dim embeddings with Gemini and save into SessionVectorChunk
+    // 6. Compute real 768-dim embeddings with Gemini in parallel and save into SessionVectorChunk
     const apiKey = process.env.GEMINI_API_KEY || '';
     let vectorChunksStored = 0;
 
-    for (let idx = 0; idx < chunks.length; idx++) {
-      const chunkTextContent = sanitizeUtf8(chunks[idx]);
+    const chunkTasks = chunks.slice(0, 15).map(async (chunk, idx) => {
+      const chunkTextContent = sanitizeUtf8(chunk);
       let embedding: number[] | null = null;
       if (apiKey) {
-        embedding = await getGeminiEmbedding(chunkTextContent, apiKey);
+        try {
+          embedding = await getGeminiEmbedding(chunkTextContent, apiKey);
+        } catch (_) {}
       }
 
       try {
@@ -246,7 +248,9 @@ export async function POST(req: NextRequest) {
       } catch (chunkErr) {
         console.warn('Vector chunk save notice:', chunkErr);
       }
-    }
+    });
+
+    await Promise.all(chunkTasks);
 
     // Forward upload to Railway cloud backend so all devices and cross-tabs sync globally
     try {
