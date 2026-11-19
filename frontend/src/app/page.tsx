@@ -22,10 +22,18 @@ export default function HomePage() {
 
   useEffect(() => {
     try {
-      const cached = localStorage.getItem('isml_saved_sessions_archive');
-      if (cached) {
-        const parsed = JSON.parse(cached);
-        if (Array.isArray(parsed)) setSavedCount(parsed.length);
+      if (!localStorage.getItem('isml_fresh_clean_reset_v20')) {
+        localStorage.removeItem('isml_saved_sessions_archive');
+        localStorage.removeItem('isml_last_curriculum_blueprint');
+        setSavedCount(0);
+      } else {
+        const cached = localStorage.getItem('isml_saved_sessions_archive');
+        if (cached) {
+          const parsed = JSON.parse(cached);
+          if (Array.isArray(parsed)) setSavedCount(parsed.length);
+        } else {
+          setSavedCount(0);
+        }
       }
     } catch (_) {}
   }, []);

@@ -76,6 +76,33 @@ interface MasterDataContextType {
 
 const MasterDataContext = createContext<MasterDataContextType | undefined>(undefined);
 
+const DEFAULT_LANGUAGES: LanguageItem[] = [
+  { id: 'lang-1', code: 'de', name: 'German', nativeName: 'Deutsch', flagEmoji: 'German' },
+  { id: 'lang-2', code: 'fr', name: 'French', nativeName: 'Français', flagEmoji: 'French' },
+  { id: 'lang-3', code: 'es', name: 'Spanish', nativeName: 'Español', flagEmoji: 'Spanish' },
+  { id: 'lang-4', code: 'ja', name: 'Japanese', nativeName: 'Japanese', flagEmoji: 'Japanese' },
+  { id: 'lang-5', code: 'ko', name: 'Korean', nativeName: 'Korean', flagEmoji: 'Korean' },
+  { id: 'lang-6', code: 'en', name: 'English', nativeName: 'English', flagEmoji: 'English' },
+];
+
+const DEFAULT_LEVELS: LevelItem[] = [
+  { id: 'lvl-1', code: 'A1', name: 'Beginner (A1)', rank: 1 },
+  { id: 'lvl-2', code: 'A2', name: 'Elementary (A2)', rank: 2 },
+  { id: 'lvl-3', code: 'B1', name: 'Intermediate (B1)', rank: 3 },
+  { id: 'lvl-4', code: 'B2', name: 'Upper Intermediate (B2)', rank: 4 },
+  { id: 'lvl-5', code: 'C1', name: 'Advanced (C1)', rank: 5 },
+  { id: 'lvl-6', code: 'C2', name: 'Mastery (C2)', rank: 6 },
+];
+
+const DEFAULT_SKILLS: SkillItem[] = [
+  { id: 'sk-1', code: 'Speaking', name: 'Speaking', slug: 'speaking' },
+  { id: 'sk-2', code: 'Listening', name: 'Listening', slug: 'listening' },
+  { id: 'sk-3', code: 'Reading', name: 'Reading', slug: 'reading' },
+  { id: 'sk-4', code: 'Writing', name: 'Writing', slug: 'writing' },
+  { id: 'sk-5', code: 'Grammar', name: 'Grammar', slug: 'grammar' },
+  { id: 'sk-6', code: 'Vocabulary', name: 'Vocabulary', slug: 'vocabulary' },
+];
+
 export function MasterDataProvider({ children }: { children: React.ReactNode }) {
   const readCache = <T,>(key: string): T[] => {
     if (typeof window !== 'undefined') {
@@ -87,73 +114,60 @@ export function MasterDataProvider({ children }: { children: React.ReactNode }) 
     return [];
   };
 
-  const [languages, setLanguages] = useState<LanguageItem[]>(() => readCache('isml_cache_languages'));
+  const [languages, setLanguages] = useState<LanguageItem[]>(() => {
+    const cached = readCache<LanguageItem>('isml_cache_languages');
+    return cached.length > 0 ? cached : DEFAULT_LANGUAGES;
+  });
   const [courses, setCourses] = useState<CourseItem[]>(() => readCache('isml_cache_courses'));
-  const [levels, setLevels] = useState<LevelItem[]>(() => readCache('isml_cache_levels'));
+  const [levels, setLevels] = useState<LevelItem[]>(() => {
+    const cached = readCache<LevelItem>('isml_cache_levels');
+    return cached.length > 0 ? cached : DEFAULT_LEVELS;
+  });
   const [categories, setCategories] = useState<CategoryItem[]>(() => readCache('isml_cache_categories'));
-  const [skills, setSkills] = useState<SkillItem[]>(() => readCache('isml_cache_skills'));
+  const [skills, setSkills] = useState<SkillItem[]>(() => {
+    const cached = readCache<SkillItem>('isml_cache_skills');
+    return cached.length > 0 ? cached : DEFAULT_SKILLS;
+  });
   const [topics, setTopics] = useState<TopicItem[]>(() => readCache('isml_cache_topics'));
   const [resourceTypes, setResourceTypes] = useState<ResourceTypeItem[]>(() => readCache('isml_cache_resource_types'));
   const [sources, setSources] = useState<SourceItem[]>(() => readCache('isml_cache_sources'));
-  const [isLoading, setIsLoading] = useState<boolean>(() => languages.length === 0);
+  const [isLoading, setIsLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
 
   const fetchMasterData = useCallback(async () => {
-    if (languages.length === 0) setIsLoading(true);
     setError(null);
-    let apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api/v1';
+    const prodUrl = 'https://isml-resource-backend-production.up.railway.app/api/v1';
+    let apiUrl = process.env.NEXT_PUBLIC_API_URL || prodUrl;
+    if (apiUrl.includes('localhost:4000')) apiUrl = prodUrl;
 
     try {
-      let responses: Response[] | null = null;
-      try {
+      const fetchWithTimeout = (url: string) => fetch(url, { signal: AbortSignal.timeout(2000) });
+      let responses = await Promise.all([
+        fetchWithTimeout(`${apiUrl}/languages`),
+        fetchWithTimeout(`${apiUrl}/courses`),
+        fetchWithTimeout(`${apiUrl}/levels`),
+        fetchWithTimeout(`${apiUrl}/categories`),
+        fetchWithTimeout(`${apiUrl}/skills`),
+        fetchWithTimeout(`${apiUrl}/topics`),
+        fetchWithTimeout(`${apiUrl}/resource-types`),
+        fetchWithTimeout(`${apiUrl}/sources`),
+      ]).catch(() => null);
+
+      if (!responses && apiUrl !== prodUrl) {
+        apiUrl = prodUrl;
         responses = await Promise.all([
-          fetch(`${apiUrl}/languages`),
-          fetch(`${apiUrl}/courses`),
-          fetch(`${apiUrl}/levels`),
-          fetch(`${apiUrl}/categories`),
-          fetch(`${apiUrl}/skills`),
-          fetch(`${apiUrl}/topics`),
-          fetch(`${apiUrl}/resource-types`),
-          fetch(`${apiUrl}/sources`),
-        ]);
-      } catch (primaryErr) {
-        const prodUrl = 'https://isml-resource-backend-production.up.railway.app/api/v1';
-        if (apiUrl !== prodUrl) {
-          apiUrl = prodUrl;
-          responses = await Promise.all([
-            fetch(`${apiUrl}/languages`),
-            fetch(`${apiUrl}/courses`),
-            fetch(`${apiUrl}/levels`),
-            fetch(`${apiUrl}/categories`),
-            fetch(`${apiUrl}/skills`),
-            fetch(`${apiUrl}/topics`),
-            fetch(`${apiUrl}/resource-types`),
-            fetch(`${apiUrl}/sources`),
-          ]).catch(() => null);
-        }
+          fetchWithTimeout(`${apiUrl}/languages`),
+          fetchWithTimeout(`${apiUrl}/courses`),
+          fetchWithTimeout(`${apiUrl}/levels`),
+          fetchWithTimeout(`${apiUrl}/categories`),
+          fetchWithTimeout(`${apiUrl}/skills`),
+          fetchWithTimeout(`${apiUrl}/topics`),
+          fetchWithTimeout(`${apiUrl}/resource-types`),
+          fetchWithTimeout(`${apiUrl}/sources`),
+        ]).catch(() => null);
       }
 
       if (!responses) {
-        console.warn('Backend master data service unreachable, applying default domain fallback.');
-        setLanguages([
-          { id: 'lang-1', code: 'de', name: 'German', nativeName: 'Deutsch', flagEmoji: '🇩🇪' },
-          { id: 'lang-2', code: 'fr', name: 'French', nativeName: 'Français', flagEmoji: '🇫🇷' },
-          { id: 'lang-3', code: 'ja', name: 'Japanese', nativeName: '日本語', flagEmoji: '🇯🇵' },
-          { id: 'lang-4', code: 'es', name: 'Spanish', nativeName: 'Español', flagEmoji: '🇪🇸' },
-          { id: 'lang-5', code: 'en', name: 'English', nativeName: 'English', flagEmoji: '🇬🇧' },
-        ]);
-        setLevels([
-          { id: 'lvl-1', code: 'A1', name: 'Beginner (A1)', rank: 1 },
-          { id: 'lvl-2', code: 'A2', name: 'Elementary (A2)', rank: 2 },
-          { id: 'lvl-3', code: 'B1', name: 'Intermediate (B1)', rank: 3 },
-          { id: 'lvl-4', code: 'B2', name: 'Upper Intermediate (B2)', rank: 4 },
-        ]);
-        setSkills([
-          { id: 'sk-1', code: 'Speaking', name: 'Speaking', slug: 'speaking' },
-          { id: 'sk-2', code: 'Listening', name: 'Listening', slug: 'listening' },
-          { id: 'sk-3', code: 'Reading', name: 'Reading', slug: 'reading' },
-          { id: 'sk-4', code: 'Grammar', name: 'Grammar', slug: 'grammar' },
-        ]);
         setIsLoading(false);
         return;
       }

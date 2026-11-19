@@ -350,13 +350,43 @@ export class ResourcesService {
       });
     }
 
-    // 2. Resolve Language
+    // 2. Resolve Language safely (prevent Postgres UUID crash if languageId is a name)
+    const isUuid = (val?: string) => !!val && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(val);
     let languageId = meta.languageId;
-    let languageCode = 'General';
+    let languageCode = (meta as any).languageName || 'General';
     if (languageId) {
-      const lang = await this.prisma.language.findUnique({ where: { id: languageId } });
-      if (lang) languageCode = lang.name;
-    } else {
+      const orConditions: any[] = [
+        { name: { equals: languageId, mode: 'insensitive' } },
+        { code: { equals: languageId, mode: 'insensitive' } },
+      ];
+      if (isUuid(languageId)) {
+        orConditions.push({ id: languageId });
+      }
+      const lang = await this.prisma.language.findFirst({
+        where: {
+          OR: orConditions,
+        },
+      });
+      if (lang) {
+        languageId = lang.id;
+        languageCode = lang.name;
+      }
+    }
+    if (!languageId && (meta as any).languageName) {
+      const lang = await this.prisma.language.findFirst({
+        where: {
+          OR: [
+            { name: { equals: (meta as any).languageName, mode: 'insensitive' } },
+            { code: { equals: (meta as any).languageName, mode: 'insensitive' } },
+          ],
+        },
+      });
+      if (lang) {
+        languageId = lang.id;
+        languageCode = lang.name;
+      }
+    }
+    if (!languageId) {
       const defaultLang = await this.prisma.language.findFirst({ where: { isActive: true } });
       if (defaultLang) {
         languageId = defaultLang.id;

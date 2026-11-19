@@ -92,4 +92,7 @@ export interface Resource {
   tokenCount?: number | null;
   pageCount?: number | null;
   fileHash?: string | null;
+  fileUrl?: string | null;
+  fileData?: string | null;
+  canonicalUrl?: string | null;
 }

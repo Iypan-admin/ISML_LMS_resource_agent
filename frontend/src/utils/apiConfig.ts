@@ -95,9 +95,9 @@ export async function fetchWithEndpointFallback(path: string, options: RequestIn
 
   for (const url of endpoints) {
     try {
-      const resp = await fetch(url, options);
+      const resp = await fetch(url, { ...options, signal: options.signal || AbortSignal.timeout(3000) });
       // Return immediately on success OR on any client business error (400, 422, 403) so the caller can process the error details!
-      if (resp.ok || resp.status === 400 || resp.status === 422 || resp.status === 403) {
+      if (resp.ok || resp.status === 400 || resp.status === 409 || resp.status === 422 || resp.status === 403) {
         return resp;
       }
       // If 404 Not Found, 405 Method Not Allowed, or Gateway error (502/503/504), keep trying next endpoints!
@@ -120,14 +120,14 @@ export async function fetchBackendWithFallback(path: string, options: RequestIni
 
   for (const url of endpoints) {
     try {
-      const resp = await fetch(url, options);
+      const resp = await fetch(url, { ...options, signal: options.signal || AbortSignal.timeout(3000) });
       const contentType = resp.headers.get('content-type') || '';
       // If endpoint returned HTML instead of JSON API response (e.g. Next.js page), treat as invalid backend
       if (resp.ok && !contentType.includes('application/json')) {
         lastError = new Error(`Backend ${url} returned non-JSON response (${contentType})`);
         continue;
       }
-      if (resp.ok || resp.status === 400 || resp.status === 422 || resp.status === 403) {
+      if (resp.ok || resp.status === 400 || resp.status === 409 || resp.status === 422 || resp.status === 403) {
         return resp;
       }
       if (resp.status === 404 || resp.status === 413 || resp.status === 500 || resp.status === 502 || resp.status === 503 || resp.status === 504) {

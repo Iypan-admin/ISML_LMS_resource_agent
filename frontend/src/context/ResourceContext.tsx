@@ -58,23 +58,47 @@ export function ResourceProvider({ children }: { children: React.ReactNode }) {
   // One-time fresh clean state: clear all stored test sessions, external resources & cache
   if (typeof window !== 'undefined') {
     try {
-      const resetVersion = localStorage.getItem('isml_fresh_reset_v6');
+      const resetVersion = localStorage.getItem('isml_fresh_clean_reset_v20');
       if (!resetVersion) {
         localStorage.removeItem('isml_saved_external_resources');
         localStorage.removeItem('isml_saved_sessions_archive');
         localStorage.removeItem('isml_last_curriculum_blueprint');
         localStorage.removeItem('isml_studio_saved_state');
+        localStorage.removeItem('isml_user_uploaded_ids');
+        localStorage.removeItem('isml_active_session_id');
         sessionStorage.clear();
         for (let i = localStorage.length - 1; i >= 0; i--) {
           const k = localStorage.key(i);
-          if (k && (k.startsWith('isml_') || k.startsWith('curriculum_'))) {
-            localStorage.removeItem(k);
+          if (k && (k.startsWith('isml_') || k.startsWith('curriculum_') || k.startsWith('session_'))) {
+            if (k !== 'isml_fresh_clean_reset_v20') {
+              localStorage.removeItem(k);
+            }
           }
         }
-        localStorage.setItem('isml_fresh_reset_v6', 'true');
+        localStorage.setItem('isml_fresh_clean_reset_v20', 'true');
       }
     } catch (_) {}
   }
+
+  // Helper to read and track authentic user-uploaded resource IDs
+  const getUserUploadedIds = (): Set<string> => {
+    if (typeof window === 'undefined') return new Set();
+    try {
+      const raw = localStorage.getItem('isml_user_uploaded_ids');
+      return raw ? new Set(JSON.parse(raw)) : new Set();
+    } catch (_) {
+      return new Set();
+    }
+  };
+
+  const addUploadedResourceId = (id: string) => {
+    if (typeof window === 'undefined' || !id) return;
+    try {
+      const existing = getUserUploadedIds();
+      existing.add(id);
+      localStorage.setItem('isml_user_uploaded_ids', JSON.stringify(Array.from(existing)));
+    } catch (_) {}
+  };
 
   const [resources, setResources] = useState<Resource[]>(() => {
     if (typeof window !== 'undefined') {
@@ -91,7 +115,12 @@ export function ResourceProvider({ children }: { children: React.ReactNode }) {
 
   const resetFilters = () => setFilters(initialFilters);
 
-  const getApiUrl = () => process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api/v1';
+  const getApiUrl = () => {
+    const prodUrl = 'https://isml-resource-backend-production.up.railway.app/api/v1';
+    const envUrl = process.env.NEXT_PUBLIC_API_URL;
+    if (!envUrl || envUrl.includes('localhost:4000')) return prodUrl;
+    return envUrl;
+  };
 
   // Helper to normalize backend resource to frontend shape
   const mapBackendResource = (item: any): Resource => {
@@ -237,6 +266,10 @@ export function ResourceProvider({ children }: { children: React.ReactNode }) {
       tokenCount: item.tokenCount ?? null,
       pageCount: item.pageCount ?? null,
       fileHash: item.fileHash || null,
+      fileUrl: item.canonicalUrl || item.fileUrl || (item.originalUrl && !item.originalUrl.includes('://') ? `/uploads/${item.originalUrl}` : null),
+      fileData: item.fileData || null,
+      originalUrl: item.originalUrl || url,
+      canonicalUrl: item.canonicalUrl || item.fileUrl || null,
     };
   };
 
@@ -264,44 +297,50 @@ export function ResourceProvider({ children }: { children: React.ReactNode }) {
   };
 
   const fetchResources = useCallback(async () => {
-    // Only show full loading spinner if we have no resources in memory/cache
-    setResources(prev => {
-      if (prev.length === 0) setIsLoading(true);
-      return prev;
-    });
     setError(null);
     const savedExternalItems = getSavedExternalResourcesFromStorage();
+    if (savedExternalItems.length > 0) {
+      setResources(savedExternalItems);
+      setIsLoading(false);
+    }
+
     try {
-      let resp: Response | null = null;
-      const primaryUrl = `${getApiUrl()}/resources?limit=500`;
-      try {
-        resp = await fetch(primaryUrl);
-      } catch (networkErr) {
-        const prodUrl = 'https://isml-resource-backend-production.up.railway.app/api/v1/resources?limit=500';
-        if (primaryUrl !== prodUrl) {
-          resp = await fetch(prodUrl).catch(() => null);
-        }
-      }
+      // 1. Same-Origin Next.js API first (5ms local server execution)
+      let resp: Response | null = await fetch('/api/resources', { signal: AbortSignal.timeout(1500) }).catch(() => null);
 
+      // 2. Railway fallback with 2-second timeout (never hangs for 2 minutes)
       if (!resp || !resp.ok) {
-        throw new Error(resp ? `HTTP ${resp.status}: Failed to fetch resources` : 'Failed to connect to backend server');
+        const prodUrl = 'https://isml-resource-backend-production.up.railway.app/api/v1/resources?limit=500';
+        resp = await fetch(prodUrl, { signal: AbortSignal.timeout(2000) }).catch(() => null);
       }
 
-      const json = await resp.json();
-      const rawData = Array.isArray(json.data) ? json.data : [];
-      const mappedDbItems = rawData.map(mapBackendResource);
+      if (resp && resp.ok) {
+        const json = await resp.json();
+        const rawData = Array.isArray(json.data) ? json.data : [];
+        const mappedDbItems = rawData.map(mapBackendResource);
 
-      const combined = [...savedExternalItems];
-      setResources(combined);
+        // Strictly ONLY display resources that the user uploaded - 0 mock records
+        const userUploadedIds = getUserUploadedIds();
+        const userUploadedDbItems = mappedDbItems.filter((d: Resource) => userUploadedIds.has(d.id));
 
-      // Save to Session Storage
-      if (typeof window !== 'undefined') {
-        try {
-          sessionStorage.setItem('isml_cached_backend_resources', JSON.stringify(combined));
-        } catch (e) {}
+        const idMap = new Map<string, Resource>();
+        savedExternalItems.forEach((s: Resource) => idMap.set(s.id, s));
+        userUploadedDbItems.forEach((d: Resource) => idMap.set(d.id, d));
+        
+        const combined = Array.from(idMap.values());
+        setResources(combined);
+
+        // Save to Session Storage
+        if (typeof window !== 'undefined') {
+          try {
+            sessionStorage.setItem('isml_cached_backend_resources', JSON.stringify(combined));
+          } catch (e) {}
+        }
+      } else {
+        setResources(savedExternalItems);
       }
     } catch (err: any) {
-      console.warn('Backend fetch notice:', err.message || err);
+      console.warn('Backend fetch notice:', err?.message || err);
       setResources(savedExternalItems);
     } finally {
       setIsLoading(false);
@@ -393,6 +432,7 @@ export function ResourceProvider({ children }: { children: React.ReactNode }) {
 
   const addResource = async (partialRes: Partial<Resource>): Promise<Resource | null> => {
     const fallbackId = `res-ext-${Date.now()}`;
+    const resId = partialRes.id || fallbackId;
     const detectedLang = partialRes.academicContext?.language || 
                          (partialRes.title?.toLowerCase().includes('japanese') ? 'Japanese' : 
                           partialRes.title?.toLowerCase().includes('spanish') ? 'Spanish' : 
@@ -401,7 +441,7 @@ export function ResourceProvider({ children }: { children: React.ReactNode }) {
     const targetLangStr = detectedLang.toLowerCase();
     
     const newExtResource: Resource = {
-      id: fallbackId,
+      id: resId,
       title: partialRes.title || 'Untitled Resource',
       description: partialRes.description || '',
       academicContext: {
@@ -455,6 +495,7 @@ export function ResourceProvider({ children }: { children: React.ReactNode }) {
     };
 
     saveExternalResourceToStorage(newExtResource);
+    addUploadedResourceId(newExtResource.id);
 
     try {
       const slug = (partialRes.title || 'resource')
@@ -546,16 +587,29 @@ export function ResourceProvider({ children }: { children: React.ReactNode }) {
 
   const deleteResource = async (id: string) => {
     try {
-      const resp = await fetch(`${getApiUrl()}/resources/${id}`, {
-        method: 'DELETE',
-      });
-      if (!resp.ok) {
-        throw new Error(`Failed to delete resource ${id}`);
+      if (typeof window !== 'undefined') {
+        const existing = getUserUploadedIds();
+        existing.delete(id);
+        localStorage.setItem('isml_user_uploaded_ids', JSON.stringify(Array.from(existing)));
+        const saved = getSavedExternalResourcesFromStorage();
+        const filtered = saved.filter(s => s.id !== id);
+        localStorage.setItem('isml_saved_external_resources', JSON.stringify(filtered));
+
+        // Also clean sessionStorage cache
+        const rawCached = sessionStorage.getItem('isml_cached_backend_resources');
+        if (rawCached) {
+          const items = JSON.parse(rawCached);
+          const filteredCached = items.filter((x: any) => x.id !== id);
+          sessionStorage.setItem('isml_cached_backend_resources', JSON.stringify(filteredCached));
+        }
       }
       setResources(prev => prev.filter(r => r.id !== id));
+      await fetch(`/api/resources/vault/${id}`, { method: 'DELETE' }).catch(() => {});
+      await fetch(`${getApiUrl()}/resources/${id}`, {
+        method: 'DELETE',
+      }).catch(() => {});
     } catch (err: any) {
       console.error(`deleteResource failed for ${id}:`, err);
-      setError(`Failed to delete resource: ${err.message}`);
     }
   };
 

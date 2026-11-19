@@ -40,7 +40,7 @@ import { useResources } from '@/context/ResourceContext';
 import { fetchBackendWithFallback } from '@/utils/apiConfig';
 
 export default function KnowledgeVaultPage() {
-  const { resources, fetchResources, isLoading } = useResources();
+  const { resources, fetchResources, addResource, deleteResource, isLoading } = useResources();
 
   // Active Tab
   const [activeTab, setActiveTab] = useState<'CATALOG' | 'UPLOAD'>('CATALOG');
@@ -172,6 +172,24 @@ export default function KnowledgeVaultPage() {
   const [singleLinkTitle, setSingleLinkTitle] = useState('');
   const [bulkUrlTextArea, setBulkUrlTextArea] = useState('');
   const [showBulkPasteModal, setShowBulkPasteModal] = useState(false);
+
+  // Material Deletion State & Confirmation Modal
+  const [resourcePendingDelete, setResourcePendingDelete] = useState<any | null>(null);
+  const [isDeletingResource, setIsDeletingResource] = useState<boolean>(false);
+
+  const handleConfirmDeleteResource = async () => {
+    if (!resourcePendingDelete) return;
+    setIsDeletingResource(true);
+    try {
+      const id = resourcePendingDelete.id;
+      await deleteResource(id);
+    } catch (err) {
+      console.warn('Failed deleting resource:', err);
+    } finally {
+      setIsDeletingResource(false);
+      setResourcePendingDelete(null);
+    }
+  };
 
   // Batch Processing Progress & Feedback
   const [isBatchProcessing, setIsBatchProcessing] = useState(false);
@@ -329,10 +347,10 @@ export default function KnowledgeVaultPage() {
         r.description?.toLowerCase().includes(searchQuery.toLowerCase());
       
       const lang = r.academicContext?.language || (r as any).language?.name || 'General';
-      const matchesLang = Boolean(selectedLanguage) && lang.toLowerCase() === selectedLanguage.toLowerCase();
+      const matchesLang = !selectedLanguage || lang.toLowerCase() === selectedLanguage.toLowerCase();
       
       const badge = formatLevelBadge(r);
-      const matchesLevel = Boolean(selectedLevel) && (
+      const matchesLevel = !selectedLevel || (
         badge.level.toLowerCase().includes(selectedLevel.toLowerCase()) ||
         (r.cefrLevel && r.cefrLevel.toLowerCase() === selectedLevel.toLowerCase())
       );
@@ -396,19 +414,72 @@ export default function KnowledgeVaultPage() {
           formData.append('title', item.title || item.name.replace(/\.[^/.]+$/, ''));
           formData.append('framework', framework);
           formData.append('masterIndex', uploadMasterIndex);
+          formData.append('language', uploadLang);
+          formData.append('languageId', uploadLang);
+          formData.append('languageName', uploadLang);
           if (uploadLevel && uploadLevel !== 'AUTO_DETECT') {
             formData.append('cefrLevel', uploadLevel);
           }
 
-          const resp = await fetchBackendWithFallback('/resources/vault/upload', {
+          const resp = await fetchBackendWithFallback('/api/resources/vault/upload', {
             method: 'POST',
             body: formData,
           });
 
-          const data = await resp.json();
-          if (resp.ok && data.success) {
+          const data = await resp.json().catch(() => ({}));
+          if ((resp.ok || resp.status === 409 || data.isDuplicate || data.error === 'DUPLICATE_RESOURCE') && (data.success || data.id || data.data || data.existingResourceId)) {
             successCount++;
             setStagedFiles((prev) => prev.map((f) => f.id === item.id ? { ...f, status: 'SUCCESS' } : f));
+
+            const serverItem = data.data || data.resource || data;
+            const resId = serverItem.id || data.existingResourceId || `upload-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+            const fullBody = data.extractedText || serverItem.content?.body || '';
+            const words = data.wordCount || serverItem.wordCount || (fullBody ? fullBody.split(/\s+/).filter(Boolean).length : 0);
+            const pages = data.pageCount || serverItem.pageCount || Math.max(1, Math.ceil(words / 350));
+
+            let clientDataUrl = '';
+            try {
+              if (item.file.size < 4000000) {
+                clientDataUrl = await new Promise<string>((resolve) => {
+                  const reader = new FileReader();
+                  reader.onload = () => resolve(reader.result as string);
+                  reader.onerror = () => resolve('');
+                  reader.readAsDataURL(item.file);
+                });
+              }
+            } catch (_) {}
+
+            const fileUrl = data.fileUrl || serverItem.canonicalUrl || clientDataUrl || `/uploads/${item.name}`;
+            const fileData = clientDataUrl || data.dataUrl || fileUrl;
+
+            await addResource({
+              id: resId,
+              title: item.title || item.name.replace(/\.[^/.]+$/, ''),
+              description: `Uploaded file ${item.name}`,
+              academicContext: {
+                language: uploadLang,
+                level: uploadLevel !== 'AUTO_DETECT' ? uploadLevel : 'A1',
+                resourceType: item.name.endsWith('.pdf') ? 'Worksheet' : 'Practice Exercise',
+                course: `${uploadLang} Course`,
+                module: 'General Module',
+                topic: item.title || item.name,
+                skill: 'Reading',
+                difficulty: 'Beginner',
+              },
+              cefrLevel: uploadLevel !== 'AUTO_DETECT' ? uploadLevel : 'A1',
+              framework: framework,
+              status: 'Published' as any,
+              sourceUrl: fileUrl,
+              originalUrl: item.file.name,
+              canonicalUrl: fileUrl,
+              fileUrl: fileUrl,
+              fileData: fileData,
+              content: {
+                body: fullBody,
+              },
+              wordCount: words,
+              pageCount: pages,
+            } as any);
           } else {
             failCount++;
             setStagedFiles((prev) => prev.map((f) => f.id === item.id ? { ...f, status: 'ERROR', errorMessage: data.message || 'Upload failed' } : f));
@@ -426,6 +497,12 @@ export default function KnowledgeVaultPage() {
       });
       setIsBatchProcessing(false);
       await fetchResources();
+      // Auto-focus the catalog on the uploaded language so the user immediately sees their file in the table
+      setSelectedLanguage(uploadLang);
+      if (uploadLevel && uploadLevel !== 'AUTO_DETECT') {
+        setSelectedLevel(uploadLevel);
+      }
+      setActiveTab('CATALOG');
       setBatchSummary({
         successCount,
         failCount,
@@ -433,6 +510,9 @@ export default function KnowledgeVaultPage() {
           ? `Successfully uploaded and auto-indexed all ${successCount} learning materials into your Knowledge Vault!`
           : `Processed ${successCount} successfully (${failCount} failed). Check the items below.`,
       });
+      setTimeout(() => {
+        document.getElementById('catalog-table-matrix')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }, 150);
     } else {
       if (stagedLinks.length === 0) {
         alert('Please add at least one YouTube video URL or website link.');
@@ -455,7 +535,7 @@ export default function KnowledgeVaultPage() {
         setStagedLinks((prev) => prev.map((l) => l.id === item.id ? { ...l, status: 'PROCESSING' } : l));
 
         try {
-          const resp = await fetchBackendWithFallback('/resources/vault/link', {
+          const resp = await fetchBackendWithFallback('/api/resources/vault/link', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -468,10 +548,33 @@ export default function KnowledgeVaultPage() {
             }),
           });
 
-          const data = await resp.json();
-          if (resp.ok && data.success) {
+          const data = await resp.json().catch(() => ({}));
+          if ((resp.ok || resp.status === 409 || data.isDuplicate || data.error === 'DUPLICATE_RESOURCE') && (data.success || data.id || data.data || data.existingResourceId)) {
             successCount++;
             setStagedLinks((prev) => prev.map((l) => l.id === item.id ? { ...l, status: 'SUCCESS' } : l));
+
+            const serverItem = data.data || data.resource || data;
+            const resId = serverItem.id || data.existingResourceId || `link-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+            await addResource({
+              id: resId,
+              title: item.title || item.url,
+              description: `External link: ${item.url}`,
+              academicContext: {
+                language: uploadLang,
+                level: uploadLevel !== 'AUTO_DETECT' ? uploadLevel : 'A1',
+                resourceType: item.url.includes('youtube') || item.url.includes('youtu.be') ? 'Video' : 'Website',
+                course: `${uploadLang} Course`,
+                module: 'General Module',
+                topic: item.title || item.url,
+                skill: 'Listening',
+                difficulty: 'Beginner',
+              },
+              cefrLevel: uploadLevel !== 'AUTO_DETECT' ? uploadLevel : 'A1',
+              framework: framework,
+              status: 'Published' as any,
+              originalUrl: item.url,
+              sourceUrl: item.url,
+            });
           } else {
             failCount++;
             setStagedLinks((prev) => prev.map((l) => l.id === item.id ? { ...l, status: 'ERROR', errorMessage: data.message || 'Ingestion failed' } : l));
@@ -489,6 +592,11 @@ export default function KnowledgeVaultPage() {
       });
       setIsBatchProcessing(false);
       await fetchResources();
+      setSelectedLanguage(uploadLang);
+      if (uploadLevel && uploadLevel !== 'AUTO_DETECT') {
+        setSelectedLevel(uploadLevel);
+      }
+      setActiveTab('CATALOG');
       setBatchSummary({
         successCount,
         failCount,
@@ -496,6 +604,9 @@ export default function KnowledgeVaultPage() {
           ? `Successfully ingested and auto-transcribed all ${successCount} links into your Knowledge Vault!`
           : `Processed ${successCount} successfully (${failCount} failed). Check the items below.`,
       });
+      setTimeout(() => {
+        document.getElementById('catalog-table-matrix')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }, 150);
     }
   };
 
@@ -850,39 +961,48 @@ export default function KnowledgeVaultPage() {
           </div>
 
           {/* Catalog List */}
-          {!selectedLanguage ? (
+          {resources.length === 0 ? (
             <div className="p-10 text-center bg-white rounded-2xl border border-slate-200 shadow-xs space-y-3">
               <div className="w-12 h-12 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center mx-auto border border-blue-100">
-                <Globe className="w-6 h-6" />
+                <Database className="w-6 h-6" />
               </div>
               <div className="space-y-1 max-w-md mx-auto">
                 <h3 className="text-sm font-black text-slate-900">
-                  Please Select a Language Above
+                  No Materials in Knowledge Vault Yet
                 </h3>
                 <p className="text-xs text-slate-500 font-medium leading-relaxed">
-                  Use the <strong>Language Selection</strong> dropdown at the top to choose your teaching language.
+                  Click <strong>&quot;+ Upload Materials&quot;</strong> above to upload your PDF textbooks, lesson notes, and learning links. Once uploaded, they will be listed in this table immediately.
                 </p>
-              </div>
-            </div>
-          ) : !selectedLevel ? (
-            <div className="p-10 text-center bg-white rounded-2xl border border-slate-200 shadow-xs space-y-3">
-              <div className="w-12 h-12 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center mx-auto border border-amber-200">
-                <Sparkles className="w-6 h-6" />
-              </div>
-              <div className="space-y-1 max-w-md mx-auto">
-                <h3 className="text-sm font-black text-slate-900">
-                  Please Select Target Level for {selectedLanguage} Above
-                </h3>
-                <p className="text-xs text-slate-500 font-medium leading-relaxed">
-                  Use the <strong>Target Level</strong> dropdown at the top to select your level ({selectedLanguage === 'Korean' ? 'Level L1–L4' : selectedLanguage === 'Japanese' ? 'JLPT N5–N1' : 'CEFR A1–C2'}) to view verified study materials.
-                </p>
+                <div className="pt-2">
+                  <button
+                    type="button"
+                    onClick={() => handleSwitchTab('UPLOAD')}
+                    className="px-4 py-2 bg-[#0052CC] hover:bg-blue-700 text-white font-bold rounded-xl text-xs transition-colors cursor-pointer shadow-xs"
+                  >
+                    + Upload Materials Now
+                  </button>
+                </div>
               </div>
             </div>
           ) : filteredCatalog.length === 0 ? (
             <div className="p-10 text-center bg-white rounded-2xl border border-slate-200 shadow-xs space-y-2">
               <Database className="w-10 h-10 text-slate-300 mx-auto mb-2" />
-              <p className="text-sm font-bold text-slate-700">No {selectedMediaType !== 'ALL' ? selectedMediaType.toLowerCase() + ' ' : ''}materials found for {selectedLanguage} {selectedLevel}</p>
-              <p className="text-xs text-slate-400">Try switching your format filter above or clear your search query.</p>
+              <p className="text-sm font-bold text-slate-700">No {selectedMediaType !== 'ALL' ? selectedMediaType.toLowerCase() + ' ' : ''}materials match your current filter{selectedLanguage ? ` for ${selectedLanguage}` : ''}{selectedLevel ? ` (${selectedLevel})` : ''}</p>
+              <p className="text-xs text-slate-400">Try switching your format filter above or clear your search query to see all {resources.length} uploaded materials.</p>
+              <div className="pt-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSelectedLanguage('');
+                    setSelectedLevel('');
+                    setSelectedMediaType('ALL');
+                    setSearchQuery('');
+                  }}
+                  className="px-3.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-lg text-xs transition-colors cursor-pointer"
+                >
+                  Show All {resources.length} Materials
+                </button>
+              </div>
             </div>
           ) : (
             <div id="catalog-table-matrix" className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden scroll-mt-24">
@@ -891,7 +1011,7 @@ export default function KnowledgeVaultPage() {
                 <div className="flex items-center gap-2">
                   <Database className="w-4 h-4 text-blue-600" />
                   <span className="text-xs font-black text-slate-800 uppercase tracking-wider">
-                    {selectedLanguage} {selectedLevel} Study Materials Matrix
+                    {selectedLanguage ? `${selectedLanguage} ${selectedLevel || 'All Levels'}` : 'All Vault Materials'} Study Materials Matrix
                   </span>
                   <span className="px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 text-[11px] font-black">
                     {filteredCatalog.length} {filteredCatalog.length === 1 ? 'item' : 'items'}
@@ -970,15 +1090,25 @@ export default function KnowledgeVaultPage() {
                             </div>
                           </td>
 
-                          {/* 4. Action Button */}
+                          {/* 4. Action Buttons */}
                           <td className="py-3.5 px-4 text-right align-middle whitespace-nowrap">
-                            <Link
-                              href={`/vault/${item.id}`}
-                              className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl border border-slate-200 bg-white hover:bg-blue-600 hover:text-white hover:border-blue-600 text-slate-700 text-xs font-bold transition-all shadow-2xs group/btn"
-                            >
-                              <Eye className="w-3.5 h-3.5 text-blue-600 group-hover/btn:text-white transition-colors" />
-                              <span>View Content</span>
-                            </Link>
+                            <div className="flex items-center justify-end gap-2">
+                              <Link
+                                href={`/vault/${item.id}`}
+                                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-slate-200 bg-white hover:bg-blue-600 hover:text-white hover:border-blue-600 text-slate-700 text-xs font-bold transition-all shadow-2xs group/btn"
+                              >
+                                <Eye className="w-3.5 h-3.5 text-blue-600 group-hover/btn:text-white transition-colors" />
+                                <span>View Content</span>
+                              </Link>
+                              <button
+                                type="button"
+                                onClick={() => setResourcePendingDelete(item)}
+                                className="inline-flex items-center justify-center p-1.5 rounded-xl border border-red-200 bg-red-50 hover:bg-red-600 text-red-600 hover:text-white transition-all shadow-2xs cursor-pointer group/del"
+                                title="Delete study material from Vault"
+                              >
+                                <Trash2 className="w-3.5 h-3.5 group-hover/del:text-white transition-colors" />
+                              </button>
+                            </div>
                           </td>
                         </tr>
                       );
@@ -1414,7 +1544,7 @@ export default function KnowledgeVaultPage() {
                       onClick={() => setShowBulkPasteModal(!showBulkPasteModal)}
                       className="text-[11px] text-blue-600 hover:text-blue-800 font-bold flex items-center gap-1 cursor-pointer"
                     >
-                      <span>📋 Paste Multiple URLs at Once</span>
+                      <span>Paste Multiple URLs at Once</span>
                     </button>
                   </div>
 
@@ -1596,7 +1726,7 @@ export default function KnowledgeVaultPage() {
                 <span>Processing Bulk Upload & AI Auto-Indexing...</span>
               </>
             ) : !uploadLang ? (
-              <span>⚠️ Please Select Language in Step 1 Above</span>
+              <span>Please Select Language in Step 1 Above</span>
             ) : (
               <>
                 <Sparkles className="w-4 h-4 text-amber-400" />
@@ -1613,6 +1743,65 @@ export default function KnowledgeVaultPage() {
               </>
             )}
           </button>
+        </div>
+      )}
+
+      {/* Delete Confirmation Warning Modal */}
+      {resourcePendingDelete && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 animate-in fade-in duration-150">
+          <div className="bg-white rounded-3xl max-w-md w-full border border-slate-200 shadow-2xl p-6 space-y-5 animate-in zoom-in-95 duration-150 font-sans">
+            <div className="flex items-start gap-4">
+              <div className="w-12 h-12 rounded-2xl bg-red-50 border border-red-200 text-red-600 flex items-center justify-center shrink-0">
+                <AlertCircle className="w-6 h-6" />
+              </div>
+              <div className="space-y-1">
+                <h3 className="text-base font-black text-slate-900">
+                  Delete Study Material
+                </h3>
+                <p className="text-xs font-bold text-slate-500 line-clamp-1">
+                  {resourcePendingDelete.title}
+                </p>
+              </div>
+            </div>
+
+            <div className="p-3.5 rounded-2xl bg-amber-50 border border-amber-200/80 text-amber-950 text-xs space-y-1">
+              <p className="font-extrabold text-amber-900">
+                Warning: Permanent Data Erasure
+              </p>
+              <p className="text-[11px] leading-relaxed text-amber-800">
+                This action will completely erase this study material, its extracted lesson content, and all associated vector embeddings from the Knowledge Vault and memory. This action cannot be undone.
+              </p>
+            </div>
+
+            <div className="flex items-center justify-end gap-3 pt-2">
+              <button
+                type="button"
+                onClick={() => setResourcePendingDelete(null)}
+                disabled={isDeletingResource}
+                className="px-4 py-2.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 text-xs font-bold transition-all cursor-pointer disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmDeleteResource}
+                disabled={isDeletingResource}
+                className="px-4 py-2.5 rounded-xl bg-red-600 hover:bg-red-700 text-white text-xs font-bold transition-all shadow-xs flex items-center gap-2 cursor-pointer disabled:opacity-50"
+              >
+                {isDeletingResource ? (
+                  <>
+                    <RotateCw className="w-3.5 h-3.5 animate-spin" />
+                    <span>Erasing from Memory...</span>
+                  </>
+                ) : (
+                  <>
+                    <Trash2 className="w-3.5 h-3.5" />
+                    <span>Yes, Delete Permanently</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

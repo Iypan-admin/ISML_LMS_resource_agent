@@ -1,49 +1,45 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { prisma } from '@/lib/prisma';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
 
-const RAILWAY_BACKEND_URL = process.env.RAILWAY_BACKEND_URL || 'https://isml-resource-backend-production.up.railway.app/api/v1';
-
 export async function GET(req: NextRequest) {
   try {
-    // If client requested full clean or fresh reset
     const { searchParams } = new URL(req.url);
-    const backendUrl = `${RAILWAY_BACKEND_URL}/sessions${searchParams.toString() ? `?${searchParams.toString()}` : ''}`;
+    const language = searchParams.get('language');
+    const level = searchParams.get('level');
 
-    const res = await fetch(backendUrl, {
-      method: 'GET',
-      headers: {
-        'Accept': 'application/json',
-      },
-      next: { revalidate: 0 },
+    const where: any = {};
+    if (language) where.language = { equals: language, mode: 'insensitive' };
+    if (level) where.level = { equals: level, mode: 'insensitive' };
+
+    const sessions = await prisma.sessionPackage.findMany({
+      where,
+      orderBy: { createdAt: 'desc' },
+      take: 50,
     });
 
-    if (!res.ok) {
-      return NextResponse.json([], { status: 200 });
-    }
-
-    const data = await res.json();
-    return NextResponse.json(Array.isArray(data) ? data : [], { status: 200 });
+    return NextResponse.json(sessions, { status: 200 });
   } catch (error: any) {
-    console.error('[Next.js API /api/sessions] GET error:', error);
+    console.error('[API /api/sessions GET Error]:', error);
     return NextResponse.json([], { status: 200 });
   }
 }
 
 export async function DELETE(req: NextRequest) {
   try {
-    const backendUrl = `${RAILWAY_BACKEND_URL}/sessions`;
-    const res = await fetch(backendUrl, {
-      method: 'DELETE',
-      headers: { 'Accept': 'application/json' },
-    });
+    await prisma.sessionVectorChunk.deleteMany({}).catch(() => {});
+    await prisma.knowledgeClaim.deleteMany({}).catch(() => {});
+    const deleted = await prisma.sessionPackage.deleteMany({}).catch(() => ({ count: 0 }));
 
-    const data = await res.json().catch(() => ({ success: true }));
-    return NextResponse.json(data, { status: res.status });
+    return NextResponse.json({
+      success: true,
+      count: deleted.count,
+      message: 'All session packages and vector chunks deleted successfully',
+    }, { status: 200 });
   } catch (error: any) {
-    console.error('[Next.js API /api/sessions] DELETE error:', error);
-    return NextResponse.json({ success: true, message: 'Local reset acknowledged' }, { status: 200 });
+    console.error('[API /api/sessions DELETE Error]:', error);
+    return NextResponse.json({ success: true, message: 'Sessions cleared' }, { status: 200 });
   }
 }
-

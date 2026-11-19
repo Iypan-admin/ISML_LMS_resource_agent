@@ -1,0 +1,858 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "debian-openssl-3.0.x", "linux-musl-openssl-3.0.x"]
+}
+
+// =============================================================================
+// ENUMS
+// =============================================================================
+
+enum ResourceStatus {
+  DRAFT
+  PENDING_REVIEW
+  CHANGES_REQUIRED
+  APPROVED
+  PUBLISHED
+  REJECTED
+  ARCHIVED
+}
+
+enum SourceOriginType {
+  EXTERNAL
+  AI_GENERATED
+  UPLOADED
+  INTERNAL
+}
+
+enum SourceType {
+  ORGANIZATION
+  WEB_PORTAL
+  YOUTUBE_CHANNEL
+  PUBLISHER
+  COMMUNITY
+  INTERNAL_STUDIO
+}
+
+enum ResourceType {
+  WEBSITE
+  COURSE
+  ARTICLE
+  VIDEO
+  YOUTUBE_VIDEO
+  PODCAST
+  AUDIO
+  PDF
+  WORKSHEET
+  EXERCISE
+  QUIZ
+  GRAMMAR_REFERENCE
+  VOCABULARY_LIST
+  DIALOGUE
+  INTERACTIVE_EXERCISE
+}
+
+enum CEFRLevel {
+  A1
+  A2
+  B1
+  B2
+  C1
+  C2
+}
+
+enum CourseTrackMode {
+  STANDARD           // 12 Months Track
+  INTERNSHIP         // 6 to 8 Months Track
+  SUPER_INTERNSHIP   // 3 to 5 Months Fast-Track
+}
+
+enum AIAnalysisType {
+  CLASSIFICATION
+  QUALITY_SUITABILITY
+  DUPLICATE_CHECK
+  FULL_ENRICHMENT
+}
+
+enum AIAnalysisStatus {
+  QUEUED
+  IN_PROGRESS
+  COMPLETED
+  FAILED
+}
+
+enum AIRecommendation {
+  APPROVED_RECOMMENDED
+  NEEDS_HUMAN_REVIEW
+  CHANGES_REQUIRED
+  REJECT_NOT_SUITABLE
+}
+
+enum CopyrightRiskLevel {
+  LOW_CONCERN
+  REVIEW_REQUIRED
+  RESTRICTED
+  UNKNOWN
+}
+
+enum ReviewDecision {
+  APPROVED
+  REQUESTED_CHANGES
+  REJECTED
+}
+
+enum ContributorRole {
+  TUTOR
+  FACULTY
+  CONTENT_CREATOR
+  REVIEWER
+  ORGANIZATION
+  DISCOVERER
+}
+
+enum ActorType {
+  USER
+  SYSTEM_AGENT
+  EXTERNAL_CONTRIBUTOR
+}
+
+enum DiscoveryResultStatus {
+  NEW
+  DUPLICATE
+  INVALID
+  ACCEPTED
+  REJECTED
+}
+
+enum ProcessingStatus {
+  PENDING
+  PROCESSING
+  READY
+  FAILED
+}
+
+enum ApprovalStatus {
+  DRAFT
+  PENDING_REVIEW
+  CHANGES_REQUIRED
+  APPROVED
+  REJECTED
+}
+
+enum PublicationStatus {
+  UNPUBLISHED
+  PUBLISHED
+  ARCHIVED
+}
+
+enum CurriculumLockStatus {
+  DRAFT
+  PENDING_REVIEW
+  APPROVED_LOCKED
+}
+
+enum ProficiencyFramework {
+  CEFR
+  JLPT
+  TOPIK
+  ACTFL
+  CUSTOM
+}
+
+// =============================================================================
+// DOMAIN MASTER MODELS
+// =============================================================================
+
+model Language {
+  id          String   @id @default(uuid())
+  code        String   @unique // e.g. 'de', 'fr', 'es'
+  name        String   // e.g. 'German'
+  nativeName  String   // e.g. 'Deutsch'
+  flagEmoji   String?  // e.g. '🇩🇪'
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  courses     Course[]
+  topics      Topic[]
+  resources   Resource[]
+
+  @@map("languages")
+}
+
+model Course {
+  id          String   @id @default(uuid())
+  languageId  String
+  code        String   // e.g. 'de-gen'
+  title       String   // e.g. 'General German Communication'
+  description String?
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  language          Language           @relation(fields: [languageId], references: [id], onDelete: Restrict)
+  resources         ResourceCourse[]
+  masterCurriculums MasterCurriculum[]
+
+  @@unique([languageId, code])
+  @@map("courses")
+}
+
+model Level {
+  id          String    @id @default(uuid())
+  code        CEFRLevel @unique // A1, A2, B1, B2, C1, C2
+  name        String    // e.g. 'Level A1 - Beginner'
+  rank        Int       // 1 to 6
+
+  resourceLevels ResourceLevel[]
+
+  @@map("levels")
+}
+
+model Category {
+  id           String   @id @default(uuid())
+  code         String   @unique // e.g. 'grammar'
+  name         String   // e.g. 'Grammar'
+  slug         String   @unique
+  description  String?
+  displayOrder Int      @default(0)
+
+  resourceCategories ResourceCategory[]
+
+  @@map("categories")
+}
+
+model Skill {
+  id          String   @id @default(uuid())
+  code        String   @unique // e.g. 'speaking'
+  name        String   // e.g. 'Speaking'
+  slug        String   @unique
+  description String?
+
+  resourceSkills ResourceSkill[]
+
+  @@map("skills")
+}
+
+model Topic {
+  id            String   @id @default(uuid())
+  languageId    String
+  code          String   // e.g. 'greetings'
+  title         String   // e.g. 'Greetings & Farewells'
+  slug          String
+  description   String?
+  parentTopicId String?
+
+  language      Language        @relation(fields: [languageId], references: [id], onDelete: Restrict)
+  parentTopic   Topic?          @relation("TopicHierarchy", fields: [parentTopicId], references: [id])
+  subTopics     Topic[]         @relation("TopicHierarchy")
+  resourceTopics ResourceTopic[]
+
+  @@unique([languageId, slug])
+  @@map("topics")
+}
+
+model Source {
+  id          String     @id @default(uuid())
+  name        String     // e.g. 'Deutsche Welle'
+  domain      String?    // e.g. 'dw.com'
+  baseUrl     String?
+  sourceType  SourceType @default(WEB_PORTAL)
+  description String?
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+
+  resources   Resource[]
+  collections ResourceCollection[]
+
+  @@map("sources")
+}
+
+model ResourceCollection {
+  id          String   @id @default(uuid())
+  sourceId    String?
+  title       String   // e.g. 'DW Nicos Weg Series'
+  slug        String   @unique
+  description String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  source      Source?                  @relation(fields: [sourceId], references: [id], onDelete: SetNull)
+  items       ResourceCollectionItem[]
+
+  @@map("resource_collections")
+}
+
+model Contributor {
+  id          String          @id @default(uuid())
+  name        String          // e.g. 'Dr. Sarah Weber'
+  email       String?         @unique
+  role        ContributorRole @default(TUTOR)
+  bio         String?
+  avatarUrl   String?
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+
+  contributions ResourceContribution[]
+
+  @@map("contributors")
+}
+
+// =============================================================================
+// CORE RESOURCE ENTITY
+// =============================================================================
+
+model Resource {
+  id                String           @id @default(uuid())
+  slug              String           @unique
+  title             String
+  description       String
+  languageId        String
+  sourceId          String?
+  sourceType        SourceOriginType @default(AI_GENERATED)
+  resourceType      ResourceType
+  status            ResourceStatus   @default(DRAFT)
+  originalUrl       String?
+  canonicalUrl      String?
+  normalizedUrl     String?          // Cleaned URL for display/reference
+  urlHash           String?          // SHA-256 fingerprint for O(1) duplicate checking
+  thumbnailUrl      String?
+  authorName        String?
+  durationSeconds   Int?
+  currentVersion    Int              @default(1)
+  publishedAt       DateTime?
+  publishedLocation String?
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
+
+  // Multi-Tenancy & Academic Governance Lifecycles
+  tenantId          String               @default("inst_legacy_quarantine")
+  isGlobal          Boolean              @default(false)
+  processingStatus  ProcessingStatus     @default(PENDING)
+  processingProgress Int                 @default(0)
+  failureReason     String?              @db.Text
+  approvalStatus    ApprovalStatus       @default(DRAFT)
+  publicationStatus PublicationStatus    @default(UNPUBLISHED)
+  fileHash          String?              // SHA-256 binary hash for deduplication
+  framework         ProficiencyFramework @default(CEFR)
+  cefrLevel         CEFRLevel?           // Nullable: unclassified until verified!
+  pageCount         Int?
+  wordCount         Int?
+  tokenCount        Int?
+
+  language          Language                 @relation(fields: [languageId], references: [id], onDelete: Restrict)
+  source            Source?                  @relation(fields: [sourceId], references: [id], onDelete: SetNull)
+
+  courses           ResourceCourse[]
+  levels            ResourceLevel[]
+  categories        ResourceCategory[]
+  skills            ResourceSkill[]
+  topics            ResourceTopic[]
+  collections       ResourceCollectionItem[]
+  contributions     ResourceContribution[]
+  aiAnalyses        AIAnalysis[]
+  copyrightAnalyses CopyrightAnalysis[]
+  versions          ResourceVersion[]
+  reviews           ResourceReview[]
+  auditLogs         AuditLog[]
+  fileStorage       FileStorage?
+  discoveryResults  DiscoveryResult[]
+  chunks            SessionVectorChunk[]
+  claims            KnowledgeClaim[]
+  curriculumPeriodResources CurriculumPeriodResource[]
+
+  @@index([languageId, status, updatedAt])
+  @@index([tenantId, languageId, processingStatus, approvalStatus])
+  @@index([fileHash])
+  @@index([urlHash])
+  @@index([status])
+  @@map("resources")
+}
+
+// =============================================================================
+// MANY-TO-MANY JUNCTIONS
+// =============================================================================
+
+model ResourceCourse {
+  resourceId String
+  courseId   String
+
+  resource   Resource @relation(fields: [resourceId], references: [id], onDelete: Cascade)
+  course     Course   @relation(fields: [courseId], references: [id], onDelete: Restrict)
+
+  @@id([resourceId, courseId])
+  @@map("resource_courses")
+}
+
+model ResourceLevel {
+  resourceId String
+  levelId    String
+
+  resource   Resource @relation(fields: [resourceId], references: [id], onDelete: Cascade)
+  level      Level    @relation(fields: [levelId], references: [id], onDelete: Restrict)
+
+  @@id([resourceId, levelId])
+  @@map("resource_levels")
+}
+
+model ResourceCategory {
+  resourceId String
+  categoryId String
+
+  resource   Resource @relation(fields: [resourceId], references: [id], onDelete: Cascade)
+  category   Category @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+
+  @@id([resourceId, categoryId])
+  @@map("resource_categories")
+}
+
+model ResourceSkill {
+  resourceId String
+  skillId    String
+
+  resource   Resource @relation(fields: [resourceId], references: [id], onDelete: Cascade)
+  skill      Skill    @relation(fields: [skillId], references: [id], onDelete: Restrict)
+
+  @@id([resourceId, skillId])
+  @@map("resource_skills")
+}
+
+model ResourceTopic {
+  resourceId String
+  topicId    String
+
+  resource   Resource @relation(fields: [resourceId], references: [id], onDelete: Cascade)
+  topic      Topic    @relation(fields: [topicId], references: [id], onDelete: Restrict)
+
+  @@id([resourceId, topicId])
+  @@map("resource_topics")
+}
+
+model ResourceCollectionItem {
+  collectionId String
+  resourceId   String
+  displayOrder Int      @default(0)
+  addedAt      DateTime @default(now())
+
+  collection   ResourceCollection @relation(fields: [collectionId], references: [id], onDelete: Cascade)
+  resource     Resource           @relation(fields: [resourceId], references: [id], onDelete: Cascade)
+
+  @@id([collectionId, resourceId])
+  @@map("resource_collection_items")
+}
+
+model ResourceContribution {
+  resourceId    String
+  contributorId String
+  role          ContributorRole @default(TUTOR)
+
+  resource      Resource    @relation(fields: [resourceId], references: [id], onDelete: Cascade)
+  contributor   Contributor @relation(fields: [contributorId], references: [id], onDelete: Restrict)
+
+  @@id([resourceId, contributorId, role])
+  @@map("resource_contributions")
+}
+
+// =============================================================================
+// AI ANALYSIS, COPYRIGHT & HISTORY
+// =============================================================================
+
+model AIAnalysis {
+  id                     String           @id @default(uuid())
+  resourceId             String
+  analysisType           AIAnalysisType   @default(FULL_ENRICHMENT)
+  status                 AIAnalysisStatus @default(COMPLETED)
+  relevanceScore         Int              @default(0) // 0-100
+  levelMatchScore        Int              @default(0)
+  languageCorrectness    Int              @default(0)
+  skillMatchScore        Int              @default(0)
+  completenessScore      Int              @default(0)
+  overallQualityScore    Int              @default(0)
+  aiSummary              String
+  keyVocabulary          Json?            // Array of vocabulary strings
+  detectedCEFR           CEFRLevel        @default(A1)
+  aiRecommendation       AIRecommendation @default(NEEDS_HUMAN_REVIEW)
+  recommendationReason   String
+  modelProvider          String           @default("OpenAI")
+  modelName              String           @default("gpt-4o")
+  promptVersion          String           @default("v1.0")
+  confidenceScore        Float            @default(0.95)
+  rawInputPayload        Json?            // Raw input prompt parameters
+  rawOutputPayload       Json?            // Raw LLM output response
+  createdAt              DateTime         @default(now())
+
+  resource               Resource         @relation(fields: [resourceId], references: [id], onDelete: Cascade)
+
+  @@map("ai_analyses")
+}
+
+model CopyrightAnalysis {
+  id                    String             @id @default(uuid())
+  resourceId            String
+  sourceName            String
+  sourceUrl             String?
+  license               String
+  attributionRequired   Boolean            @default(false)
+  commercialUsageAllowed Boolean           @default(true)
+  modificationAllowed   Boolean            @default(true)
+  redistributionAllowed Boolean            @default(true)
+  hostingPermission     Boolean            @default(true)
+  riskLevel             CopyrightRiskLevel @default(LOW_CONCERN)
+  riskExplanation       String
+  recommendedAction     String
+  evidence              Json?              // Extracted license evidence text/snippets
+  isCurrent             Boolean            @default(true) // History-aware evaluation marker
+  evaluatedByActorId    String?
+  evaluatedByActorType  ActorType          @default(SYSTEM_AGENT)
+  evaluatedAt           DateTime           @default(now())
+
+  resource              Resource           @relation(fields: [resourceId], references: [id], onDelete: Cascade)
+
+  @@index([resourceId, isCurrent])
+  @@map("copyright_analyses")
+}
+
+model ResourceVersion {
+  id             String    @id @default(uuid())
+  resourceId     String
+  versionNumber  Int
+  title          String
+  description    String
+  contentPayload Json      // Structured JSON payload for dialogues, worksheets, quizzes
+  changeReason   String?
+  actorId        String?
+  actorType      ActorType @default(USER)
+  actorName      String    @default("System Curator")
+  createdAt      DateTime  @default(now())
+
+  resource       Resource  @relation(fields: [resourceId], references: [id], onDelete: Cascade)
+
+  @@unique([resourceId, versionNumber])
+  @@map("resource_versions")
+}
+
+model ResourceReview {
+  id           String         @id @default(uuid())
+  resourceId   String
+  actorId      String?
+  actorType    ActorType      @default(USER)
+  reviewerName String
+  decision     ReviewDecision
+  comments     String?
+  createdAt    DateTime       @default(now())
+
+  resource     Resource       @relation(fields: [resourceId], references: [id], onDelete: Cascade)
+
+  @@map("resource_reviews")
+}
+
+model AuditLog {
+  id         String    @id @default(uuid())
+  resourceId String?
+  actorId    String?
+  actorType  ActorType @default(USER)
+  actorName  String
+  action     String    // e.g. 'CREATED', 'STATUS_CHANGED', 'PUBLISHED'
+  details    String
+  metadata   Json?
+  createdAt  DateTime  @default(now())
+
+  resource   Resource? @relation(fields: [resourceId], references: [id], onDelete: SetNull)
+
+  @@map("audit_logs")
+}
+
+// =============================================================================
+// DISCOVERY PIPELINE & FILE STORAGE
+// =============================================================================
+
+model DiscoveryJob {
+  id                 String            @id @default(uuid())
+  title              String
+  targetLanguageIds  Json              // Array of language IDs
+  targetLevels       Json              // Array of CEFRLevel codes
+  targetSkills       Json?             // Array of target skill codes
+  searchKeywords     String
+  status             String            @default("QUEUED")
+  createdAt          DateTime          @default(now())
+  completedAt        DateTime?
+
+  results            DiscoveryResult[]
+
+  @@map("discovery_jobs")
+}
+
+model DiscoveryResult {
+  id            String                @id @default(uuid())
+  jobId         String
+  resourceId    String?               // References deduplicated resource if accepted
+  title         String
+  description   String
+  sourceUrl     String
+  canonicalUrl  String?
+  urlHash       String?
+  sourceName    String
+  qualityScore  Int                   @default(0)
+  copyrightRisk CopyrightRiskLevel    @default(LOW_CONCERN)
+  status        DiscoveryResultStatus @default(NEW)
+  discoveredAt  DateTime              @default(now())
+
+  job           DiscoveryJob          @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  resource      Resource?             @relation(fields: [resourceId], references: [id], onDelete: SetNull)
+
+  @@index([jobId])
+  @@index([urlHash])
+  @@map("discovery_results")
+}
+
+model FileStorage {
+  id              String   @id @default(uuid())
+  resourceId      String   @unique
+  storageKey      String   // Supabase / S3 / R2 storage key
+  fileName        String
+  mimeType        String
+  fileSize        BigInt   // BigInt to support large media files
+  checksum        String?
+  storageProvider String   @default("SUPABASE")
+  uploadedAt      DateTime @default(now())
+
+  resource        Resource @relation(fields: [resourceId], references: [id], onDelete: Cascade)
+
+  @@map("file_storage")
+}
+
+// =============================================================================
+// ISML CURRICULUM & SESSION PACKAGES (Phase 2)
+// =============================================================================
+
+enum SessionStatus {
+  DRAFT
+  READY
+  SYNCED_TO_LMS
+}
+
+model SessionPackage {
+  id                    String          @id @default(uuid())
+  sessionId             String          @unique // e.g. isml_session_a1b2c3d4
+  title                 String
+  language              String          // French, German, Japanese, Spanish, Korean
+  level                 String          // A1, A2, B1, etc.
+  trackMode             CourseTrackMode @default(STANDARD) // STANDARD (12 mo), INTERNSHIP (6-8 mo), SUPER_INTERNSHIP (3-5 mo)
+  topic                 String
+  sourceUrl             String?
+  tutorFileRef          String?
+
+  // Full Structured Payload (JSON)
+  sessionPlanJson       Json            // Objectives, steps, timing, homework
+  teacherMaterialsJson  Json            // Slides, teacher cues, handout summary
+  studentLsrwJson       Json            // Listening, Reading, Speaking, Writing + Evaluation Rubrics
+  deliverablesJson      Json?           // Phase 8: Segregated Teacher, Student, and Assessment packages
+  lmsPackageJson        Json?           // Phase 10: SCORM / IMS / QTI export package
+
+  pptxFilePath          String?
+  pptxDownloadUrl       String?
+  status                SessionStatus   @default(READY)
+  lmsSyncedAt           DateTime?
+
+  // Multi-Tenancy & Macro-Curriculum Lineage
+  tenantId              String          @default("inst_legacy_quarantine")
+  masterCurriculumId    String?
+  curriculumPeriodId    String?
+
+  masterCurriculum      MasterCurriculum? @relation(fields: [masterCurriculumId], references: [id], onDelete: SetNull)
+  curriculumPeriod      CurriculumPeriod? @relation(fields: [curriculumPeriodId], references: [id], onDelete: SetNull)
+
+  createdAt             DateTime        @default(now())
+  updatedAt             DateTime        @updatedAt
+
+  // Vectorized and split chunks for RAG grounding
+  chunks                SessionVectorChunk[]
+  claims                KnowledgeClaim[]
+
+  @@index([language, level, trackMode])
+  @@index([tenantId])
+  @@map("session_packages")
+}
+
+model SessionVectorChunk {
+  id                    String              @id @default(uuid())
+  sessionId             String?             // Optional: link to session package
+  sessionPackage        SessionPackage?     @relation(fields: [sessionId], references: [sessionId], onDelete: Cascade)
+  resourceId            String?             // Optional: link to central resource
+  resource              Resource?           @relation(fields: [resourceId], references: [id], onDelete: SetNull) // Safe archival (never cascade delete knowledge)
+  parentChunkId         String?             // Hierarchical Parent-Child link
+  sourceType            String              // DOCUMENT, WEB_SCRAPE, VIDEO_TRANSCRIPT, AUDIO
+  sourceTitle           String              // e.g. "French_Grammar.pdf", "YouTube: Café Dialogue"
+  chunkIndex            Int
+  totalChunks           Int                 @default(1)
+  content               String              @db.Text
+  tokenCount            Int                 @default(0)
+  pageNumber            Int?
+  timeOffsetSec         Int?
+  simHash               String?             // 64-bit SimHash for near-duplicate text
+  cefrLevel             String?             // A1, A2, etc.
+  language              String?             // French, Spanish, etc.
+  metadata              Json?               // keywords, grammar tags, timestamps
+
+  // Canonical Vector & Provenance Tracking (Zero Silent Defaults for Legacy Records)
+  embeddingProvider     String?             // 'GEMINI' | 'OPENAI' | NULL (Legacy unverified)
+  embeddingModel        String?             // 'gemini-embedding-2' | NULL
+  embeddingVersion      String?             // 'v1.0' | NULL
+  embeddingDimension    Int?                // 768 | NULL
+  duplicateClusterId    String?             // Near-duplicate cluster identifier
+  isVariant             Boolean             @default(false) // True if pedagogical variation
+
+  createdAt             DateTime            @default(now())
+
+  parentChunk           SessionVectorChunk?  @relation("ChunkHierarchy", fields: [parentChunkId], references: [id])
+  childChunks           SessionVectorChunk[] @relation("ChunkHierarchy")
+  claims                KnowledgeClaim[]
+
+  @@index([sessionId])
+  @@index([resourceId])
+  @@index([sourceType])
+  @@index([parentChunkId])
+  @@index([duplicateClusterId])
+  @@map("session_vector_chunks")
+}
+
+// =============================================================================
+// CONTINUOUS KNOWLEDGE CLAIMS & CONTRADICTION ENGINE
+// =============================================================================
+
+model KnowledgeClaim {
+  id              String             @id @default(uuid())
+  resourceId      String?
+  sessionId       String?
+  chunkId         String
+  subject         String             // Entity / Subject
+  predicate       String             // Relation / Predicate
+  object          String             // Fact / Value / Object
+  epistemicStatus String             @default("FACT") // FACT, HYPOTHESIS, OPINION, DEPRECATED
+  confidence      Float              @default(1.0)
+  verifications   Int                @default(1)
+  verbatimQuote   String?            @db.Text
+  createdAt       DateTime           @default(now())
+
+  resource        Resource?          @relation(fields: [resourceId], references: [id], onDelete: Cascade)
+  session         SessionPackage?    @relation(fields: [sessionId], references: [sessionId], onDelete: Cascade)
+  chunk           SessionVectorChunk @relation(fields: [chunkId], references: [id], onDelete: Cascade)
+
+  contradictionsA KnowledgeContradiction[] @relation("ClaimA")
+  contradictionsB KnowledgeContradiction[] @relation("ClaimB")
+
+  @@index([subject])
+  @@index([resourceId])
+  @@index([sessionId])
+  @@index([chunkId])
+  @@map("knowledge_claims")
+}
+
+model KnowledgeContradiction {
+  id                String          @id @default(uuid())
+  claimAId          String
+  claimBId          String
+  contradictionType String          // DIRECT_OPPOSITE, NUMERICAL_DISCREPANCY, TEMPORAL_SUPERSEDENCE
+  description       String          @db.Text
+  detectedAt        DateTime        @default(now())
+
+  claimA            KnowledgeClaim  @relation("ClaimA", fields: [claimAId], references: [id], onDelete: Cascade)
+  claimB            KnowledgeClaim  @relation("ClaimB", fields: [claimBId], references: [id], onDelete: Cascade)
+
+  @@unique([claimAId, claimBId])
+  @@map("knowledge_contradictions")
+}
+
+// =============================================================================
+// NORMALIZED MASTER CURRICULUM ARCHITECTURE (Phase 2 Model Definitions)
+// =============================================================================
+
+model MasterCurriculum {
+  id                  String                @id @default(uuid())
+  tenantId            String                @default("inst_legacy_quarantine")
+  courseId            String
+  title               String                // e.g. "German A1 Comprehensive School Curriculum"
+  targetLanguage      String                // German, French, Spanish, Japanese, Korean
+  framework           ProficiencyFramework  @default(CEFR)
+  targetLevel         String                // A1, N5, TOPIK I
+  institutionType     String                @default("COLLEGE") // SCHOOL | COLLEGE
+  totalPeriods        Int                   @default(60)        // 103 or 60
+  courseHours         Int                   @default(80)
+  cadenceWeekly       Int                   @default(2)
+  periodMinutes       Int                   @default(60)
+
+  versionNumber       Int                   @default(1)
+  versionLabel        String                @default("v1.0")
+  parentCurriculumId  String?
+  lockStatus          CurriculumLockStatus  @default(DRAFT)
+  lockedAt            DateTime?
+  lockedByUserId      String?
+
+  createdAt           DateTime              @default(now())
+  updatedAt           DateTime              @updatedAt
+
+  course              Course                @relation(fields: [courseId], references: [id], onDelete: Restrict)
+  parentCurriculum    MasterCurriculum?     @relation("CurriculumLineage", fields: [parentCurriculumId], references: [id])
+  childRevisions      MasterCurriculum[]    @relation("CurriculumLineage")
+  modules             CurriculumModule[]
+  sessions            SessionPackage[]
+
+  @@unique([tenantId, courseId, versionNumber])
+  @@index([tenantId, targetLanguage, targetLevel, lockStatus])
+  @@map("master_curriculums")
+}
+
+model CurriculumModule {
+  id                  String                @id @default(uuid())
+  curriculumId        String
+  moduleIndex         Int                   // Module 1, Module 2...
+  title               String                // e.g. "Module 1: Foundations & Salutations"
+  levelCompetence     String?
+  periodsCount        Int                   @default(1)
+
+  curriculum          MasterCurriculum      @relation(fields: [curriculumId], references: [id], onDelete: Cascade)
+  periods             CurriculumPeriod[]
+
+  @@map("curriculum_modules")
+}
+
+model CurriculumPeriod {
+  id                  String                     @id @default(uuid())
+  moduleId            String
+  periodNumber        Int                        // Period 1 to N (dynamically configured)
+  weekNumber          Int                        @default(1)
+  periodType          String                     @default("INSTRUCTIONAL") // INSTRUCTIONAL | REVIEW_CONSOLIDATION | ASSESSMENT_MILESTONE
+  durationMinutes     Int?                       @default(45)              // User-selected duration: 30, 45, 60, 90 min
+  topicTitle          String
+  grammarObjective    String?                    @db.Text
+  vocabularyScope     String[]
+  canDoStatements     String[]                   @default([])
+  lsrwFocus           String?
+
+  module              CurriculumModule           @relation(fields: [moduleId], references: [id], onDelete: Cascade)
+  resources           CurriculumPeriodResource[]
+  sessionPackages     SessionPackage[]
+
+  @@map("curriculum_periods")
+}
+
+model CurriculumPeriodResource {
+  id                  String            @id @default(uuid())
+  curriculumPeriodId  String
+  resourceId          String?           // Nullable if resource is archived
+  sourceTitleSnapshot String
+  sourceTypeSnapshot  String            @default("DOCUMENT")
+  pageNumber          Int?
+  citationExcerpt     String?           @db.Text
+  addedAt             DateTime          @default(now())
+
+  curriculumPeriod    CurriculumPeriod  @relation(fields: [curriculumPeriodId], references: [id], onDelete: Cascade)
+  resource            Resource?         @relation(fields: [resourceId], references: [id], onDelete: SetNull) // Safe archival (never cascade delete)
+
+  @@map("curriculum_period_resources")
+}
+

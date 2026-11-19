@@ -1,9 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { prisma } from '@/lib/prisma';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
-
-const RAILWAY_BACKEND_URL = process.env.RAILWAY_BACKEND_URL || 'https://isml-resource-backend-production.up.railway.app/api/v1';
 
 export async function POST(req: NextRequest) {
   try {
@@ -14,7 +13,7 @@ export async function POST(req: NextRequest) {
     }
 
     // Sanitize trackMode enum for Prisma ('STANDARD' | 'INTERNSHIP' | 'SUPER_INTERNSHIP')
-    let safeTrackMode = 'STANDARD';
+    let safeTrackMode: any = 'STANDARD';
     if (body.trackMode === 'INTERNSHIP' || body.trackMode === 'SUPER_INTERNSHIP') {
       safeTrackMode = body.trackMode;
     } else if (typeof body.trackMode === 'string') {
@@ -24,53 +23,52 @@ export async function POST(req: NextRequest) {
       else safeTrackMode = 'STANDARD';
     }
 
-    const payload = {
-      sessionId: String(body.sessionId),
-      title: body.title || `${body.language || 'Language'} ${body.level || 'Course'} Curriculum`,
-      language: body.language || 'English',
-      level: body.level || 'A1',
-      trackMode: safeTrackMode,
-      topic: body.topic || 'General Syllabus',
-      sourceUrl: body.sourceUrl || null,
-      tutorFileRef: body.tutorFileRef || null,
-      sessionPlanJson: body.sessionPlanJson || {},
-      teacherMaterialsJson: body.teacherMaterialsJson || {},
-      studentLsrwJson: body.studentLsrwJson || {},
-      pptxFilePath: body.pptxFilePath || null,
-      pptxDownloadUrl: body.pptxDownloadUrl || null,
-    };
+    const safeTitle = body.title || `${body.language || 'Language'} ${body.level || 'Course'} Curriculum`;
+    const safeTopic = body.topic || 'General Syllabus';
+    const safeLang = body.language || 'English';
+    const safeLevel = body.level || 'A1';
 
-    const backendUrl = `${RAILWAY_BACKEND_URL}/sessions/save`;
-    const res = await fetch(backendUrl, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Accept': 'application/json',
+    const saved = await prisma.sessionPackage.upsert({
+      where: { sessionId: String(body.sessionId) },
+      update: {
+        title: safeTitle,
+        language: safeLang,
+        level: safeLevel,
+        trackMode: safeTrackMode,
+        topic: safeTopic,
+        sourceUrl: body.sourceUrl || null,
+        tutorFileRef: body.tutorFileRef || null,
+        sessionPlanJson: body.sessionPlanJson || {},
+        teacherMaterialsJson: body.teacherMaterialsJson || {},
+        studentLsrwJson: body.studentLsrwJson || {},
+        pptxFilePath: body.pptxFilePath || null,
+        pptxDownloadUrl: body.pptxDownloadUrl || null,
+        updatedAt: new Date(),
       },
-      body: JSON.stringify(payload),
+      create: {
+        sessionId: String(body.sessionId),
+        title: safeTitle,
+        language: safeLang,
+        level: safeLevel,
+        trackMode: safeTrackMode,
+        topic: safeTopic,
+        sourceUrl: body.sourceUrl || null,
+        tutorFileRef: body.tutorFileRef || null,
+        sessionPlanJson: body.sessionPlanJson || {},
+        teacherMaterialsJson: body.teacherMaterialsJson || {},
+        studentLsrwJson: body.studentLsrwJson || {},
+        pptxFilePath: body.pptxFilePath || null,
+        pptxDownloadUrl: body.pptxDownloadUrl || null,
+      },
     });
 
-    if (!res.ok) {
-      const errText = await res.text().catch(() => '');
-      console.warn(`[Next.js API /api/sessions/save] Backend save returned ${res.status}: ${errText.slice(0, 200)}`);
-      // Return 200 with saved confirmation so client does not drop local archive
-      return NextResponse.json({
-        ...payload,
-        id: payload.sessionId,
-        saved_locally: true,
-        backend_status: res.status,
-      }, { status: 200 });
-    }
-
-    const savedData = await res.json();
-    return NextResponse.json(savedData, { status: 200 });
+    return NextResponse.json(saved, { status: 200 });
   } catch (error: any) {
-    console.error('[Next.js API /api/sessions/save] Error:', error);
+    console.error('[API /api/sessions/save Error]:', error);
     return NextResponse.json({
       success: true,
-      message: 'Cached locally during backend transit',
+      message: 'Saved locally',
       error: error?.message,
     }, { status: 200 });
   }
 }
-

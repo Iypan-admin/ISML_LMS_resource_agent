@@ -40,14 +40,15 @@ export class ResourcesController {
   ) {
     const result = await this.resourcesService.uploadVaultResource(file, {
       title: body.title,
-      languageId: body.languageId,
+      languageId: body.languageId || body.language || body.languageName,
+      languageName: body.language || body.languageName || body.languageId,
       tenantId: body.tenantId,
       framework: body.framework,
       cefrLevel: body.cefrLevel,
       masterIndex: body.masterIndex,
       description: body.description,
       topicIds: body.topicIds ? (Array.isArray(body.topicIds) ? body.topicIds : [body.topicIds]) : undefined,
-    });
+    } as any);
     return result;
   }
 

@@ -487,15 +487,34 @@ export default function FacultyStudioPage() {
   useEffect(() => {
     if (typeof window !== 'undefined') {
       try {
-        const resetKey = 'isml_session_clean_reset_v7';
+        const resetKey = 'isml_fresh_clean_reset_v30';
         if (!localStorage.getItem(resetKey)) {
           localStorage.removeItem('isml_saved_sessions_archive');
           localStorage.removeItem('isml_last_curriculum_blueprint');
           localStorage.removeItem('isml_saved_external_resources');
+          localStorage.removeItem('isml_studio_saved_state');
+          localStorage.removeItem('isml_active_session_id');
+          localStorage.removeItem('isml_cached_backend_resources');
+          for (let i = localStorage.length - 1; i >= 0; i--) {
+            const k = localStorage.key(i);
+            if (k && (
+              k.startsWith('isml_session_') ||
+              k.startsWith('isml_curriculum_') ||
+              k.startsWith('isml_overrides_') ||
+              k.startsWith('isml_chat_') ||
+              k.startsWith('isml_last_')
+            )) {
+              localStorage.removeItem(k);
+            }
+          }
           sessionStorage.clear();
+          setSavedSessions([]);
+          setActiveSavedSession(null);
+          setProposedPlanner(null);
+          setSessionPackage(null);
           localStorage.setItem(resetKey, 'true');
-          // Clear backend packages on Railway so remote DB matches zero state
-          fetchBackendWithFallback('/api/sessions', { method: 'DELETE' }).catch(() => {});
+          // Clear backend packages so remote DB matches zero state
+          fetch('/api/sessions', { method: 'DELETE' }).catch(() => {});
         }
       } catch (e) {}
     }
@@ -1069,14 +1088,17 @@ export default function FacultyStudioPage() {
     let dbSessions: any[] = [];
     let isDbSuccess = false;
     try {
-      const res = await fetchBackendWithFallback('/api/sessions', { method: 'GET' });
-      if (res.ok) {
+      let res: Response | null = await fetch('/api/sessions', { signal: AbortSignal.timeout(2000) }).catch(() => null);
+      if (!res || !res.ok) {
+        res = await fetchBackendWithFallback('/api/sessions', { method: 'GET' }).catch(() => null);
+      }
+      if (res && res.ok) {
         const data = await res.json();
         dbSessions = Array.isArray(data) ? data : [];
         isDbSuccess = true;
       }
     } catch (err) {
-      console.warn('Backend history fetch offline, checking local cache:', err);
+      console.warn('History fetch notice:', err);
     }
 
     try {
@@ -1356,6 +1378,8 @@ export default function FacultyStudioPage() {
     // If active loaded session is deleted, reset active session
     if (activeSavedSession && (activeSavedSession.sessionId === sessionIdToDelete || activeSavedSession.id === sessionIdToDelete)) {
       setActiveSavedSession(null);
+      setProposedPlanner(null);
+      setSessionPackage(null);
     }
 
     // 2. Remove from localStorage archive
@@ -1369,19 +1393,22 @@ export default function FacultyStudioPage() {
       const activeBlueprintStr = localStorage.getItem('isml_last_curriculum_blueprint');
       if (activeBlueprintStr) {
         const bp = JSON.parse(activeBlueprintStr);
-        if (bp.session_id === sessionIdToDelete) {
+        if (bp.session_id === sessionIdToDelete || bp.sessionId === sessionIdToDelete) {
           localStorage.removeItem('isml_last_curriculum_blueprint');
+          localStorage.removeItem('isml_studio_saved_state');
+          localStorage.removeItem('isml_active_session_id');
         }
       }
     } catch (lsErr) {
       console.warn('Error clearing localStorage for deleted session:', lsErr);
     }
 
-    // 3. Call backend DELETE endpoint
+    // 3. Call DELETE endpoint
     try {
+      await fetch(`/api/sessions/${sessionIdToDelete}`, { method: 'DELETE' }).catch(() => null);
       await fetchBackendWithFallback(`/api/sessions/${sessionIdToDelete}`, {
         method: 'DELETE',
-      });
+      }).catch(() => null);
     } catch (backendErr) {
       console.warn('Backend delete error (offline/local):', backendErr);
     } finally {
@@ -1392,34 +1419,45 @@ export default function FacultyStudioPage() {
 
   // Clear all saved sessions from backend DB and local cache
   const handleClearAllSessions = async () => {
-    const confirmClear = window.confirm("Are you sure you want to completely clear ALL saved sessions and previous chats from the database? This action is permanent and cannot be undone.");
+    const confirmClear = window.confirm("Are you sure you want to completely clear ALL saved sessions and previous courses? This action is permanent and cannot be undone.");
     if (!confirmClear) return;
 
     setLoadingHistory(true);
     setSavedSessions([]);
     setActiveSavedSession(null);
+    setProposedPlanner(null);
+    setSessionPackage(null);
 
-    // 1. Clear client localStorage
+    // 1. Clear client localStorage & sessionStorage
     if (typeof window !== 'undefined') {
       try {
         localStorage.removeItem('isml_saved_sessions_archive');
         localStorage.removeItem('isml_last_curriculum_blueprint');
-        const keysToRemove: string[] = [];
-        for (let i = 0; i < localStorage.length; i++) {
+        localStorage.removeItem('isml_studio_saved_state');
+        localStorage.removeItem('isml_active_session_id');
+        localStorage.removeItem('isml_cached_backend_resources');
+        sessionStorage.clear();
+        for (let i = localStorage.length - 1; i >= 0; i--) {
           const k = localStorage.key(i);
-          if (k && (k.startsWith('isml_chat_thread_') || k.startsWith('isml_session_materials_') || k.startsWith('isml_overrides_'))) {
-            keysToRemove.push(k);
+          if (k && (
+            k.startsWith('isml_session_') ||
+            k.startsWith('isml_curriculum_') ||
+            k.startsWith('isml_overrides_') ||
+            k.startsWith('isml_chat_') ||
+            k.startsWith('isml_last_')
+          )) {
+            localStorage.removeItem(k);
           }
         }
-        keysToRemove.forEach(k => localStorage.removeItem(k));
       } catch (_) {}
     }
 
     // 2. Call backend DELETE /api/sessions endpoint
     try {
+      await fetch('/api/sessions', { method: 'DELETE' }).catch(() => null);
       await fetchBackendWithFallback('/api/sessions', {
         method: 'DELETE'
-      });
+      }).catch(() => null);
     } catch (err) {
       console.warn('Backend clear all error:', err);
     } finally {
@@ -1497,6 +1535,17 @@ export default function FacultyStudioPage() {
 
   useEffect(() => {
     setMounted(true);
+
+    // If fresh reset v30 is running on initial load, do not restore any legacy cached blueprint
+    const isReset = typeof window !== 'undefined' && !localStorage.getItem('isml_fresh_clean_reset_v30');
+    if (isReset) {
+      setProposedPlanner(null);
+      setActiveSavedSession(null);
+      setSessionPackage(null);
+      setSavedSessions([]);
+      return;
+    }
+
     fetchSavedSessions();
 
     // Check if there is a cached active blueprint in localStorage to restore on reload
@@ -2980,6 +3029,16 @@ export default function FacultyStudioPage() {
 
                   <button
                     type="button"
+                    onClick={handleClearAllSessions}
+                    disabled={loadingHistory || savedSessions.length === 0}
+                    className="p-1.5 rounded-xl bg-white border border-slate-200 text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer text-xs disabled:opacity-30 disabled:cursor-not-allowed"
+                    title="Clear All Saved Courses"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
+
+                  <button
+                    type="button"
                     onClick={fetchSavedSessions}
                     disabled={loadingHistory}
                     className="p-1.5 rounded-xl bg-white border border-slate-200 text-slate-600 hover:text-blue-600 hover:bg-blue-50 transition-colors cursor-pointer text-xs"
@@ -3226,12 +3285,9 @@ export default function FacultyStudioPage() {
                                 }
                               });
 
-                              // Fallback if empty
+                              // If no materials uploaded, do not display mock or empty grounding
                               if (parsedMaterials.length === 0) {
-                                parsedMaterials.push({
-                                  type: 'VAULT',
-                                  name: `Knowledge Vault ${activeSavedSession?.language || 'Language'} ${activeSavedSession?.level || 'A1.1'} Foundation Corpus`
-                                });
+                                return null;
                               }
 
                               return (
@@ -3247,7 +3303,7 @@ export default function FacultyStudioPage() {
                                         </span>
                                       </div>
                                       <p className="text-slate-600 leading-relaxed text-[11px] sm:text-xs font-medium">
-                                        This content was generated from the following study materials below. If you add more new materials in the Knowledge Vault, you can generate a new refined curriculum again anytime.
+                                        This content was generated from the following verified study materials below.
                                       </p>
                                     </div>
                                   </div>
@@ -3263,7 +3319,6 @@ export default function FacultyStudioPage() {
                                             title={`Uploaded Manual Material File: ${item.name}`}
                                           >
                                             <span className="text-emerald-700 font-extrabold flex items-center gap-1">
-                                              <span>📄</span>
                                               <span>Manual File:</span>
                                             </span>
                                             <span className="truncate max-w-[220px] font-mono text-[10px] font-bold text-emerald-900">{item.name}</span>
@@ -3281,7 +3336,6 @@ export default function FacultyStudioPage() {
                                             title={`Watch YouTube Video: ${item.url}`}
                                           >
                                             <span className="text-red-600 font-extrabold flex items-center gap-1">
-                                              <span>▶️</span>
                                               <span>YouTube Video:</span>
                                             </span>
                                             <span className="truncate max-w-[200px] font-mono text-[10px] underline text-red-800">{item.name}</span>
@@ -3299,7 +3353,6 @@ export default function FacultyStudioPage() {
                                             title={`Open Web Reference: ${item.url}`}
                                           >
                                             <span className="text-sky-700 font-bold flex items-center gap-1">
-                                              <span>🔗</span>
                                               <span>Link:</span>
                                             </span>
                                             <span className="truncate max-w-[200px] font-mono text-[10px] underline text-sky-800">{item.name}</span>
@@ -3313,7 +3366,6 @@ export default function FacultyStudioPage() {
                                           title={`Vault Study Resource: ${item.name}`}
                                         >
                                           <span className="text-blue-600 font-bold flex items-center gap-1">
-                                            <span>📚</span>
                                             <span>Vault:</span>
                                           </span>
                                           <span className="truncate max-w-[240px] font-mono text-[10px] font-bold text-slate-700">{item.name}</span>
@@ -5588,12 +5640,9 @@ export default function FacultyStudioPage() {
                   });
                 }
 
-                // Fallback if empty
+                // If no materials uploaded, do not display mock or empty grounding
                 if (parsedMaterials.length === 0) {
-                  parsedMaterials.push({
-                    type: 'VAULT',
-                    name: `Knowledge Vault ${sessionPackage?.language || selectedLanguage || 'Language'} ${sessionPackage?.level || selectedLevel || 'A1.1'} Foundation Corpus`
-                  });
+                  return null;
                 }
 
                 return (
@@ -5609,7 +5658,7 @@ export default function FacultyStudioPage() {
                           </span>
                         </div>
                         <p className="text-slate-600 leading-relaxed text-[11px] sm:text-xs font-medium">
-                          This content was generated from the following study materials below. If you add more new materials in the Knowledge Vault, you can generate a new refined curriculum again anytime.
+                          This content was generated from the following verified study materials below.
                         </p>
                       </div>
                       <Link
@@ -5631,7 +5680,6 @@ export default function FacultyStudioPage() {
                               title={`Uploaded Manual Material File: ${item.name}`}
                             >
                               <span className="text-emerald-700 font-extrabold flex items-center gap-1">
-                                <span>📄</span>
                                 <span>Manual File:</span>
                               </span>
                               <span className="truncate max-w-[220px] font-mono text-[10px] font-bold text-emerald-900">{item.name}</span>
@@ -5649,7 +5697,6 @@ export default function FacultyStudioPage() {
                               title={`Watch YouTube Video: ${item.url}`}
                             >
                               <span className="text-red-600 font-extrabold flex items-center gap-1">
-                                <span>▶️</span>
                                 <span>YouTube Video:</span>
                               </span>
                               <span className="truncate max-w-[200px] font-mono text-[10px] underline text-red-800">{item.name}</span>
@@ -5667,7 +5714,6 @@ export default function FacultyStudioPage() {
                               title={`Open Web Reference: ${item.url}`}
                             >
                               <span className="text-sky-700 font-bold flex items-center gap-1">
-                                <span>🔗</span>
                                 <span>Link:</span>
                               </span>
                               <span className="truncate max-w-[200px] font-mono text-[10px] underline text-sky-800">{item.name}</span>
@@ -5681,7 +5727,6 @@ export default function FacultyStudioPage() {
                             title={`Vault Study Resource: ${item.name}`}
                           >
                             <span className="text-blue-600 font-bold flex items-center gap-1">
-                              <span>📚</span>
                               <span>Vault:</span>
                             </span>
                             <span className="truncate max-w-[260px] font-mono text-[10px] font-bold text-slate-700">{item.name}</span>
