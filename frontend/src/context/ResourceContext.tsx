@@ -115,7 +115,15 @@ export function ResourceProvider({ children }: { children: React.ReactNode }) {
     }
     return [];
   });
-  const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [isLoading, setIsLoading] = useState<boolean>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const raw = localStorage.getItem('isml_cached_cloud_materials');
+        if (raw && JSON.parse(raw)?.length > 0) return false;
+      } catch (_) {}
+    }
+    return true;
+  });
   const [error, setError] = useState<string | null>(null);
   const [filters, setFilters] = useState<FilterState>(initialFilters);
 

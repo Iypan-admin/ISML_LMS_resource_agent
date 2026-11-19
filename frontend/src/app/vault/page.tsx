@@ -701,7 +701,11 @@ export default function KnowledgeVaultPage() {
           </div>
           <div>
             <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Total Materials</p>
-            <p className="text-xl font-black text-slate-800">{stats.total}</p>
+            {isLoading && resources.length === 0 ? (
+              <div className="h-6 w-12 bg-slate-200 animate-pulse rounded-md mt-1" />
+            ) : (
+              <p className="text-xl font-black text-slate-800">{stats.total}</p>
+            )}
           </div>
         </div>
 
@@ -711,7 +715,11 @@ export default function KnowledgeVaultPage() {
           </div>
           <div>
             <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Languages Available</p>
-            <p className="text-xl font-black text-emerald-700">{stats.activeLanguages}</p>
+            {isLoading && resources.length === 0 ? (
+              <div className="h-6 w-12 bg-slate-200 animate-pulse rounded-md mt-1" />
+            ) : (
+              <p className="text-xl font-black text-emerald-700">{stats.activeLanguages}</p>
+            )}
           </div>
         </div>
 
@@ -721,7 +729,11 @@ export default function KnowledgeVaultPage() {
           </div>
           <div>
             <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Video Lessons</p>
-            <p className="text-xl font-black text-rose-700">{stats.videoCount}</p>
+            {isLoading && resources.length === 0 ? (
+              <div className="h-6 w-12 bg-slate-200 animate-pulse rounded-md mt-1" />
+            ) : (
+              <p className="text-xl font-black text-rose-700">{stats.videoCount}</p>
+            )}
           </div>
         </div>
 
@@ -731,7 +743,11 @@ export default function KnowledgeVaultPage() {
           </div>
           <div>
             <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Documents & Web</p>
-            <p className="text-xl font-black text-purple-700">{stats.docCount + stats.webCount}</p>
+            {isLoading && resources.length === 0 ? (
+              <div className="h-6 w-12 bg-slate-200 animate-pulse rounded-md mt-1" />
+            ) : (
+              <p className="text-xl font-black text-purple-700">{stats.docCount + stats.webCount}</p>
+            )}
           </div>
         </div>
       </div>
@@ -988,7 +1004,19 @@ export default function KnowledgeVaultPage() {
           </div>
 
           {/* Catalog List */}
-          {resources.length === 0 ? (
+          {isLoading && resources.length === 0 ? (
+            <div className="p-12 text-center bg-white rounded-2xl border border-slate-200 shadow-xs space-y-3">
+              <RotateCw className="w-8 h-8 animate-spin text-blue-600 mx-auto" />
+              <div className="space-y-1">
+                <h3 className="text-sm font-black text-slate-800">
+                  Loading Knowledge Vault Materials...
+                </h3>
+                <p className="text-xs text-slate-400 max-w-sm mx-auto">
+                  Syncing academic curriculum files, textbooks, and lessons from cloud database.
+                </p>
+              </div>
+            </div>
+          ) : resources.length === 0 ? (
             <div className="p-10 text-center bg-white rounded-2xl border border-slate-200 shadow-xs space-y-3">
               <div className="w-12 h-12 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center mx-auto border border-blue-100">
                 <Database className="w-6 h-6" />
