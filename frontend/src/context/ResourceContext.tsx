@@ -320,34 +320,36 @@ export function ResourceProvider({ children }: { children: React.ReactNode }) {
 
       if (resp && resp.ok) {
         const json = await resp.json();
-        const rawData = Array.isArray(json.data) ? json.data : [];
-        const mappedDbItems = rawData.map(mapBackendResource);
+        if (json.success !== false) {
+          const rawData = Array.isArray(json.data) ? json.data : [];
+          const mappedDbItems = rawData.map(mapBackendResource);
 
-        // Filter out legacy quarantined mock records (keep genuine user uploads & published items)
-        const realDbItems = mappedDbItems.filter((d: any) => 
-          d.tenantId !== 'inst_legacy_quarantine' && 
-          !d.title?.includes('MicroBiology') &&
-          !d.tags?.includes('MockData')
-        );
+          // Filter out legacy quarantined mock records (keep genuine user uploads & published items)
+          const realDbItems = mappedDbItems.filter((d: any) => 
+            d.tenantId !== 'inst_legacy_quarantine' && 
+            !d.title?.includes('MicroBiology') &&
+            !d.tags?.includes('MockData')
+          );
 
-        const idMap = new Map<string, Resource>();
-        // Add real database items first
-        realDbItems.forEach((d: Resource) => idMap.set(d.id, d));
-        // Merge client external items if not already present
-        savedExternalItems.forEach((s: Resource) => {
-          if (!idMap.has(s.id)) {
-            idMap.set(s.id, s);
+          const idMap = new Map<string, Resource>();
+          // Add real database items first
+          realDbItems.forEach((d: Resource) => idMap.set(d.id, d));
+          // Merge client external items if not already present
+          savedExternalItems.forEach((s: Resource) => {
+            if (!idMap.has(s.id)) {
+              idMap.set(s.id, s);
+            }
+          });
+          
+          const combined = Array.from(idMap.values());
+          setResources(combined);
+
+          // Save to Session Storage
+          if (typeof window !== 'undefined') {
+            try {
+              sessionStorage.setItem('isml_cached_backend_resources', JSON.stringify(combined));
+            } catch (e) {}
           }
-        });
-        
-        const combined = Array.from(idMap.values());
-        setResources(combined);
-
-        // Save to Session Storage
-        if (typeof window !== 'undefined') {
-          try {
-            sessionStorage.setItem('isml_cached_backend_resources', JSON.stringify(combined));
-          } catch (e) {}
         }
       } else {
         setResources(savedExternalItems);

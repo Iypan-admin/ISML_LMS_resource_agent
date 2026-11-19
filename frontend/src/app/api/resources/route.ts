@@ -24,7 +24,12 @@ export async function GET(req: NextRequest) {
     }, { status: 200 });
   } catch (error: any) {
     console.error('[API /api/resources GET Error]:', error);
-    return NextResponse.json({ success: false, data: [] }, { status: 200 });
+    return NextResponse.json({
+      success: false,
+      data: [],
+      error: error?.message || String(error),
+      code: error?.code,
+    }, { status: 500 });
   }
 }
 
