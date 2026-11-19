@@ -169,7 +169,7 @@ export function generateCurriculumDay(
       formattedStudyNotes = `### Master Study Guide: ${unitLabel} (Course Unit ${dayNumber} of ${totalDays})
 Curriculum Standard: **${courseHours} Teaching Hours** (${totalDays} x 1hr Units) • **${weeklyCadence} ${unitLabel.split(' ')[0]}s / Week**
 Scheduled Unit: **Week ${weekNum}, ${unitLabel.split(' ')[0]} ${periodInWeek} of ${weeklyCadence}** (${unitMinutes} mins / ${unitLabel.split(' ')[0].toLowerCase()})
-Language: **${language}** • Certified CEFR **${level}** • Topic: **${baseTopic}**
+Language: **${language}** • Certified ${/japanese|nihon/i.test(language) ? 'JLPT' : /korean|hangul/i.test(language) ? 'TOPIK' : 'CEFR'} **${level}** • Topic: **${baseTopic}**
 
 ` + formattedStudyNotes;
     }
@@ -255,23 +255,66 @@ Language: **${language}** • Certified CEFR **${level}** • Topic: **${baseTop
           scene: `Native Situational Exchange on ${rawDay.day_topic} (${language})`,
           dialogue_lines: (rawDay.classroom_dialogues && rawDay.classroom_dialogues.length > 0 && !rawDay.classroom_dialogues[0].includes('Expressing context'))
             ? rawDay.classroom_dialogues
-            : [
+            : /japanese|nihon/i.test(language)
+            ? [
+                `田中: "こんにちは！今日は「${rawDay.day_topic}」を勉強しましょう。"`,
+                `佐藤: "はい！日常会話で使えるようにしっかり練習します。"`
+              ]
+            : /korean|hangul/i.test(language)
+            ? [
+                `민수: "안녕하세요! 오늘은 '${rawDay.day_topic}'을(를) 함께 공부해요."`,
+                `지수: "네, 좋아요! 배운 표현을 잘 활용해서 열심히 연습하겠습니다."`
+              ]
+            : /french|fran/i.test(language)
+            ? [
                 `Person A (${language}): "Bonjour ! Aujourd'hui nous étudions ${rawDay.day_topic}."`,
                 `Person B (${language}): "Oui, c'est très intéressant ! Comment applique-t-on cette structure en pratique ?"`,
                 `Person A (${language}): "Regardez notre exemple de cours, c'est très simple et direct."`
+              ]
+            : [
+                `Speaker A (${language}): "Hello! Today we are practicing ${rawDay.day_topic}."`,
+                `Speaker B (${language}): "Yes, let's practice the sentence structure and vocabulary with precision."`
               ],
-          comprehension_check: `Quel est l'objectif principal de cette conversation concernant ${rawDay.day_topic} ?`
+          comprehension_check: /japanese|nihon/i.test(language)
+            ? `「${rawDay.day_topic}」に関する対話の主な目的は何ですか？`
+            : /korean|hangul/i.test(language)
+            ? `'${rawDay.day_topic}'에 관한 대화의 주된 목적은 무엇인가요?`
+            : /french|fran/i.test(language)
+            ? `Quel est l'objectif principal de cette conversation concernant ${rawDay.day_topic} ?`
+            : `What is the main objective of this conversation regarding ${rawDay.day_topic}?`
         },
         speaking_prompt: {
-          situation: `Imagine you are conversing with a native speaker about ${rawDay.day_topic}.`,
-          guiding_cues: [
-            `Incorporate key vocabulary naturally into your turn.`,
-            `Apply the grammatical structure accurately.`,
-            `Maintain polite CEFR ${level} conversational register.`
-          ],
+          situation: /japanese|nihon/i.test(language)
+            ? `「${rawDay.day_topic}」についてネイティブスピーカーと日本語で対話する場面を想定してください。`
+            : /korean|hangul/i.test(language)
+            ? `'${rawDay.day_topic}'에 대해 한국어로 원어민과 자연스럽게 대화하는 상황을 상상해 보세요.`
+            : `Imagine you are conversing with a native speaker about ${rawDay.day_topic}.`,
+          guiding_cues: /japanese|nihon/i.test(language)
+            ? [
+                `重要語彙を会話の中に自然に組み込んでください。`,
+                `文法規則を正確に適用してください。`,
+                `JLPT ${level} に準拠した丁寧な待遇表現を維持してください。`
+              ]
+            : /korean|hangul/i.test(language)
+            ? [
+                `핵심 어휘를 대화 속에 자연스럽게 포함하세요.`,
+                `문법 구조를 정확하게 적용하세요.`,
+                `TOPIK ${level} 기준에 맞는 정중한 높임말(존댓말)을 유지하세요.`
+              ]
+            : [
+                `Incorporate key vocabulary naturally into your turn.`,
+                `Apply the grammatical structure accurately.`,
+                `Maintain polite CEFR ${level} conversational register.`
+              ],
           sample_model: (rawDay.classroom_dialogues && rawDay.classroom_dialogues[0] && !rawDay.classroom_dialogues[0].includes('Expressing context'))
             ? rawDay.classroom_dialogues[0]
-            : `"Bonjour, je pratique aujourd'hui ${rawDay.day_topic} avec enthousiasme."`
+            : /japanese|nihon/i.test(language)
+            ? `"こんにちは！今日も一生懸命「${rawDay.day_topic}」を練習しましょう。"`
+            : /korean|hangul/i.test(language)
+            ? `"안녕하세요! 오늘도 즐겁게 '${rawDay.day_topic}'을(를) 연습해요."`
+            : /french|fran/i.test(language)
+            ? `"Bonjour, je pratique aujourd'hui ${rawDay.day_topic} avec enthousiasme."`
+            : `"Hello, today I am practicing ${rawDay.day_topic} with confidence and precision."`
         },
         writing_task: {
           task: `Write a short 50-75 word paragraph in ${language} describing ${rawDay.day_topic} using today's target structures.`,
@@ -709,18 +752,22 @@ Language: **${language}** • Certified CEFR **${level}** • Topic: **${baseTop
   // Check whether session is based on custom uploaded documents/materials or pure CEFR language training
   const isDocContentMode = parsedSourceTopics.length > 0 || Boolean(sourceContext && sourceContext.trim().length > 40);
 
+  const isJaLang = /japanese|nihon/i.test(language);
+  const isKoLang = /korean|hangul/i.test(language);
+  const frameworkLevel = isJaLang ? `JLPT ${level}` : isKoLang ? `TOPIK ${level}` : `CEFR ${level}`;
+
   // Construct dynamic syntactic formula and paradigm matrix directly derived from inputs
   const dynamicFormula = `Unit ${dayNumber} [${depthTier}] Syntactic Rule in ${language}:\n` +
     `  Target Pattern: [Subject / Topic Focus] + [${currentGrammarFocus}] + [Applied Direct/Indirect Clause]\n` +
-    `  Grammatical Constraint: Must adhere to ${language} ${level} CEFR accuracy standards in affirmative, negative, and interrogative forms.`;
+    `  Grammatical Constraint: Must adhere to ${language} ${frameworkLevel} accuracy standards in affirmative, negative, and interrogative forms.`;
 
   const dynamicParadigmTable = 
 `| Structural Element | Target Form in ${language} | Applied Context | Level Standard |
 |---|---|---|---|
-| Primary Focus | ${currentGrammarFocus} | Core thematic application for ${unitLabel} | CEFR ${level} |
-| Vocabulary Anchor 1 | ${currentVocabList[0]?.word || 'Léxico 1'} | ${currentVocabList[0]?.meaning || 'Thematic reference'} | Active Spoken Drills |
-| Vocabulary Anchor 2 | ${currentVocabList[1]?.word || 'Léxico 2'} | ${currentVocabList[1]?.meaning || 'Thematic reference'} | Applied Interaction |
-| Vocabulary Anchor 3 | ${currentVocabList[2]?.word || 'Léxico 3'} | ${currentVocabList[2]?.meaning || 'Thematic reference'} | Writing & Retention |`;
+| Primary Focus | ${currentGrammarFocus} | Core thematic application for ${unitLabel} | ${frameworkLevel} |
+| Vocabulary Anchor 1 | ${currentVocabList[0]?.word || (isJaLang ? '語彙 1' : isKoLang ? '어휘 1' : 'Key Word 1')} | ${currentVocabList[0]?.meaning || 'Thematic reference'} | Active Spoken Drills |
+| Vocabulary Anchor 2 | ${currentVocabList[1]?.word || (isJaLang ? '語彙 2' : isKoLang ? '어휘 2' : 'Key Word 2')} | ${currentVocabList[1]?.meaning || 'Thematic reference'} | Applied Interaction |
+| Vocabulary Anchor 3 | ${currentVocabList[2]?.word || (isJaLang ? '語彙 3' : isKoLang ? '어휘 3' : 'Key Word 3')} | ${currentVocabList[2]?.meaning || 'Thematic reference'} | Writing & Retention |`;
 
   // Classroom dialogues dynamically grounded in analyzed vocabulary and context
   const primaryWord = currentVocabList[0]?.word || linguisticUnit.vocabulary[0]?.word || 'terme clé';
@@ -757,6 +804,8 @@ Language: **${language}** • Certified CEFR **${level}** • Topic: **${baseTop
     const isDe = /german|deutsch/i.test(language);
     const isFr = /french|fran/i.test(language);
     const isEs = /spanish|espa/i.test(language);
+    const isJa = /japanese|nihon/i.test(language);
+    const isKo = /korean|hangul/i.test(language);
 
     if (isDe) {
       classroomDialogues = [
@@ -843,6 +892,64 @@ Language: **${language}** • Certified CEFR **${level}** • Topic: **${baseTop
           question: `✍️ [Escritura] Escriba dos frases funcionales usando '${primaryWord}' y '${secondaryWord}'.`,
           answer: `Párrafo breve con correcta ortografía y signos de puntuación.`,
           explanation: `Desarrolla la destreza escrita.`
+        }
+      ];
+    } else if (isJa) {
+      classroomDialogues = [
+        `先生: "皆さん、こんにちは！今日は「${cleanGrammarLabel}」について学びます。"`,
+        `学生: "先生、こんにちは！「${primaryWord}」はこの文脈でどのように使いますか？"`,
+        `先生: "素晴らしい質問ですね！「${primaryWord}」が文の骨格を作り、「${secondaryWord}」が状況を具体的に表します。"`,
+        `学生: "よく分かりました、ありがとうございます！ペアでしっかり練習します。"`
+      ];
+      exerciseSolutions = [
+        {
+          question: `🎧 [聴解] 「${cleanGrammarLabel}」の例文を聞いて、重要語彙「${primaryWord}」の使われ方を確認しなさい。`,
+          answer: `発話者は「${primaryWord}」を用いて文の主要な構造を整えている。`,
+          explanation: `日本語の高低アクセントと自然なリズムの聞き取りを鍛える。`
+        },
+        {
+          question: `🗣️ [口頭表現] 「${primaryWord}」を用いて、JLPT ${level}基準の完全な日本語文を声に出して言いなさい。`,
+          answer: `自然なイントネーションで「${primaryWord}」を用いた丁寧な発話。`,
+          explanation: `調音の滑らかさと口頭での自動化を促進する。`
+        },
+        {
+          question: `📖 [読解 & 文法] 「${cleanGrammarLabel}」の文脈における「${secondaryWord}」と助詞の結合関係を分析しなさい。`,
+          answer: `文法規則に則した正しい助詞の選択と語順配置。`,
+          explanation: `文法的結束性と統語的理解度を確認する。`
+        },
+        {
+          question: `✍️ [記述] 「${primaryWord}」と「${secondaryWord}」を両方使って、2文から3文の短い文章を作成しなさい。`,
+          answer: `文脈に即した自然な表現で、文字表記（漢字・仮名）が正確な模範文。`,
+          explanation: `文字表記の正確性と論理的作文力を測定する。`
+        }
+      ];
+    } else if (isKo) {
+      classroomDialogues = [
+        `선생님: "여러분, 안녕하세요! 오늘은 '${cleanGrammarLabel}'을(를) 공부합니다."`,
+        `학생: "선생님, 안녕하세요! '${primaryWord}' 단어는 이 문맥에서 어떻게 활용하나요?"`,
+        `선생님: "아주 좋은 질문입니다! '${primaryWord}'이(가) 문장의 중심을 잡고 '${secondaryWord}'이(가) 의미를 구체화합니다."`,
+        `학생: "네, 잘 알겠습니다! 짝과 함께 즐겁게 대화 연습을 하겠습니다. 감사합니다!"`
+      ];
+      exerciseSolutions = [
+        {
+          question: `🎧 [듣기] '${cleanGrammarLabel}' 예시 문장을 듣고 핵심 어휘 '${primaryWord}'의 맥락상 쓰임을 파악하시오.`,
+          answer: `화자는 '${primaryWord}'을(를) 활용하여 문장의 핵심 의미를 전달하고 있음.`,
+          explanation: `한국어 특유의 연음 및 받침 발음의 청취 변별력을 훈련함.`
+        },
+        {
+          question: `🗣️ [말하기] '${primaryWord}'을(를) 사용하여 TOPIK ${level} 기준에 부합하는 정중한 한국어 문장을 소리 내어 말하시오.`,
+          answer: `정확한 억양과 정중한 종결 어미를 갖춘 '${primaryWord}' 활용 발화.`,
+          explanation: `구술 유창성과 정중 어법(존댓말)의 체화를 증진함.`
+        },
+        {
+          question: `📖 [읽기 & 문법] '${cleanGrammarLabel}' 문맥에서 '${secondaryWord}'에 결합한 조사의 적절성을 분석하시오.`,
+          answer: `문법 형태론적 원칙에 부합하는 격조사의 정확한 결합.`,
+          explanation: `문장 구조 이해도와 조사 결합 역량을 점검함.`
+        },
+        {
+          question: `✍️ [쓰기] '${primaryWord}'과(와) '${secondaryWord}'을(를) 모두 포함하여 2~3문장 분량의 짧은 글을 작성하시오.`,
+          answer: `문맥에 맞고 맞춤법과 띄어쓰기를 올바르게 준수한 모범 문장.`,
+          explanation: `정확한 철자법과 문장 구성력을 종합적으로 평가함.`
         }
       ];
     } else {

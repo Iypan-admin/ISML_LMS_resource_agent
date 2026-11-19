@@ -556,12 +556,23 @@ export function getLinguisticUnit(language: string, level: string, dayNumber: nu
 }
 
 function generateGenericAuthenticUnit(language: string, level: string, dayNumber: number): LinguisticUnitSyllabus {
+  const l = (language || 'english').toLowerCase();
+  const isJapanese = l.includes('japanese') || l.includes('nihon') || l.includes('日本語');
+  const isKorean = l.includes('korean') || l.includes('한국') || l.includes('hangul');
+  const frameworkLabel = isJapanese ? `JLPT ${level}` : isKorean ? `TOPIK ${level}` : `CEFR ${level}`;
+
   const langTitle = language.charAt(0).toUpperCase() + language.slice(1);
   const masterPeriod = getMaster120Period(language, level, dayNumber);
 
   const v1 = masterPeriod.vocabulary[0] || { word: "Term 1", meaning: "Meaning", pronunciation: "/term/", example_sentence: "Example" };
   const v2 = masterPeriod.vocabulary[1] || { word: "Term 2", meaning: "Meaning", pronunciation: "/term/", example_sentence: "Example" };
   const v3 = masterPeriod.vocabulary[2] || { word: "Term 3", meaning: "Meaning", pronunciation: "/term/", example_sentence: "Example" };
+
+  const defaultSample = isJapanese
+    ? (masterPeriod.dialogue?.[0] || '「はじめまして、どうぞよろしくお願いいたします。」')
+    : isKorean
+    ? (masterPeriod.dialogue?.[0] || '“안녕하세요, 만나서 반갑습니다. 잘 부탁드립니다.”')
+    : `'Good day, I am practicing ${masterPeriod.topic} with enthusiasm and precision.'`;
 
   return {
     topic: masterPeriod.topic,
@@ -576,14 +587,14 @@ function generateGenericAuthenticUnit(language: string, level: string, dayNumber
       { phase: "3. Guided Pair Discourse & Drills (15 min)", minutesRatio: 0.30, instruction: `Learners enact structured roleplays practicing ${masterPeriod.topic}.` },
       { phase: "4. Formative Wrap-Up & Exit Ticket (5-8 min)", minutesRatio: 0.20, instruction: `Review common pitfalls, conduct rapid exit-ticket Q&A, and assign consolidation tasks.` }
     ],
-    boardNotes: `Grammar Architecture: [Target Form: ${masterPeriod.grammarFocus}] + [Context: ${v1.word}] in ${langTitle} (${level}).`,
+    boardNotes: `Grammar Architecture: [Target Form: ${masterPeriod.grammarFocus}] + [Context: ${v1.word}] in ${langTitle} (${frameworkLabel}).`,
     remedialActivity: `Learners struggling with word order construct 3 short affirmative clauses using '${v1.word}'.`,
     extensionActivity: `Advanced learners conduct an unscripted 60-second roleplay incorporating '${v2.word}' and complex clauses.`,
     commonGotchas: [`Phonetic interference on liaison boundaries or accentuation`, `Inflection mismatch during rapid spoken production`],
     speakingCue: {
       situation: `Imagine you are conversing in ${langTitle} about ${masterPeriod.topic}.`,
-      cues: [`Incorporate target term '${v1.word}' naturally`, `Maintain polite CEFR ${level} conversational register`, `Respond clearly to follow-up questions`],
-      sample: `'Good day, I am practicing ${masterPeriod.topic} with enthusiasm and precision.'`
+      cues: [`Incorporate target term '${v1.word}' naturally`, `Maintain polite ${frameworkLabel} conversational register`, `Respond clearly to follow-up questions`],
+      sample: defaultSample
     },
     listeningCheck: `What key communicative function is being expressed in today's dialogue on ${masterPeriod.topic}?`,
     writingPrompt: `Write a short 50-75 word paragraph in ${langTitle} demonstrating ${masterPeriod.grammarFocus}.`

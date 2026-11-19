@@ -24,6 +24,9 @@ export interface MasterSyllabusPeriod {
   drills: Array<{ question: string; answer: string; explanation: string }>;
 }
 
+import { MASTER_120_PERIODS_JAPANESE } from './masterCurriculumJapanese120';
+import { MASTER_120_PERIODS_KOREAN } from './masterCurriculumKorean120';
+
 export const MASTER_120_PERIODS_ENGLISH: MasterSyllabusPeriod[] = [
   {"dayNumber": 1, "moduleNumber": 1, "moduleTitle": "Module 1: Phonetics, Alphabet & Identity Foundations", "topic": "Phonetics, Vowel Sounds and Alphabet Foundations", "grammarFocus": "Alphabet phonetic values, short vs long vowels, and consonant articulation", "pedagogicalObjective": "Master foundational phonemes, distinguish minimal vowel pairs, and articulate letters accurately.", "vocabulary": [{"word": "Alphabet", "meaning": "Ordered set of letters used in a language", "pronunciation": "/ˈælfəbɛt/", "example_sentence": "The English alphabet has twenty-six letters."}, {"word": "Vowel", "meaning": "Speech sound produced without constriction in the vocal tract", "pronunciation": "/ˈvaʊəl/", "example_sentence": "A, E, I, O, U are the five primary vowels."}, {"word": "Pronounce", "meaning": "To make the correct sound of a word or letter", "pronunciation": "/prəˈnaʊns/", "example_sentence": "Please pronounce this word clearly after me."}], "dialogue": ["Teacher: 'Good morning everyone! Today in Period 1, we explore Phonetics, Vowel Sounds and Alphabet Foundations.'", "Student: 'Good morning Teacher! How do we actively apply \"Alphabet\" and \"Vowel\" in this lesson?'", "Teacher: 'Listen closely: \"Alphabet\" anchors the core syntactic structure, while \"Vowel\" refines communicative nuance.'", "Student: 'Understood: using \"Alphabet\" and \"Pronounce\" makes the statement natural and precise. Thank you!'"], "drills": [{"question": "[R - Reading & Syntax] Apply the target grammatical pattern (Alphabet phonetic values, short vs long vowels, and consonant articulation) to form a correct affirmative sentence incorporating 'Alphabet'.", "answer": "Accurate CEFR standard construction demonstrating proper placement of 'Alphabet'.", "explanation": "Verifies morphological competence and target pattern agreement in Phonetics, Vowel Sounds and Alphabet Foundations."}, {"question": "[S - Spoken Fluency] Deliver an unscripted paired conversational exchange using 'Vowel' to ask for clarification or propose a plan.", "answer": "Polite spoken interactive turn adhering to native pragmatic registers incorporating 'Vowel'.", "explanation": "Develops spontaneous oral automaticity and natural conversational timing."}, {"question": "[L - Auditory Discrimination] Identify the stress pattern, consonant articulation, or vowel length nuance when pronouncing 'Pronounce'.", "answer": "Clear articulation matching standard native acoustic parameters for 'Pronounce'.", "explanation": "Prevents first-language phonetic interference and trains auditory perception."}, {"question": "[W - Functional Writing] Compose a concise 3-sentence functional note or paragraph combining both 'Alphabet' and 'Vowel'.", "answer": "Coherent written text demonstrating contextual accuracy, appropriate cohesion, and punctuation.", "explanation": "Assesses orthographic precision and written communicative competence."}]},
   {"dayNumber": 2, "moduleNumber": 1, "moduleTitle": "Module 1: Phonetics, Alphabet & Identity Foundations", "topic": "Greetings, Formal & Informal Salutations, and Politeness Markers", "grammarFocus": "Polite daily greetings, formal vs informal registers, and courteous discourse", "pedagogicalObjective": "Select appropriate registers for salutations and apply polite conversational openers.", "vocabulary": [{"word": "Greetings", "meaning": "Formal or informal welcoming formulas upon meeting", "pronunciation": "/ˈɡriːtɪŋz/", "example_sentence": "Appropriate greetings establish positive rapport."}, {"word": "Courtesy", "meaning": "Showing polite and respectful social behavior", "pronunciation": "/ˈkɜːrtəsi/", "example_sentence": "Courtesy is essential in formal correspondence."}, {"word": "Colleague", "meaning": "A person with whom one works in a profession", "pronunciation": "/ˈkɒliːɡ/", "example_sentence": "I introduced my new colleague to the team."}], "dialogue": ["Teacher: 'Good morning everyone! Today in Period 2, we explore Greetings, Formal & Informal Salutations, and Politeness Markers.'", "Student: 'Good morning Teacher! How do we actively apply \"Greetings\" and \"Courtesy\" in this lesson?'", "Teacher: 'Listen closely: \"Greetings\" anchors the core syntactic structure, while \"Courtesy\" refines communicative nuance.'", "Student: 'Understood: using \"Greetings\" and \"Colleague\" makes the statement natural and precise. Thank you!'"], "drills": [{"question": "[R - Reading & Syntax] Apply the target grammatical pattern (Polite daily greetings, formal vs informal registers, and courteous discourse) to form a correct affirmative sentence incorporating 'Greetings'.", "answer": "Accurate CEFR standard construction demonstrating proper placement of 'Greetings'.", "explanation": "Verifies morphological competence and target pattern agreement in Greetings, Formal & Informal Salutations, and Politeness Markers."}, {"question": "[S - Spoken Fluency] Deliver an unscripted paired conversational exchange using 'Courtesy' to ask for clarification or propose a plan.", "answer": "Polite spoken interactive turn adhering to native pragmatic registers incorporating 'Courtesy'.", "explanation": "Develops spontaneous oral automaticity and natural conversational timing."}, {"question": "[L - Auditory Discrimination] Identify the stress pattern, consonant articulation, or vowel length nuance when pronouncing 'Colleague'.", "answer": "Clear articulation matching standard native acoustic parameters for 'Colleague'.", "explanation": "Prevents first-language phonetic interference and trains auditory perception."}, {"question": "[W - Functional Writing] Compose a concise 3-sentence functional note or paragraph combining both 'Greetings' and 'Courtesy'.", "answer": "Coherent written text demonstrating contextual accuracy, appropriate cohesion, and punctuation.", "explanation": "Assesses orthographic precision and written communicative competence."}]},
@@ -290,7 +293,13 @@ export function getMaster120Period(
   const isJapanese = lKey.includes('japanese') || lKey.includes('nihongo');
   const isKorean = lKey.includes('korean') || lKey.includes('hangul');
 
-  const baseList = isFrench ? MASTER_120_PERIODS_FRENCH : MASTER_120_PERIODS_ENGLISH;
+  const baseList = isJapanese
+    ? MASTER_120_PERIODS_JAPANESE
+    : isKorean
+    ? MASTER_120_PERIODS_KOREAN
+    : isFrench
+    ? MASTER_120_PERIODS_FRENCH
+    : MASTER_120_PERIODS_ENGLISH;
 
   // 1. Direct Lookup for Days 1 to 120 (100% Unique, Never Repeating)
   if (dayNumber >= 1 && dayNumber <= 120) {
@@ -300,8 +309,8 @@ export function getMaster120Period(
     const cleanCustom = (customTopic || '')
       .replace(/(isml|faculty|student|master|curriculum|blueprint|edition|multi-period|scheduled unit|executive lecture|comprehensive|complete course)/gi, '')
       .replace(/^(period|session)\s*\d+:?\s*/i, '')
-      .replace(/(English|French|German|Spanish|Japanese|Korean)\s+(A1|A1\.1|A1\.2|A2|B1|B2)/gi, '')
-      .replace(/(A1|A1\.1|A1\.2|A2|B1|B2)/gi, '')
+      .replace(/ (English|French|German|Spanish|Japanese|Korean)\s+(A1|A1\.1|A1\.2|A2|B1|B2) /gi, '')
+      .replace(/ (A1|A1\.1|A1\.2|A2|B1|B2) /gi, '')
       .trim();
 
     const isGeneralCourseName = !cleanCustom || cleanCustom.length < 3 || /^(english|french|spanish|german|japanese|korean)$/i.test(cleanCustom);
@@ -311,28 +320,41 @@ export function getMaster120Period(
     let resolvedObjective = period.pedagogicalObjective;
 
     if (!isGeneralCourseName) {
-      if (dayNumber === 1) {
-        resolvedTopic = `${cleanCustom} : Foundations & Core Principles`;
+      if (isJapanese) {
+        resolvedTopic = `${cleanCustom} : 第${dayNumber}課 ${period.topic}`;
+        resolvedGrammar = `${period.grammarFocus} (${cleanCustom}への応用)`;
+        resolvedObjective = `JLPT基準に準拠し、${cleanCustom}の文脈で「${period.grammarFocus}」を実践的に習得する。`;
+      } else if (isKorean) {
+        resolvedTopic = `${cleanCustom} : 제${dayNumber}과 ${period.topic}`;
+        resolvedGrammar = `${period.grammarFocus} (${cleanCustom} 맥락 적용)`;
+        resolvedObjective = `TOPIK 기준에 부합하여 ${cleanCustom} 맥락에서 '${period.grammarFocus}'을(를) 완벽히 습득한다.`;
+      } else if (isFrench) {
+        resolvedTopic = `${cleanCustom} — Séance ${dayNumber} : ${period.topic}`;
+        resolvedGrammar = `${period.grammarFocus} (Appliqué à ${cleanCustom})`;
+        resolvedObjective = `Appliquer ${period.grammarFocus} dans le contexte de ${cleanCustom} selon le CECRL ${level.toUpperCase()}.`;
       } else {
-        resolvedTopic = `${cleanCustom} — Part ${dayNumber}: ${period.topic}`;
+        if (dayNumber === 1) {
+          resolvedTopic = `${cleanCustom} : Foundations & Core Principles`;
+        } else {
+          resolvedTopic = `${cleanCustom} — Part ${dayNumber}: ${period.topic}`;
+        }
+        resolvedGrammar = `${period.grammarFocus} (Applied to ${cleanCustom})`;
+        resolvedObjective = `Apply ${period.grammarFocus} in the context of ${cleanCustom} to achieve CEFR ${level.toUpperCase()} fluency.`;
       }
-      resolvedGrammar = `${period.grammarFocus} (Applied to ${cleanCustom})`;
-      resolvedObjective = `Apply ${period.grammarFocus} in the context of ${cleanCustom} to achieve CEFR ${level.toUpperCase()} fluency.`;
-    }
-
-    // Localize language labels if Spanish, German, Japanese, Korean
-    if (isSpanish) {
-      resolvedTopic = `Sesión ${dayNumber}: ${period.topic}`;
-      resolvedObjective = `Dominar las estructuras de la sesión ${dayNumber} según el marco MCER ${level.toUpperCase()}.`;
-    } else if (isGerman) {
-      resolvedTopic = `Einheit ${dayNumber}: ${period.topic}`;
-      resolvedObjective = `Beherrschung der sprachlichen Strukturen für Einheit ${dayNumber} nach GER ${level.toUpperCase()}.`;
-    } else if (isJapanese) {
-      resolvedTopic = `第${dayNumber}課 : ${period.topic}`;
-      resolvedObjective = `JLPT ${level.toUpperCase()} に準拠した第${dayNumber}課の文法および会話能力の習得。`;
-    } else if (isKorean) {
-      resolvedTopic = `제${dayNumber}과 : ${period.topic}`;
-      resolvedObjective = `한국어 ${level.toUpperCase()} 기준에 부합하는 제${dayNumber}과의 핵심 문법 및 회화 능력 완성.`;
+    } else {
+      if (isSpanish) {
+        resolvedTopic = `Sesión ${dayNumber}: ${period.topic}`;
+        resolvedObjective = `Dominar las estructuras de la sesión ${dayNumber} según el marco MCER ${level.toUpperCase()}.`;
+      } else if (isGerman) {
+        resolvedTopic = `Einheit ${dayNumber}: ${period.topic}`;
+        resolvedObjective = `Beherrschung der sprachlichen Strukturen für Einheit ${dayNumber} nach GER ${level.toUpperCase()}.`;
+      } else if (isJapanese) {
+        resolvedTopic = `第${dayNumber}課 : ${period.topic}`;
+        resolvedObjective = period.pedagogicalObjective;
+      } else if (isKorean) {
+        resolvedTopic = `제${dayNumber}과 : ${period.topic}`;
+        resolvedObjective = period.pedagogicalObjective;
+      }
     }
 
     return {
@@ -345,34 +367,166 @@ export function getMaster120Period(
 
   // 2. Progressive Extension for Days > 120 (Guaranteed Never to Repeat Days 1-120)
   const extensionIndex = dayNumber - 120;
+
+  if (isJapanese) {
+    return {
+      dayNumber,
+      moduleNumber: 12,
+      moduleTitle: `Module 12: 学術専門研究・卒業記念演習 (発展編 ${extensionIndex})`,
+      topic: `第${dayNumber}課 : 高度学術論理・専門ディスコース分析 (テーマ ${extensionIndex})`,
+      grammarFocus: `JLPT N1+ 超上級構文と学術論文用修辞技法 (段階 ${extensionIndex})`,
+      pedagogicalObjective: `JLPT最高水準に準拠した自律的な学術口頭試問および論文発表ディフェンス能力を完成する。`,
+      vocabulary: [
+        {
+          word: `学術語彙 ${dayNumber}A`,
+          meaning: `高度な学術専門用語 (段階 ${extensionIndex})`,
+          pronunciation: `/ɡa.kɯ.dʑɯ.tsɯ ${dayNumber}/`,
+          example_sentence: `この発展演習において研究概念を批判的に検討します。`
+        },
+        {
+          word: `論理接続表現 ${dayNumber}B`,
+          meaning: `専門論文における論理的結束マーカー`,
+          pronunciation: `/ɾoɴ.ɾi ${dayNumber}/`,
+          example_sentence: `論理接続詞を駆使して説得力ある論証を構築します。`
+        },
+        {
+          word: `総合集大成 ${dayNumber}C`,
+          meaning: `理論と実践の総括的統合`,
+          pronunciation: `/ɕuː.da.i.seː/`,
+          example_sentence: `キャップストーン演習は日本語運用の完全な習熟を実証します。`
+        }
+      ],
+      dialogue: [
+        `指導教員: '高度学術演習第${dayNumber}課へようこそ。本日の研究課題について総括を発表してください。'`,
+        `研究者: 'ありがとうございます。この段階では、高度な文体レジスターと統語的結束性を分析いたします。'`,
+        `指導教員: '見事な論述です。本分析の妥当性はどのように検証されていますか？'`,
+        `研究者: '実証的コーパスデータの綿密な照合と厳格な言語学的基準によって担保されております。'`
+      ],
+      drills: [
+        {
+          question: `[R - 批判的読解] 第${extensionIndex}段階の学術文献を精読し、論理構造の妥当性を評価しなさい。`,
+          answer: `高度な語彙と統語構造を的確に把握した批判的分析。`,
+          explanation: `専門的な学術論文の深い読解力を測定する。`
+        },
+        {
+          question: `[S - 学術ディフェンス] 第${extensionIndex}段階の研究課題について、3分間の口頭ディフェンスを行いなさい。`,
+          answer: `学会発表基準に合致した理路整然とした口頭発表。`,
+          explanation: `最高水準のスピーチ力と即興答弁力を実証する。`
+        },
+        {
+          question: `[L - 音声識別] 学術討論における発話リズム、強調のイントネーション、含意を聞き分けなさい。`,
+          answer: `発話者の意図とニュアンスの正確な聞き取り。`,
+          explanation: `高度なディスカッションにおける聴解知覚力を鍛える。`
+        },
+        {
+          question: `[W - 学術論文執筆] 第${extensionIndex}段階の研究結論を要約した学術的エグゼクティブサマリー（250字程度）を執筆しなさい。`,
+          answer: `学術論文のスタイル規範を満たした格調高い日本語文。`,
+          explanation: `論理的で出版水準の文章作成能力を認定する。`
+        }
+      ]
+    };
+  }
+
+  if (isKorean) {
+    return {
+      dayNumber,
+      moduleNumber: 12,
+      moduleTitle: `Module 12: 학술 전문 연구 및 졸업 기념 세미나 (심화 ${extensionIndex})`,
+      topic: `제${dayNumber}과 : 고급 학술 담화 및 전문 연구 논증 (주제 ${extensionIndex})`,
+      grammarFocus: `TOPIK 최고급 학술 수사법 및 공적 담화 표지 (단계 ${extensionIndex})`,
+      pedagogicalObjective: `TOPIK 최고 등급 기준에 부합하는 자율적 학술 구술 심사 및 전문 프레젠테이션 능력을 완성한다.`,
+      vocabulary: [
+        {
+          word: `학술 어휘 ${dayNumber}A`,
+          meaning: `심화 전문 연구 용어 (단계 ${extensionIndex})`,
+          pronunciation: `/hak̚.sʰul ${dayNumber}/`,
+          example_sentence: `본 고급 세미나에서는 핵심 학술 개념을 비판적으로 검토합니다.`
+        },
+        {
+          word: `담화 표지 ${dayNumber}B`,
+          meaning: `전문 논증을 위한 수사학적 연결 표현`,
+          pronunciation: `/tam.hwa ${dayNumber}/`,
+          example_sentence: `담화 표지를 효과적으로 활용하여 설득력 있는 주장을 전개합니다.`
+        },
+        {
+          word: `종합 결실 ${dayNumber}C`,
+          meaning: `이론과 실제의 총체적 융합`,
+          pronunciation: `/kjʌl.ɕil/`,
+          example_sentence: `캡스톤 졸업 연구는 종합적인 학술 한국어 구사력을 실증합니다.`
+        }
+      ],
+      dialogue: [
+        `지도교수: '고급 학술 세미나 제${dayNumber}과에 오신 것을 환영합니다. 오늘의 연구 성과를 발표해 주십시오.'`,
+        `연구자: '감사합니다 교수님. 이번 단계에서는 고차원적 문체와 담화 표지의 유기적 결합을 분석했습니다.'`,
+        `지도교수: '탁월한 논증입니다. 본 연구의 실증적 타당성을 어떻게 보증할 수 있습니까?'`,
+        `연구자: '체계적인 말뭉치 교차 검증과 엄격한 언어학적 기준을 바탕으로 분석을 완결했습니다.'`
+      ],
+      drills: [
+        {
+          question: `[R - 비판적 읽기] 심화 ${extensionIndex}단계의 학술 텍스트를 정독하고 논리적 타당성을 비판적으로 평가하시오.`,
+          answer: `고급 어휘와 학술적 문장 구조를 완벽히 파악한 분석적 논평.`,
+          explanation: `전문 도서 및 논문에 대한 비판적 독해 능력을 평가함.`
+        },
+        {
+          question: `[S - 구술 디펜스] 심화 ${extensionIndex}단계 연구 주제에 관하여 3분간 자율 학술 발표를 수행하시오.`,
+          answer: `학술 심사 기준에 부합하는 격조 높고 당당한 구술 발표.`,
+          explanation: `고급 수준의 유창성과 논리적 설득력을 검증함.`
+        },
+        {
+          question: `[L - 청취 변별] 전문 학술 토론 녹음에서 발화자의 전제, 함의, 미묘한 어조 변화를 정확히 포착하시오.`,
+          answer: `토론자의 숨은 의도와 어조 변화에 대한 정확한 청취 식별.`,
+          explanation: `빠른 호흡의 전문적 토론에서의 청취 인지력을 단련함.`
+        },
+        {
+          question: `[W - 학술 논문 초록 작성] 심화 ${extensionIndex}단계 연구 결론을 압축한 250자 분량의 학술 초록을 작성하시오.`,
+          answer: `학술 논문 표준 양식과 맞춤법을 완벽히 충족한 모범 초록.`,
+          explanation: `출판 가능한 수준의 고급 작문 능력을 최종 인증함.`
+        }
+      ]
+    };
+  }
+
   return {
     dayNumber,
     moduleNumber: 12,
-    moduleTitle: "Module 12: Advanced Specialized Extension & Capstone Research",
-    topic: `Specialized Research Seminar ${dayNumber}: Advanced Academic & Professional Mastery (Part ${extensionIndex})`,
-    grammarFocus: `Advanced discourse synthesis, pragmatic nuance, and stylistic register refinement (Phase ${extensionIndex})`,
-    pedagogicalObjective: `Achieve high-level autonomous fluency and critical rhetorical defense in ${language} at international certification standard.`,
+    moduleTitle: isFrench
+      ? `Module 12 : Maîtrise Avancée et Recherche Spécialisée (Extension ${extensionIndex})`
+      : "Module 12: Advanced Specialized Extension & Capstone Research",
+    topic: isFrench
+      ? `Séance ${dayNumber} : Analyse critique et rhétorique professionnelle de haut niveau (Thème ${extensionIndex})`
+      : `Specialized Research Seminar ${dayNumber}: Advanced Academic & Professional Mastery (Part ${extensionIndex})`,
+    grammarFocus: isFrench
+      ? `Nuances stylistiques avancées et registres soutenus (CECRL C1-C2, Phase ${extensionIndex})`
+      : `Advanced discourse synthesis, pragmatic nuance, and stylistic register refinement (Phase ${extensionIndex})`,
+    pedagogicalObjective: isFrench
+      ? `Perfectionner l'expression professionnelle avec aisance et spontanéité selon le CECRL.`
+      : `Achieve high-level autonomous fluency and critical rhetorical defense in ${language} at international certification standard.`,
     vocabulary: [
       {
-        word: `Specialized Lexicon ${dayNumber}A`,
-        meaning: `Advanced domain terminology for Phase ${extensionIndex}`,
-        pronunciation: `/spɛʃ.ə.laɪzd ${dayNumber}/`,
-        example_sentence: `In this advanced session, scholars analyze key research concepts.`
+        word: isFrench ? `Lexique Spécialisé ${dayNumber}A` : `Specialized Lexicon ${dayNumber}A`,
+        meaning: isFrench ? `Terminologie avancée pour la phase ${extensionIndex}` : `Advanced domain terminology for Phase ${extensionIndex}`,
+        pronunciation: isFrench ? `/le.ksik/` : `/spɛʃ.ə.laɪzd ${dayNumber}/`,
+        example_sentence: isFrench ? `Dans cette séance avancée, les chercheurs analysent des concepts clés.` : `In this advanced session, scholars analyze key research concepts.`
       },
       {
-        word: `Analytical Discourse ${dayNumber}B`,
-        meaning: `Rhetorical connective formula for executive defense`,
-        pronunciation: `/æn.əˈlɪt.ɪkl/`,
-        example_sentence: `Scholars employ analytical discourse markers to frame persuasive arguments.`
+        word: isFrench ? `Discours Analytique ${dayNumber}B` : `Analytical Discourse ${dayNumber}B`,
+        meaning: isFrench ? `Formule connective pour la soutenance` : `Rhetorical connective formula for executive defense`,
+        pronunciation: isFrench ? `/dis.kuʁ/` : `/æn.əˈlɪt.ɪkl/`,
+        example_sentence: isFrench ? `Les chercheurs emploient des marqueurs discursifs pertinents.` : `Scholars employ analytical discourse markers to frame persuasive arguments.`
       },
       {
-        word: `Capstone Integration ${dayNumber}C`,
-        meaning: `Culminating theoretical and practical synthesis`,
-        pronunciation: `/ˈkæp.stoʊn/`,
-        example_sentence: `The capstone research project reflects comprehensive linguistic mastery.`
+        word: isFrench ? `Intégration Capstone ${dayNumber}C` : `Capstone Integration ${dayNumber}C`,
+        meaning: isFrench ? `Synthèse théorique et pratique culminante` : `Culminating theoretical and practical synthesis`,
+        pronunciation: isFrench ? `/ɛ̃.te.ɡʁa.sjɔ̃/` : `/ˈkæp.stoʊn/`,
+        example_sentence: isFrench ? `Le projet capstone reflète une maîtrise linguistique totale.` : `The capstone research project reflects comprehensive linguistic mastery.`
       }
     ],
-    dialogue: [
+    dialogue: isFrench ? [
+      `Professeur : 'Bienvenue au séminaire de recherche ${dayNumber}. Veuillez présenter votre synthèse.'`,
+      `Chercheur : 'Merci Monsieur. Nous analysons ici les registres stylistiques et la cohésion syntaxique.'`,
+      `Professeur : 'Excellente soutenance. Comment assurez-vous la rigueur empirique ?'`,
+      `Chercheur : 'Par une validation croisée méthodique de tous les corpus de référence.'`
+    ] : [
       `Lead Faculty: 'Welcome to Advanced Academic Seminar ${dayNumber}. Please present your synthesis on today's research focus.'`,
       `Researcher: 'Thank you Professor. In this phase, we analyze complex stylistic registers and syntactic cohesion.'`,
       `Lead Faculty: 'Excellent defense. How does your methodology ensure empirical accuracy?'`,
@@ -380,24 +534,48 @@ export function getMaster120Period(
     ],
     drills: [
       {
-        question: `[R - Analytical Evaluation] Critique a sophisticated primary text addressing Phase ${extensionIndex} research concepts.`,
-        answer: "Critical analysis demonstrating nuanced understanding of high-level register and rhetoric.",
-        explanation: "Assesses advanced comprehension of complex domain-specific literature."
+        question: isFrench
+          ? `[R - Évaluation Analytique] Commentez un texte théorique de haut niveau lié à la phase ${extensionIndex}.`
+          : `[R - Analytical Evaluation] Critique a sophisticated primary text addressing Phase ${extensionIndex} research concepts.`,
+        answer: isFrench
+          ? "Analyse critique démontrant une compréhension approfondie des registres soutenus."
+          : "Critical analysis demonstrating nuanced understanding of high-level register and rhetoric.",
+        explanation: isFrench
+          ? "Évalue la compréhension fine de textes spécialisés."
+          : "Assesses advanced comprehension of complex domain-specific literature."
       },
       {
-        question: `[S - Executive Defense] Deliver a 3-minute oral presentation defending your strategic analysis of Phase ${extensionIndex}.`,
-        answer: "Polished, spontaneous oral presentation adhering to academic conference standards.",
-        explanation: "Validates executive-level fluency and persuasive spoken competence."
+        question: isFrench
+          ? `[S - Soutenance Orale] Présentez oralement votre analyse de la phase ${extensionIndex} en trois minutes.`
+          : `[S - Executive Defense] Deliver a 3-minute oral presentation defending your strategic analysis of Phase ${extensionIndex}.`,
+        answer: isFrench
+          ? "Présentation orale structurée et fluide conforme aux normes académiques."
+          : "Polished, spontaneous oral presentation adhering to academic conference standards.",
+        explanation: isFrench
+          ? "Valide l'aisance discursive et l'argumentation à l'oral."
+          : "Validates executive-level fluency and persuasive spoken competence."
       },
       {
-        question: `[L - Acoustic Discrimination] Evaluate nuanced rhetorical cues, implicit bias, and tonal shifts in live debate recordings.`,
-        answer: "Accurate identification of subtextual nuances and acoustic intonation boundaries.",
-        explanation: "Refines high-level auditory perception in fast-paced professional exchanges."
+        question: isFrench
+          ? `[L - Écoute et Discrimination] Identifiez les nuances rhétoriques et les modalisateurs dans le débat.`
+          : `[L - Acoustic Discrimination] Evaluate nuanced rhetorical cues, implicit bias, and tonal shifts in live debate recordings.`,
+        answer: isFrench
+          ? "Repérage précis des inflexions acoustiques et du sous-texte."
+          : "Accurate identification of subtextual nuances and acoustic intonation boundaries.",
+        explanation: isFrench
+          ? "Affine la perception auditive dans des contextes professionnels exigeants."
+          : "Refines high-level auditory perception in fast-paced professional exchanges."
       },
       {
-        question: `[W - Scholarly Writing] Draft a publishable 250-word executive summary synthesizing the research conclusions of Phase ${extensionIndex}.`,
-        answer: "Flawless written prose adhering to international academic style guidelines.",
-        explanation: "Certifies publication-ready orthographic and rhetorical precision."
+        question: isFrench
+          ? `[W - Rédaction Académique] Rédigez un résumé exécutif de 250 mots synthétisant les conclusions.`
+          : `[W - Scholarly Writing] Draft a publishable 250-word executive summary synthesizing the research conclusions of Phase ${extensionIndex}.`,
+        answer: isFrench
+          ? "Texte académique irréprochable respectant les normes de publication."
+          : "Flawless written prose adhering to international academic style guidelines.",
+        explanation: isFrench
+          ? "Certifie la précision stylistique et orthographique de niveau publication."
+          : "Certifies publication-ready orthographic and rhetorical precision."
       }
     ]
   };
