@@ -236,15 +236,19 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    const formattedHtml = docInfo.html || `<div class="document-text-content" style="white-space: pre-wrap; font-family: inherit;">${extractedText}</div>`;
+
     return NextResponse.json({
       success: true,
       id: resource.id,
       fileUrl,
       dataUrl,
+      html: formattedHtml,
       resource: {
         ...resource,
         fileUrl,
         fileData: dataUrl,
+        docHtml: formattedHtml,
         wordCount,
         pageCount,
         content: {

@@ -17,11 +17,11 @@ export async function POST(req: NextRequest) {
       const pureBase64 = base64.includes(',') ? base64.split(',')[1] : base64;
       const buffer = Buffer.from(pureBase64, 'base64');
       const docInfo = await extractDocumentContent(buffer, fileName);
-      if (docInfo.success && docInfo.text && docInfo.text.length > 10) {
+      if (docInfo.success && (docInfo.text || docInfo.html)) {
         return NextResponse.json({
           success: true,
           text: docInfo.text,
-          html: docInfo.html,
+          html: docInfo.html || `<p>${docInfo.text}</p>`,
           source: 'base64_extraction',
           wordCount: docInfo.wordCount,
           pageCount: docInfo.pageCount,

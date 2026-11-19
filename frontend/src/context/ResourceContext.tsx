@@ -457,6 +457,10 @@ export function ResourceProvider({ children }: { children: React.ReactNode }) {
       sourceType: 'External',
       sourceName: partialRes.sourceName || 'External OER Source',
       sourceUrl: partialRes.sourceUrl || '',
+      originalUrl: partialRes.originalUrl || (partialRes as any).fileName || '',
+      fileUrl: partialRes.fileUrl || partialRes.sourceUrl || '',
+      fileData: partialRes.fileData || (partialRes.sourceUrl?.startsWith('data:') ? partialRes.sourceUrl : null),
+      canonicalUrl: partialRes.canonicalUrl || partialRes.fileUrl || partialRes.sourceUrl || '',
       status: (partialRes.status === 'PENDING_REVIEW' || partialRes.status === 'Pending Review' || !partialRes.status) ? 'Published' : (partialRes.status as ResourceStatus),
       tags: Array.from(new Set([...(partialRes.tags || []), 'External', 'Discovered', 'UserSavedExternal'])),
       createdAt: new Date().toISOString(),
@@ -464,6 +468,12 @@ export function ResourceProvider({ children }: { children: React.ReactNode }) {
       content: partialRes.content || {
         body: partialRes.description,
       },
+      wordCount: partialRes.wordCount || null,
+      pageCount: partialRes.pageCount || null,
+      cefrLevel: partialRes.cefrLevel || partialRes.academicContext?.level || 'A1',
+      framework: partialRes.framework || 'CEFR',
+      docHtml: (partialRes as any).docHtml || null,
+      fileHash: partialRes.fileHash || null,
       analysis: {
         relevanceScore: 95,
         levelMatchScore: 95,

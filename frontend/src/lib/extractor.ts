@@ -23,7 +23,16 @@ export async function extractDocumentContent(
   buffer: Buffer,
   fileName: string
 ): Promise<ExtractedDocument> {
-  const ext = path.extname(fileName).toLowerCase();
+  let ext = path.extname(fileName).toLowerCase();
+
+  // Auto-detect extension from magic bytes if missing or generic
+  if (!ext || ext === '.') {
+    if (buffer.length > 4 && buffer[0] === 0x50 && buffer[1] === 0x4B && buffer[2] === 0x03 && buffer[3] === 0x04) {
+      ext = '.docx';
+    } else if (buffer.length > 4 && buffer[0] === 0x25 && buffer[1] === 0x50 && buffer[2] === 0x44 && buffer[3] === 0x46) {
+      ext = '.pdf';
+    }
+  }
 
   // 1. Plain text / Markdown / JSON / CSV: Fast direct read
   if (['.txt', '.md', '.json', '.csv'].includes(ext)) {
@@ -42,7 +51,10 @@ export async function extractDocumentContent(
   }
 
   // 2. High-Fidelity In-Memory DOCX Extraction via Mammoth (Instant, pure Node.js)
-  if (['.docx', '.doc'].includes(ext)) {
+  const isDocxBuffer = ['.docx', '.doc'].includes(ext) ||
+    (buffer.length > 4 && buffer[0] === 0x50 && buffer[1] === 0x4B && buffer[2] === 0x03 && buffer[3] === 0x04);
+
+  if (isDocxBuffer) {
     try {
       const [rawResult, htmlResult] = await Promise.all([
         mammoth.extractRawText({ buffer }),
@@ -51,12 +63,12 @@ export async function extractDocumentContent(
 
       const text = cleanText(rawResult.value);
       const html = cleanText(htmlResult.value);
-      if (text && text.length > 20) {
+      if (text && text.length > 0) {
         const words = text.split(/\s+/).filter(Boolean).length;
         return {
           success: true,
           text,
-          html,
+          html: html || `<p>${text}</p>`,
           wordCount: words,
           pageCount: Math.max(1, Math.ceil(words / 350)),
           charCount: text.length,

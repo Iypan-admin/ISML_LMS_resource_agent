@@ -433,9 +433,10 @@ export default function KnowledgeVaultPage() {
 
             const serverItem = data.data || data.resource || data;
             const resId = serverItem.id || data.existingResourceId || `upload-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
-            const fullBody = data.extractedText || serverItem.content?.body || '';
-            const words = data.wordCount || serverItem.wordCount || (fullBody ? fullBody.split(/\s+/).filter(Boolean).length : 0);
-            const pages = data.pageCount || serverItem.pageCount || Math.max(1, Math.ceil(words / 350));
+            let fullBody = data.extractedText || serverItem.content?.body || '';
+            let fullHtml = data.html || (serverItem as any)?.docHtml || '';
+            let words = data.wordCount || serverItem.wordCount || (fullBody ? fullBody.split(/\s+/).filter(Boolean).length : 0);
+            let pages = data.pageCount || serverItem.pageCount || Math.max(1, Math.ceil(words / 350));
 
             let clientDataUrl = '';
             try {
@@ -448,6 +449,31 @@ export default function KnowledgeVaultPage() {
                 });
               }
             } catch (_) {}
+
+            // Instant fallback extraction if text or html is missing
+            if ((!fullBody || fullBody.length < 50 || !fullHtml) && clientDataUrl) {
+              try {
+                const extResp = await fetch('/api/resources/extract-text', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({
+                    base64: clientDataUrl,
+                    fileName: item.name,
+                  }),
+                });
+                if (extResp.ok) {
+                  const extJson = await extResp.json();
+                  if (extJson && extJson.success) {
+                    if (extJson.text) {
+                      fullBody = extJson.text;
+                      words = extJson.wordCount || fullBody.split(/\s+/).filter(Boolean).length;
+                      pages = extJson.pageCount || Math.max(1, Math.ceil(words / 350));
+                    }
+                    if (extJson.html) fullHtml = extJson.html;
+                  }
+                }
+              } catch (_) {}
+            }
 
             const fileUrl = data.fileUrl || serverItem.canonicalUrl || clientDataUrl || `/uploads/${item.name}`;
             const fileData = clientDataUrl || data.dataUrl || fileUrl;
@@ -477,6 +503,7 @@ export default function KnowledgeVaultPage() {
               content: {
                 body: fullBody,
               },
+              docHtml: fullHtml,
               wordCount: words,
               pageCount: pages,
             } as any);

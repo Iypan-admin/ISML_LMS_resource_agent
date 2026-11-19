@@ -95,4 +95,5 @@ export interface Resource {
   fileUrl?: string | null;
   fileData?: string | null;
   canonicalUrl?: string | null;
+  docHtml?: string | null;
 }

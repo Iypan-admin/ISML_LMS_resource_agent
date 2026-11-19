@@ -53,6 +53,8 @@ export function getBackendEndpoints(path: string): string[] {
     endpoints.push(`${railwayBackend}/sessions${cleanPath.replace(/^\/api\/sessions/, '')}`);
   } else if (cleanPath.startsWith('/api/v1')) {
     endpoints.push(`${railwayBackend}${cleanPath.replace(/^\/api\/v1/, '')}`);
+  } else if (cleanPath.startsWith('/api/')) {
+    endpoints.push(`${railwayBackend}${cleanPath.replace(/^\/api/, '')}`);
   } else {
     endpoints.push(`${railwayBackend}${cleanPath}`);
   }
@@ -93,9 +95,12 @@ export async function fetchWithEndpointFallback(path: string, options: RequestIn
   const endpoints = getAiEndpoints(path);
   let lastError: any = null;
 
+  const isUpload = (typeof FormData !== 'undefined' && options.body instanceof FormData) || path.includes('upload');
+  const timeoutMs = isUpload ? 60000 : 12000;
+
   for (const url of endpoints) {
     try {
-      const resp = await fetch(url, { ...options, signal: options.signal || AbortSignal.timeout(3000) });
+      const resp = await fetch(url, { ...options, signal: options.signal || AbortSignal.timeout(timeoutMs) });
       // Return immediately on success OR on any client business error (400, 422, 403) so the caller can process the error details!
       if (resp.ok || resp.status === 400 || resp.status === 409 || resp.status === 422 || resp.status === 403) {
         return resp;
@@ -118,9 +123,12 @@ export async function fetchBackendWithFallback(path: string, options: RequestIni
   const endpoints = getBackendEndpoints(path);
   let lastError: any = null;
 
+  const isUpload = (typeof FormData !== 'undefined' && options.body instanceof FormData) || path.includes('upload');
+  const timeoutMs = isUpload ? 60000 : 12000;
+
   for (const url of endpoints) {
     try {
-      const resp = await fetch(url, { ...options, signal: options.signal || AbortSignal.timeout(3000) });
+      const resp = await fetch(url, { ...options, signal: options.signal || AbortSignal.timeout(timeoutMs) });
       const contentType = resp.headers.get('content-type') || '';
       // If endpoint returned HTML instead of JSON API response (e.g. Next.js page), treat as invalid backend
       if (resp.ok && !contentType.includes('application/json')) {

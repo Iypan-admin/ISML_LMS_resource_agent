@@ -121,43 +121,88 @@ export default function VaultDocumentDetailPage() {
     return () => { isMounted = false; };
   }, [id, resources, getResourceById]);
 
-  // Resolve filename and file extension
-  const rawFileName = resource?.originalUrl || resource?.sourceUrl || resource?.title || '';
-  const fileName = rawFileName.startsWith('data:') ? (resource?.title || 'material') : rawFileName;
-  const ext = (fileName.includes('.') ? fileName.split('.').pop() || '' : '').toLowerCase();
+  // 1. Resolve real file name from all possible metadata sources
+  const descFileNameMatch = resource?.description?.match(/Uploaded file ([^\s)]+)/i);
+  const descFileName = descFileNameMatch ? descFileNameMatch[1] : '';
 
-  const isDocx = ['docx', 'doc'].includes(ext);
+  // Extract base64 payload if available from any property
+  const base64Data =
+    (resource?.fileData && resource.fileData.startsWith('data:')) ? resource.fileData :
+    (resource?.sourceUrl && resource.sourceUrl.startsWith('data:')) ? resource.sourceUrl :
+    (resource?.fileUrl && resource.fileUrl.startsWith('data:')) ? resource.fileUrl :
+    (resource?.canonicalUrl && resource.canonicalUrl.startsWith('data:')) ? resource.canonicalUrl :
+    null;
+
+  const base64Mime = base64Data?.match(/^data:([^;]+);base64,/)?.[1]?.toLowerCase() || '';
+
+  const rawFileName =
+    (resource?.originalUrl && !resource.originalUrl.startsWith('data:') ? resource.originalUrl : null) ||
+    descFileName ||
+    (resource?.sourceUrl && !resource.sourceUrl.startsWith('data:') && resource.sourceUrl.includes('/') ? resource.sourceUrl.split('/').pop() : null) ||
+    (resource?.fileUrl && !resource.fileUrl.startsWith('data:') && resource.fileUrl.includes('/') ? resource.fileUrl.split('/').pop() : null) ||
+    resource?.title ||
+    '';
+
+  // Determine file extension
+  let ext = (rawFileName.includes('.') ? rawFileName.split('.').pop() || '' : '').toLowerCase();
+  if (!ext && base64Mime) {
+    if (base64Mime.includes('wordprocessingml') || base64Mime.includes('msword')) ext = 'docx';
+    else if (base64Mime.includes('pdf')) ext = 'pdf';
+    else if (base64Mime.includes('image/')) ext = base64Mime.split('/')[1] || 'png';
+    else if (base64Mime.includes('presentationml')) ext = 'pptx';
+  }
+  if (!ext && descFileName.includes('.')) {
+    ext = (descFileName.split('.').pop() || '').toLowerCase();
+  }
+
+  const isDocx = ['docx', 'doc'].includes(ext) || base64Mime.includes('wordprocessingml') || Boolean(descFileName.match(/\.docx?$/i));
+
+  const cleanDisplayFileName =
+    rawFileName && rawFileName.includes('.')
+      ? rawFileName
+      : descFileName || `${resource?.title || 'Material Document'}.${ext || 'docx'}`;
+
+  const fileName = cleanDisplayFileName;
 
   // Automatic high-fidelity text & HTML extraction for documents
   useEffect(() => {
     if (!resource) return;
 
+    if (resource.docHtml && !docHtml) {
+      setDocHtml(resource.docHtml);
+    }
+
     const currentText = liveText || resource.content?.body || (resource as any).extractedText || '';
     const isPlaceholder = !currentText || currentText.trim().startsWith('Uploaded file ') || currentText.trim().length < 80;
 
-    if ((isDocx || isPlaceholder) && (resource.fileData || resource.fileUrl || resource.id)) {
-      setIsExtracting(true);
-      fetch('/api/resources/extract-text', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          id: resource.id,
-          base64: resource.fileData,
-          fileUrl: resource.fileUrl,
-          fileName: fileName,
-        }),
-      })
-        .then(res => res.json())
-        .then(data => {
-          if (data && data.success) {
-            if (data.html) setDocHtml(data.html);
-            if (data.text) setLiveText(data.text);
-          }
+    const payloadBase64 = base64Data || resource.fileData || (resource.sourceUrl?.startsWith('data:') ? resource.sourceUrl : null);
+    const payloadFileUrl = resource.fileUrl && !resource.fileUrl.startsWith('data:') ? resource.fileUrl : null;
+
+    if (isDocx || isPlaceholder || ext === 'docx' || ext === 'doc') {
+      if (payloadBase64 || payloadFileUrl || resource.id) {
+        setIsExtracting(true);
+        fetch('/api/resources/extract-text', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            id: resource.id,
+            base64: payloadBase64,
+            fileUrl: payloadFileUrl,
+            fileName: cleanDisplayFileName,
+          }),
         })
-        .catch(err => console.warn('Document render extraction notice:', err))
-        .finally(() => setIsExtracting(false));
+          .then(res => res.json())
+          .then(data => {
+            if (data && data.success) {
+              if (data.html) setDocHtml(data.html);
+              if (data.text) setLiveText(data.text);
+            }
+          })
+          .catch(err => console.warn('Document render extraction notice:', err))
+          .finally(() => setIsExtracting(false));
+      }
     }
-  }, [resource, isDocx, fileName]);
+  }, [resource, isDocx, cleanDisplayFileName, base64Data, ext]);
 
   if (isLoading) {
     return (
@@ -234,6 +279,7 @@ export default function VaultDocumentDetailPage() {
 
   // Direct file URL for viewing and downloading
   const directUrl =
+    base64Data ||
     resource.fileData ||
     resource.fileUrl ||
     resource.canonicalUrl ||
@@ -257,8 +303,6 @@ export default function VaultDocumentDetailPage() {
     (resource as any).extractedText ||
     resource.description ||
     '';
-
-  const cleanDisplayFileName = fileName.startsWith('data:') ? (resource.title || 'Material Document') : fileName;
 
   return (
     <div className="max-w-6xl mx-auto px-4 sm:px-6 py-6 font-sans space-y-6 pb-24">
@@ -442,10 +486,13 @@ export default function VaultDocumentDetailPage() {
               />
             ) : (
               <div className="prose prose-slate max-w-none text-slate-800 leading-relaxed whitespace-pre-wrap select-text text-sm sm:text-base">
-                {extractedText || (
-                  <div className="py-8 text-center text-slate-400 text-xs">
-                    <p className="font-bold text-slate-600">Loading document text...</p>
-                    <p>Please click 'Download Original Document' above to view in Microsoft Word.</p>
+                {extractedText && !extractedText.trim().startsWith('Uploaded file ') ? (
+                  extractedText
+                ) : (
+                  <div className="py-12 text-center text-slate-500 space-y-3">
+                    <RotateCw className="w-6 h-6 animate-spin text-blue-600 mx-auto" />
+                    <p className="font-bold text-slate-700 text-sm">Rendering document preview...</p>
+                    <p className="text-xs text-slate-400">Extracting high-fidelity content from {cleanDisplayFileName}</p>
                   </div>
                 )}
               </div>
