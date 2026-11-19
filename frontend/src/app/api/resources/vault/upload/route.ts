@@ -248,6 +248,23 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    // Forward upload to Railway cloud backend so all devices and cross-tabs sync globally
+    try {
+      const railwayFormData = new FormData();
+      railwayFormData.append('file', new Blob([buffer], { type: file.type || 'application/octet-stream' }), file.name);
+      railwayFormData.append('title', title);
+      railwayFormData.append('language', languageName);
+      railwayFormData.append('framework', framework);
+      railwayFormData.append('cefrLevel', cefrLevel);
+      railwayFormData.append('tenantId', 'inst_isml_global');
+
+      fetch('https://isml-resource-backend-production.up.railway.app/api/v1/resources/vault/upload', {
+        method: 'POST',
+        body: railwayFormData,
+        signal: AbortSignal.timeout(12000),
+      }).catch((e) => console.warn('Railway cloud sync background notice:', e));
+    } catch (_) {}
+
     const formattedHtml = docInfo.html || `<div class="document-text-content" style="white-space: pre-wrap; font-family: inherit;">${extractedText}</div>`;
 
     return NextResponse.json({

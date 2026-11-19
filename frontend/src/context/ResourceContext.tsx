@@ -309,19 +309,19 @@ export function ResourceProvider({ children }: { children: React.ReactNode }) {
     }
 
     try {
-      // 1. Same-Origin Next.js API first (5ms local server execution)
-      let resp: Response | null = await fetch('/api/resources', { signal: AbortSignal.timeout(4000) }).catch(() => null);
+      // 1. Same-Origin Next.js API first (which connects to Railway / Supabase cloud)
+      let resp: Response | null = await fetch('/api/resources', { signal: AbortSignal.timeout(8000) }).catch(() => null);
 
-      // 2. Railway fallback with 3-second timeout (never hangs for 2 minutes)
+      // 2. Direct Railway fallback (never hangs)
       if (!resp || !resp.ok) {
         const prodUrl = 'https://isml-resource-backend-production.up.railway.app/api/v1/resources?limit=500';
-        resp = await fetch(prodUrl, { signal: AbortSignal.timeout(3000) }).catch(() => null);
+        resp = await fetch(prodUrl, { signal: AbortSignal.timeout(8000) }).catch(() => null);
       }
 
       if (resp && resp.ok) {
         const json = await resp.json();
         if (json.success !== false) {
-          const rawData = Array.isArray(json.data) ? json.data : [];
+          const rawData = Array.isArray(json.data) ? json.data : (Array.isArray(json) ? json : []);
           const mappedDbItems = rawData.map(mapBackendResource);
 
           // Filter out legacy quarantined mock records (keep genuine user uploads & published items)
