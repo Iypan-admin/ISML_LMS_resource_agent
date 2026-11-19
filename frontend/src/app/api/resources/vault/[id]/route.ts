@@ -4,6 +4,8 @@ import { prisma } from '@/lib/prisma';
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
 
+const RAILWAY_BASE = 'https://isml-resource-backend-production.up.railway.app/api/v1/resources';
+
 export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -16,37 +18,77 @@ export async function GET(
 
     const isUuid = (val: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(val);
 
-    // 1. Fetch Resource with Language safely
+    // 1. Fetch from Railway cloud backend first (direct IPv6 connection to Supabase database)
+    try {
+      const railwayResp = await fetch(`${RAILWAY_BASE}/${encodeURIComponent(id)}`, {
+        signal: AbortSignal.timeout(6000),
+        headers: { 'Accept': 'application/json' },
+      });
+      if (railwayResp.ok) {
+        const json = await railwayResp.json();
+        const item = json.data || json;
+        if (item && (item.id || item.title)) {
+          const bodyText = item.description || 'Verified study material.';
+          const wordCount = item.wordCount || bodyText.split(/\s+/).filter(Boolean).length;
+          const pageCount = item.pageCount || Math.max(1, Math.ceil(wordCount / 350));
+          return NextResponse.json({
+            success: true,
+            data: {
+              ...item,
+              fileUrl: item.canonicalUrl || item.originalUrl || item.fileUrl,
+              canonicalUrl: item.canonicalUrl || item.originalUrl || item.fileUrl,
+              wordCount,
+              pageCount,
+              content: {
+                body: bodyText,
+              },
+            },
+            source: 'railway_cloud',
+          }, { status: 200 });
+        }
+      }
+    } catch (railwayErr: any) {
+      console.warn('[Railway Resource Lookup Notice]:', railwayErr.message);
+    }
+
+    // 2. Fallback to direct Prisma PostgreSQL query
     let resource = null;
-    if (isUuid(id)) {
-      resource = await prisma.resource.findUnique({
-        where: { id },
-        include: { language: true },
-      });
-    } else {
-      resource = await prisma.resource.findFirst({
-        where: {
-          OR: [
-            { slug: { equals: id, mode: 'insensitive' } },
-            { originalUrl: { contains: id, mode: 'insensitive' } },
-            { title: { contains: id, mode: 'insensitive' } },
-          ],
-        },
-        include: { language: true },
-      });
+    try {
+      if (isUuid(id)) {
+        resource = await prisma.resource.findUnique({
+          where: { id },
+          include: { language: true },
+        });
+      } else {
+        resource = await prisma.resource.findFirst({
+          where: {
+            OR: [
+              { slug: { equals: id, mode: 'insensitive' } },
+              { originalUrl: { contains: id, mode: 'insensitive' } },
+              { title: { contains: id, mode: 'insensitive' } },
+            ],
+          },
+          include: { language: true },
+        });
+      }
+    } catch (dbErr: any) {
+      console.warn('[Prisma Resource Lookup Notice]:', dbErr.message);
     }
 
     if (!resource) {
       return NextResponse.json({ success: false, message: `Resource '${id}' not found in database` }, { status: 404 });
     }
 
-    // 2. Fetch all vector chunks for this resource in sequential order
-    const chunks = await prisma.sessionVectorChunk.findMany({
-      where: { resourceId: resource.id },
-      orderBy: { chunkIndex: 'asc' },
-    });
+    // 3. Fetch all vector chunks for this resource in sequential order
+    let chunks: any[] = [];
+    try {
+      chunks = await prisma.sessionVectorChunk.findMany({
+        where: { resourceId: resource.id },
+        orderBy: { chunkIndex: 'asc' },
+      });
+    } catch (_) {}
 
-    // 3. Assemble full document text from all chunks
+    // 4. Assemble full document text from all chunks
     let fullText = '';
     if (chunks.length > 0) {
       fullText = chunks.map((c: any) => c.content).join('\n\n');
@@ -57,7 +99,6 @@ export async function GET(
     const words = fullText.split(/\s+/).filter(Boolean).length;
     const pages = resource.pageCount || Math.max(1, Math.ceil(words / 350));
 
-    // Return comprehensive resource payload
     const fileUrl = resource.canonicalUrl || (resource.originalUrl ? `/uploads/${resource.originalUrl}` : null);
     return NextResponse.json({
       success: true,

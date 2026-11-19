@@ -42,10 +42,17 @@ export default function VaultDocumentDetailPage() {
     let localItem = getResourceById ? getResourceById(id) : resources.find(r => r.id === id);
     if (!localItem && typeof window !== 'undefined') {
       try {
-        const rawSaved = localStorage.getItem('isml_saved_external_resources');
-        if (rawSaved) {
-          const items = JSON.parse(rawSaved);
-          localItem = items.find((x: any) => x.id === id || x.originalUrl === id || x.title === id);
+        const rawCachedCloud = localStorage.getItem('isml_cached_cloud_materials');
+        if (rawCachedCloud) {
+          const cloudItems = JSON.parse(rawCachedCloud);
+          localItem = cloudItems.find((x: any) => x.id === id || x.title === id || x.originalUrl === id);
+        }
+        if (!localItem) {
+          const rawSaved = localStorage.getItem('isml_saved_external_resources');
+          if (rawSaved) {
+            const items = JSON.parse(rawSaved);
+            localItem = items.find((x: any) => x.id === id || x.originalUrl === id || x.title === id);
+          }
         }
         if (!localItem) {
           const rawCached = sessionStorage.getItem('isml_cached_backend_resources');
@@ -73,7 +80,8 @@ export default function VaultDocumentDetailPage() {
 
       const endpoints = [
         `/api/resources/vault/${id}`,
-        `https://isml-resource-backend-production.up.railway.app/api/v1/resources/${id}`
+        `https://isml-resource-backend-production.up.railway.app/api/v1/resources/${id}`,
+        '/api/resources'
       ];
 
       let fetchedData: any = null;
@@ -81,13 +89,20 @@ export default function VaultDocumentDetailPage() {
 
       for (const url of endpoints) {
         try {
-          const resp = await fetch(url, { signal: AbortSignal.timeout(3000) });
+          const resp = await fetch(url, { signal: AbortSignal.timeout(5000) });
           const contentType = resp.headers.get('content-type') || '';
           if (!contentType.includes('application/json')) continue;
 
           if (resp.ok) {
             const json = await resp.json();
-            if (json && (json.data || json.id)) {
+            if (url === '/api/resources') {
+              const list = Array.isArray(json.data) ? json.data : (Array.isArray(json) ? json : []);
+              const match = list.find((item: any) => item.id === id || item.slug === id || item.title === id);
+              if (match) {
+                fetchedData = match;
+                break;
+              }
+            } else if (json && (json.data || json.id)) {
               fetchedData = json.data || json;
               break;
             }
@@ -128,6 +143,7 @@ export default function VaultDocumentDetailPage() {
   // Extract base64 payload if available from any property
   const base64Data =
     (resource?.fileData && resource.fileData.startsWith('data:')) ? resource.fileData :
+    (resource?.originalUrl && resource.originalUrl.startsWith('data:')) ? resource.originalUrl :
     (resource?.sourceUrl && resource.sourceUrl.startsWith('data:')) ? resource.sourceUrl :
     (resource?.fileUrl && resource.fileUrl.startsWith('data:')) ? resource.fileUrl :
     (resource?.canonicalUrl && resource.canonicalUrl.startsWith('data:')) ? resource.canonicalUrl :
@@ -175,7 +191,7 @@ export default function VaultDocumentDetailPage() {
     const currentText = liveText || resource.content?.body || (resource as any).extractedText || '';
     const isPlaceholder = !currentText || currentText.trim().startsWith('Uploaded file ') || currentText.trim().length < 80;
 
-    const payloadBase64 = base64Data || resource.fileData || (resource.sourceUrl?.startsWith('data:') ? resource.sourceUrl : null);
+    const payloadBase64 = base64Data || resource.fileData || (resource.originalUrl?.startsWith('data:') ? resource.originalUrl : null) || (resource.sourceUrl?.startsWith('data:') ? resource.sourceUrl : null);
     const payloadFileUrl = resource.fileUrl && !resource.fileUrl.startsWith('data:') ? resource.fileUrl : null;
 
     if (isDocx || isPlaceholder || ext === 'docx' || ext === 'doc') {

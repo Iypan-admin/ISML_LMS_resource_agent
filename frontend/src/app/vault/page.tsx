@@ -432,7 +432,7 @@ export default function KnowledgeVaultPage() {
             setStagedFiles((prev) => prev.map((f) => f.id === item.id ? { ...f, status: 'SUCCESS' } : f));
 
             const serverItem = data.data || data.resource || data;
-            const resId = serverItem.id || data.existingResourceId || `upload-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+            const resId = serverItem.id || data.resourceId || serverItem.resourceId || data.existingResourceId || `upload-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
             let fullBody = data.extractedText || serverItem.content?.body || '';
             let fullHtml = data.html || (serverItem as any)?.docHtml || '';
             let words = data.wordCount || serverItem.wordCount || (fullBody ? fullBody.split(/\s+/).filter(Boolean).length : 0);
@@ -581,7 +581,7 @@ export default function KnowledgeVaultPage() {
             setStagedLinks((prev) => prev.map((l) => l.id === item.id ? { ...l, status: 'SUCCESS' } : l));
 
             const serverItem = data.data || data.resource || data;
-            const resId = serverItem.id || data.existingResourceId || `link-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+            const resId = serverItem.id || data.resourceId || serverItem.resourceId || data.existingResourceId || `link-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
             await addResource({
               id: resId,
               title: item.title || item.url,

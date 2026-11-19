@@ -55,27 +55,23 @@ const initialFilters: FilterState = {
 const ResourceContext = createContext<ResourceContextType | undefined>(undefined);
 
 export function ResourceProvider({ children }: { children: React.ReactNode }) {
-  // One-time fresh clean state: clear all stored test sessions, external resources & cache
+  // One-time fresh clean state: clear legacy sessions while preserving materials cache
   if (typeof window !== 'undefined') {
     try {
-      const resetVersion = localStorage.getItem('isml_fresh_clean_reset_v20');
+      const resetVersion = localStorage.getItem('isml_fresh_clean_reset_v21');
       if (!resetVersion) {
-        localStorage.removeItem('isml_saved_external_resources');
         localStorage.removeItem('isml_saved_sessions_archive');
         localStorage.removeItem('isml_last_curriculum_blueprint');
         localStorage.removeItem('isml_studio_saved_state');
-        localStorage.removeItem('isml_user_uploaded_ids');
         localStorage.removeItem('isml_active_session_id');
         sessionStorage.clear();
         for (let i = localStorage.length - 1; i >= 0; i--) {
           const k = localStorage.key(i);
-          if (k && (k.startsWith('isml_') || k.startsWith('curriculum_') || k.startsWith('session_'))) {
-            if (k !== 'isml_fresh_clean_reset_v20') {
-              localStorage.removeItem(k);
-            }
+          if (k && (k.startsWith('curriculum_') || k.startsWith('session_'))) {
+            localStorage.removeItem(k);
           }
         }
-        localStorage.setItem('isml_fresh_clean_reset_v20', 'true');
+        localStorage.setItem('isml_fresh_clean_reset_v21', 'true');
       }
     } catch (_) {}
   }
@@ -103,6 +99,16 @@ export function ResourceProvider({ children }: { children: React.ReactNode }) {
   const [resources, setResources] = useState<Resource[]>(() => {
     if (typeof window !== 'undefined') {
       try {
+        const rawCachedCloud = localStorage.getItem('isml_cached_cloud_materials');
+        if (rawCachedCloud) {
+          const parsed = JSON.parse(rawCachedCloud);
+          if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+        }
+        const rawCachedBackend = sessionStorage.getItem('isml_cached_backend_resources');
+        if (rawCachedBackend) {
+          const parsed = JSON.parse(rawCachedBackend);
+          if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+        }
         const rawStorage = localStorage.getItem('isml_saved_external_resources');
         return rawStorage ? JSON.parse(rawStorage) : [];
       } catch (e) {}
@@ -303,19 +309,15 @@ export function ResourceProvider({ children }: { children: React.ReactNode }) {
   const fetchResources = useCallback(async () => {
     setError(null);
     const savedExternalItems = getSavedExternalResourcesFromStorage();
-    if (savedExternalItems.length > 0) {
-      setResources(savedExternalItems);
-      setIsLoading(false);
-    }
 
     try {
-      // 1. Direct Railway Cloud Backend first (instant multi-device & cross-tab global synchronization)
-      const prodUrl = 'https://isml-resource-backend-production.up.railway.app/api/v1/resources?limit=500';
-      let resp: Response | null = await fetch(prodUrl, { signal: AbortSignal.timeout(8000) }).catch(() => null);
+      // 1. Same-Origin Next.js API first (fastest on Vercel, ~200ms response)
+      let resp: Response | null = await fetch('/api/resources', { signal: AbortSignal.timeout(4000) }).catch(() => null);
 
-      // 2. Same-Origin Next.js API fallback
+      // 2. Direct Railway Cloud Backend fallback
       if (!resp || !resp.ok) {
-        resp = await fetch('/api/resources', { signal: AbortSignal.timeout(6000) }).catch(() => null);
+        const prodUrl = 'https://isml-resource-backend-production.up.railway.app/api/v1/resources?limit=500';
+        resp = await fetch(prodUrl, { signal: AbortSignal.timeout(6000) }).catch(() => null);
       }
 
       if (resp && resp.ok) {
@@ -324,18 +326,40 @@ export function ResourceProvider({ children }: { children: React.ReactNode }) {
           const rawData = Array.isArray(json.data) ? json.data : (Array.isArray(json) ? json : []);
           const mappedDbItems = rawData.map(mapBackendResource);
 
-          // Filter out legacy quarantined mock records (keep genuine user uploads & published items)
+          // Keep genuine user uploads & published items (ignore mock test records)
           const realDbItems = mappedDbItems.filter((d: any) => 
-            d.tenantId !== 'inst_legacy_quarantine' && 
             !d.title?.includes('MicroBiology') &&
             !d.tags?.includes('MockData')
           );
 
+          // Build index of cloud titles & URLs for deduplication
+          const cloudTitleSet = new Set(realDbItems.map((d: any) => d.title.trim().toLowerCase()));
+          const cloudUrlSet = new Set(realDbItems.map((d: any) => (d.sourceUrl || d.originalUrl || '').trim().toLowerCase()).filter(Boolean));
+
+          // Filter out saved external items that are already represented in the cloud database
+          const nonDuplicateExternal = savedExternalItems.filter((s: Resource) => {
+            const normTitle = s.title.trim().toLowerCase();
+            const normUrl = (s.sourceUrl || s.originalUrl || '').trim().toLowerCase();
+            if (cloudTitleSet.has(normTitle)) return false;
+            if (normUrl && cloudUrlSet.has(normUrl)) return false;
+            if (typeof s.id === 'string' && (s.id.startsWith('upload-') || s.id.startsWith('res-ext-'))) {
+              if (realDbItems.some((r: any) => r.title.trim().toLowerCase() === normTitle)) return false;
+            }
+            return true;
+          });
+
+          // Purge obsolete local copies if any duplicates were pruned
+          if (nonDuplicateExternal.length !== savedExternalItems.length && typeof window !== 'undefined') {
+            try {
+              localStorage.setItem('isml_saved_external_resources', JSON.stringify(nonDuplicateExternal));
+            } catch (_) {}
+          }
+
           const idMap = new Map<string, Resource>();
-          // Add real database items first
+          // Real database items first
           realDbItems.forEach((d: Resource) => idMap.set(d.id, d));
           // Merge client external items if not already present
-          savedExternalItems.forEach((s: Resource) => {
+          nonDuplicateExternal.forEach((s: Resource) => {
             if (!idMap.has(s.id)) {
               idMap.set(s.id, s);
             }
@@ -344,21 +368,31 @@ export function ResourceProvider({ children }: { children: React.ReactNode }) {
           const combined = Array.from(idMap.values());
           setResources(combined);
 
-          // Save to Session Storage
+          // Persist to localStorage & sessionStorage for 0ms instant load on refresh
           if (typeof window !== 'undefined') {
             try {
-              sessionStorage.setItem('isml_cached_backend_resources', JSON.stringify(combined));
-            } catch (e) {}
+              const sanitizedForStorage = combined.map(item => ({
+                ...item,
+                fileData: item.fileData && item.fileData.length > 50000 ? undefined : item.fileData,
+              }));
+              localStorage.setItem('isml_cached_cloud_materials', JSON.stringify(sanitizedForStorage));
+              sessionStorage.setItem('isml_cached_backend_resources', JSON.stringify(sanitizedForStorage));
+            } catch (e) {
+              console.warn('Failed to cache cloud materials in localStorage:', e);
+            }
           }
+          return;
         }
-      } else {
-        setResources(savedExternalItems);
       }
     } catch (err: any) {
       console.warn('Backend fetch notice:', err?.message || err);
-      setResources(savedExternalItems);
     } finally {
       setIsLoading(false);
+    }
+
+    // Fallback: If network failed, ensure at least cached or external items remain visible
+    if (savedExternalItems.length > 0) {
+      setResources(prev => (prev.length > 0 ? prev : savedExternalItems));
     }
   }, []);
 

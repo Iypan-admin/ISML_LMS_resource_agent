@@ -17,10 +17,20 @@ export async function GET(req: NextRequest) {
       const json = await resp.json();
       if (json && (Array.isArray(json.data) || Array.isArray(json))) {
         const rawList = Array.isArray(json.data) ? json.data : json;
-        const filtered = rawList.filter((r: any) => 
-          r.tenantId !== 'inst_legacy_quarantine' && 
-          !r.title?.includes('MicroBiology')
-        );
+        const valid = rawList.filter((r: any) => !r.title?.includes('MicroBiology'));
+        // Deduplicate by normalized title, preferring global published records
+        const mapByTitle = new Map<string, any>();
+        for (const item of valid) {
+          const t = (item.title || '').trim().toLowerCase();
+          if (!t) continue;
+          const existing = mapByTitle.get(t);
+          if (!existing) {
+            mapByTitle.set(t, item);
+          } else if (existing.tenantId === 'inst_legacy_quarantine' && item.tenantId !== 'inst_legacy_quarantine') {
+            mapByTitle.set(t, item);
+          }
+        }
+        const filtered = Array.from(mapByTitle.values());
         return NextResponse.json({
           success: true,
           data: filtered,
