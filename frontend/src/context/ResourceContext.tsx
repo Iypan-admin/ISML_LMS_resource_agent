@@ -56,23 +56,19 @@ const initialFilters: FilterState = {
 const ResourceContext = createContext<ResourceContextType | undefined>(undefined);
 
 export function ResourceProvider({ children }: { children: React.ReactNode }) {
-  // One-time fresh clean state: clear legacy sessions while preserving materials cache
+  // One-time fresh clean state: clear all stored sessions & previous test materials cache
   if (typeof window !== 'undefined') {
     try {
-      const resetVersion = localStorage.getItem('isml_fresh_clean_reset_v21');
+      const resetVersion = localStorage.getItem('isml_fresh_clean_reset_v30');
       if (!resetVersion) {
+        localStorage.removeItem('isml_cached_cloud_materials');
+        localStorage.removeItem('isml_saved_external_resources');
         localStorage.removeItem('isml_saved_sessions_archive');
         localStorage.removeItem('isml_last_curriculum_blueprint');
         localStorage.removeItem('isml_studio_saved_state');
         localStorage.removeItem('isml_active_session_id');
         sessionStorage.clear();
-        for (let i = localStorage.length - 1; i >= 0; i--) {
-          const k = localStorage.key(i);
-          if (k && (k.startsWith('curriculum_') || k.startsWith('session_'))) {
-            localStorage.removeItem(k);
-          }
-        }
-        localStorage.setItem('isml_fresh_clean_reset_v21', 'true');
+        localStorage.setItem('isml_fresh_clean_reset_v30', 'true');
       }
     } catch (_) {}
   }
