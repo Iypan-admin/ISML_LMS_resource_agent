@@ -49,7 +49,7 @@ export async function GET(
     // 3. Assemble full document text from all chunks
     let fullText = '';
     if (chunks.length > 0) {
-      fullText = chunks.map(c => c.content).join('\n\n');
+      fullText = chunks.map((c: any) => c.content).join('\n\n');
     } else {
       fullText = resource.description || 'Verified study material text.';
     }

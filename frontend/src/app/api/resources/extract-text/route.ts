@@ -56,7 +56,7 @@ export async function POST(req: NextRequest) {
       });
 
       if (chunks.length > 0) {
-        const fullText = chunks.map(c => c.content).join('\n\n');
+        const fullText = chunks.map((c: any) => c.content).join('\n\n');
         return NextResponse.json({
           success: true,
           text: fullText,
