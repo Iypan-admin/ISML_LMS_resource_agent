@@ -29,7 +29,7 @@ export const CORE_LANGUAGES = [
   { value: 'German', label: 'German (Deutsch)', flag: '🇩🇪', framework: 'CEFR (A1–C2)', levels: ['A1', 'A2', 'B1', 'B2', 'C1', 'C2'] },
   { value: 'French', label: 'French (Français)', flag: '🇫🇷', framework: 'CEFR (A1–C2)', levels: ['A1', 'A2', 'B1', 'B2', 'C1', 'C2'] },
   { value: 'Japanese', label: 'Japanese (日本語)', flag: '🇯🇵', framework: 'JLPT (N5–N1)', levels: ['N5', 'N4', 'N3', 'N2', 'N1'] },
-  { value: 'Korean', label: 'Korean (한국어)', flag: '🇰🇷', framework: 'TOPIK (1–6)', levels: ['TOPIK 1', 'TOPIK 2', 'TOPIK 3', 'TOPIK 4', 'TOPIK 5', 'TOPIK 6'] },
+  { value: 'Korean', label: 'Korean (한국어)', flag: '🇰🇷', framework: 'Korean Standard (L1–L4)', levels: ['L1', 'L2', 'L3', 'L4'] },
 ];
 
 export const TRACK_CONFIGS: Record<CourseTrackMode, {

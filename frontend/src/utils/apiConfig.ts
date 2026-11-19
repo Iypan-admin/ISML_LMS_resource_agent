@@ -7,19 +7,20 @@ export function getAiEndpoints(path: string): string[] {
   // Normalize path format e.g. "/api/v1/ai/scrape-analyze"
   const cleanPath = path.startsWith('/') ? path : `/${path}`;
 
-  // 1. Relative path (Same-origin Next.js serverless route - highest priority)
-  endpoints.push(cleanPath);
-
-  // 2. Local dev & LAN fallbacks
+  // 1. Local dev & LAN fallbacks (Direct Python AI microservice on Port 8000)
   if (typeof window !== 'undefined') {
     const hostname = window.location.hostname;
     const protocol = window.location.protocol;
     if (hostname === 'localhost' || hostname === '127.0.0.1') {
       endpoints.push(`http://localhost:8000${cleanPath}`);
+      endpoints.push(`http://127.0.0.1:8000${cleanPath}`);
     } else if (!hostname.includes('railway.app') && !hostname.includes('vercel.app')) {
       endpoints.push(`${protocol}//${hostname}:8000${cleanPath}`);
     }
   }
+
+  // 2. Relative path (Same-origin Next.js serverless route / proxy)
+  endpoints.push(cleanPath);
 
   // 3. Configured AI Service URL env var
   if (process.env.NEXT_PUBLIC_AI_SERVICE_URL) {
@@ -29,8 +30,6 @@ export function getAiEndpoints(path: string): string[] {
 
   // 4. Production fallback to Python AI microservice on Railway
   endpoints.push(`https://ismllmsresourceagent-production.up.railway.app${cleanPath}`);
-
-
 
   // Return unique list of endpoints
   return Array.from(new Set(endpoints));
@@ -43,8 +42,10 @@ export function getBackendEndpoints(path: string): string[] {
   const isBrowser = typeof window !== 'undefined';
   const isHttps = isBrowser && window.location.protocol === 'https:';
 
-  // 1. Same-origin Next.js serverless route / proxy (highest priority, 100% immune to CORS & mixed content)
-  endpoints.push(cleanPath);
+  // 1. Same-origin Next.js serverless route / proxy (only if explicitly an API route)
+  if (cleanPath.startsWith('/api')) {
+    endpoints.push(cleanPath);
+  }
 
   // 2. Production NestJS Backend on Railway (direct HTTPS cloud persistence)
   const railwayBackend = 'https://isml-resource-backend-production.up.railway.app/api/v1';
@@ -88,7 +89,7 @@ export function getBackendEndpoints(path: string): string[] {
   return Array.from(new Set(endpoints));
 }
 
-export async function fetchWithEndpointFallback(path: string, options: RequestInit): Promise<Response> {
+export async function fetchWithEndpointFallback(path: string, options: RequestInit = {}): Promise<Response> {
   const endpoints = getAiEndpoints(path);
   let lastError: any = null;
 
@@ -99,9 +100,9 @@ export async function fetchWithEndpointFallback(path: string, options: RequestIn
       if (resp.ok || resp.status === 400 || resp.status === 422 || resp.status === 403) {
         return resp;
       }
-      // If 404, only keep looking if there are more endpoints
-      if (resp.status === 404) {
-        lastError = new Error(`Endpoint ${url} returned 404 Not Found`);
+      // If 404 Not Found, 405 Method Not Allowed, or Gateway error (502/503/504), keep trying next endpoints!
+      if (resp.status === 404 || resp.status === 405 || resp.status === 502 || resp.status === 503 || resp.status === 504) {
+        lastError = new Error(`Endpoint ${url} returned ${resp.status}`);
         continue;
       }
       return resp;
@@ -113,13 +114,19 @@ export async function fetchWithEndpointFallback(path: string, options: RequestIn
   throw lastError || new Error(`Failed to reach any endpoint for ${path}`);
 }
 
-export async function fetchBackendWithFallback(path: string, options: RequestInit): Promise<Response> {
+export async function fetchBackendWithFallback(path: string, options: RequestInit = {}): Promise<Response> {
   const endpoints = getBackendEndpoints(path);
   let lastError: any = null;
 
   for (const url of endpoints) {
     try {
       const resp = await fetch(url, options);
+      const contentType = resp.headers.get('content-type') || '';
+      // If endpoint returned HTML instead of JSON API response (e.g. Next.js page), treat as invalid backend
+      if (resp.ok && !contentType.includes('application/json')) {
+        lastError = new Error(`Backend ${url} returned non-JSON response (${contentType})`);
+        continue;
+      }
       if (resp.ok || resp.status === 400 || resp.status === 422 || resp.status === 403) {
         return resp;
       }

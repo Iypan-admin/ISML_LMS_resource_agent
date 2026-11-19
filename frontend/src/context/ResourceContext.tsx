@@ -2,6 +2,7 @@
 
 import React, { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react';
 import { Resource, ResourceStatus, SourceType } from '../types/resource';
+import { mockResources } from '../mock/resources';
 
 export interface FilterState {
   search: string;
@@ -54,25 +55,37 @@ const initialFilters: FilterState = {
 const ResourceContext = createContext<ResourceContextType | undefined>(undefined);
 
 export function ResourceProvider({ children }: { children: React.ReactNode }) {
+  // One-time fresh clean state: clear all stored test sessions, external resources & cache
+  if (typeof window !== 'undefined') {
+    try {
+      const resetVersion = localStorage.getItem('isml_fresh_reset_v6');
+      if (!resetVersion) {
+        localStorage.removeItem('isml_saved_external_resources');
+        localStorage.removeItem('isml_saved_sessions_archive');
+        localStorage.removeItem('isml_last_curriculum_blueprint');
+        localStorage.removeItem('isml_studio_saved_state');
+        sessionStorage.clear();
+        for (let i = localStorage.length - 1; i >= 0; i--) {
+          const k = localStorage.key(i);
+          if (k && (k.startsWith('isml_') || k.startsWith('curriculum_'))) {
+            localStorage.removeItem(k);
+          }
+        }
+        localStorage.setItem('isml_fresh_reset_v6', 'true');
+      }
+    } catch (_) {}
+  }
+
   const [resources, setResources] = useState<Resource[]>(() => {
     if (typeof window !== 'undefined') {
       try {
-        const cachedBackend = sessionStorage.getItem('isml_cached_backend_resources');
         const rawStorage = localStorage.getItem('isml_saved_external_resources');
-        const savedExternal = rawStorage ? JSON.parse(rawStorage) : [];
-        const cached = cachedBackend ? JSON.parse(cachedBackend) : [];
-        
-        if (cached && cached.length > 0) {
-          const externalTitles = new Set(savedExternal.map((s: any) => s.title.toLowerCase()));
-          const cleanCached = cached.filter((d: any) => !externalTitles.has(d.title.toLowerCase()));
-          return [...savedExternal, ...cleanCached];
-        }
-        return savedExternal;
+        return rawStorage ? JSON.parse(rawStorage) : [];
       } catch (e) {}
     }
     return [];
   });
-  const [isLoading, setIsLoading] = useState<boolean>(() => resources.length === 0);
+  const [isLoading, setIsLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
   const [filters, setFilters] = useState<FilterState>(initialFilters);
 
@@ -84,11 +97,25 @@ export function ResourceProvider({ children }: { children: React.ReactNode }) {
   const mapBackendResource = (item: any): Resource => {
     const languageName = item.academicContext?.language || 
                          item.language?.name || 
-                         (item.title?.toLowerCase().includes('japanese') ? 'Japanese' : 
+                         (item.title?.toLowerCase().includes('korean') ? 'Korean' :
+                          item.title?.toLowerCase().includes('japanese') ? 'Japanese' : 
                           item.title?.toLowerCase().includes('spanish') ? 'Spanish' : 
                           item.title?.toLowerCase().includes('french') ? 'French' : 
                           item.title?.toLowerCase().includes('english') ? 'English' : 'German');
-    const levelCode = item.levels?.[0]?.level?.code || 'A1';
+
+    let levelCode = item.cefrLevel || item.academicContext?.level || item.levels?.[0]?.level?.code || 'A1';
+    if (languageName === 'Korean') {
+      if (item.title?.includes('L1') || levelCode === 'A1') levelCode = 'L1';
+      else if (item.title?.includes('L2') || levelCode === 'A2') levelCode = 'L2';
+      else if (item.title?.includes('L3') || levelCode === 'B1') levelCode = 'L3';
+      else if (item.title?.includes('L4') || levelCode === 'B2') levelCode = 'L4';
+    } else if (languageName === 'Japanese') {
+      if (item.title?.includes('N5') || levelCode === 'A1') levelCode = 'N5';
+      else if (item.title?.includes('N4') || levelCode === 'A2') levelCode = 'N4';
+      else if (item.title?.includes('N3') || levelCode === 'B1') levelCode = 'N3';
+      else if (item.title?.includes('N2') || levelCode === 'B2') levelCode = 'N2';
+      else if (item.title?.includes('N1') || levelCode === 'C1' || levelCode === 'C2') levelCode = 'N1';
+    }
     const skillName = item.skills?.[0]?.skill?.name || 'Speaking';
     const categoryName = item.categories?.[0]?.category?.name || 'General';
     const topicName = item.topics?.[0]?.topic?.name || 'General Topic';
@@ -196,6 +223,20 @@ export function ResourceProvider({ children }: { children: React.ReactNode }) {
       },
       versions: [],
       activity: [],
+      // Knowledge Vault Mappings
+      processingStatus: item.processingStatus || 'READY',
+      processingProgress: item.processingProgress ?? 100,
+      failureReason: item.failureReason || null,
+      approvalStatus: item.approvalStatus || (item.status === 'APPROVED' ? 'APPROVED' : 'DRAFT'),
+      publicationStatus: item.publicationStatus || (item.status === 'PUBLISHED' ? 'PUBLISHED' : 'UNPUBLISHED'),
+      tenantId: item.tenantId || 'inst_isml_global',
+      isGlobal: item.isGlobal ?? false,
+      framework: item.framework || 'CEFR',
+      cefrLevel: item.cefrLevel || levelCode || null,
+      wordCount: item.wordCount ?? null,
+      tokenCount: item.tokenCount ?? null,
+      pageCount: item.pageCount ?? null,
+      fileHash: item.fileHash || null,
     };
   };
 
@@ -250,21 +291,18 @@ export function ResourceProvider({ children }: { children: React.ReactNode }) {
       const rawData = Array.isArray(json.data) ? json.data : [];
       const mappedDbItems = rawData.map(mapBackendResource);
 
-      const externalTitles = new Set(savedExternalItems.map((s: Resource) => s.title.toLowerCase()));
-      const cleanDbItems = mappedDbItems.filter((d: Resource) => !externalTitles.has(d.title.toLowerCase()));
-
-      const combined = [...savedExternalItems, ...cleanDbItems];
+      const combined = [...savedExternalItems];
       setResources(combined);
 
-      // Save to Session Storage for 0ms instant reload on navigation
+      // Save to Session Storage
       if (typeof window !== 'undefined') {
         try {
-          sessionStorage.setItem('isml_cached_backend_resources', JSON.stringify(mappedDbItems));
+          sessionStorage.setItem('isml_cached_backend_resources', JSON.stringify(combined));
         } catch (e) {}
       }
     } catch (err: any) {
       console.warn('Backend fetch notice:', err.message || err);
-      setResources(prev => (prev.length > 0 ? prev : savedExternalItems));
+      setResources(savedExternalItems);
     } finally {
       setIsLoading(false);
     }

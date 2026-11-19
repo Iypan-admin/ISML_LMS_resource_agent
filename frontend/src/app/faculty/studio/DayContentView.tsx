@@ -1,13 +1,12 @@
 "use client";
 
-import React, { useState } from 'react';
-import { Loader2 } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Loader2, Download, Presentation, FileArchive, Eye, ChevronLeft, ChevronRight } from 'lucide-react';
 const BookOpen = ((_props: any) => null) as any;
 const GraduationCap = ((_props: any) => null) as any;
 const Clock = ((_props: any) => null) as any;
 const CheckCircle2 = ((_props: any) => null) as any;
 const Video = ((_props: any) => null) as any;
-const Download = ((_props: any) => null) as any;
 const Send = ((_props: any) => null) as any;
 const Volume2 = ((_props: any) => null) as any;
 const Sparkles = ((_props: any) => null) as any;
@@ -28,7 +27,9 @@ const FileText = ((_props: any) => null) as any;
 const X = ((_props: any) => null) as any;
 const Upload = ((_props: any) => null) as any;
 import { DayCurriculumItem } from './curriculumProgression';
+import { resolveAcademicPillars } from './academicPillars';
 import { fetchWithEndpointFallback } from '@/utils/apiConfig';
+import { FormalAssessment, generateFormalAssessments } from './assessmentGenerator';
 
 interface DayContentProps {
   activeDay: DayCurriculumItem;
@@ -40,6 +41,10 @@ interface DayContentProps {
   downloadingDocx: boolean;
   handleDownloadFullCurriculumDocx?: (days: any[]) => void;
   downloadingFullDocx?: boolean;
+  handleDownloadDayPptx?: (day: any) => void;
+  downloadingPptx?: boolean;
+  handleDownloadAllPptxZip?: (days: any[]) => void;
+  downloadingAllPptxZip?: boolean;
   allDays?: any[];
   onPrevDay: () => void;
   onNextDay: () => void;
@@ -48,6 +53,9 @@ interface DayContentProps {
   onApplyPeriodUpdate?: (dayNum: number, updates: any) => void;
   onApplyFullScheduleUpdate?: (updatedAllDays: any[]) => void;
   onTriggerFullPipelineGeneration?: () => void;
+  isSessionSaved?: boolean;
+  onManualSaveSession?: () => void;
+  savingSession?: boolean;
 }
 
 export function DayContentView({
@@ -60,6 +68,10 @@ export function DayContentView({
   downloadingDocx,
   handleDownloadFullCurriculumDocx,
   downloadingFullDocx,
+  handleDownloadDayPptx,
+  downloadingPptx,
+  handleDownloadAllPptxZip,
+  downloadingAllPptxZip,
   allDays,
   onPrevDay,
   onNextDay,
@@ -68,6 +80,9 @@ export function DayContentView({
   onApplyPeriodUpdate,
   onApplyFullScheduleUpdate,
   onTriggerFullPipelineGeneration,
+  isSessionSaved,
+  onManualSaveSession,
+  savingSession,
 }: DayContentProps) {
   const [playingAudioKey, setPlayingAudioKey] = useState<string | null>(null);
   const [currentAudio, setCurrentAudio] = useState<HTMLAudioElement | null>(null);
@@ -81,6 +96,65 @@ export function DayContentView({
   const [chatAudioTracks, setChatAudioTracks] = useState<any[]>([]);
   const [activeLsrwTab, setActiveLsrwTab] = useState<'ALL' | 'LISTENING' | 'SPEAKING' | 'READING' | 'WRITING'>('ALL');
   const [lastModifiedSection, setLastModifiedSection] = useState<string | null>(null);
+
+  // AI Audio & Voice Generator Studio States
+  const [audioStudioText, setAudioStudioText] = useState<string>('');
+  const [audioStudioLang, setAudioStudioLang] = useState<string>(sessionPackage?.language || 'English');
+  const [isGeneratingCustomAudio, setIsGeneratingCustomAudio] = useState<boolean>(false);
+  const [audioStudioSuccessMsg, setAudioStudioSuccessMsg] = useState<string | null>(null);
+  const [audioStudioErrorMsg, setAudioStudioErrorMsg] = useState<string | null>(null);
+
+  // 15+ Years Senior Assessment Director Spec: Formal Academic Assessments Hub States
+  const [studioActiveView, setStudioActiveView] = useState<'DAILY_PLAN' | 'ASSESSMENTS'>('DAILY_PLAN');
+  const [selectedAssessmentIndex, setSelectedAssessmentIndex] = useState<number>(0);
+  const [assessmentPaperMode, setAssessmentPaperMode] = useState<'STUDENT_PAPER' | 'TEACHER_KEY'>('TEACHER_KEY');
+
+  // Live 16:9 Presentation Viewer Modal States
+  const [showSlideViewer, setShowSlideViewer] = useState<boolean>(false);
+  const [currentSlideIndex, setCurrentSlideIndex] = useState<number>(0);
+
+  const SLIDE_TITLES = [
+    'Course Cover & Overview',
+    'Learning Objectives & Can-Do',
+    'Grammar & Sentence Blueprint',
+    'Target Vocabulary Bank',
+    'Classroom Dialogues & Pair Work',
+    'Culture & Formality Registers',
+    'Interactive LSRW Drills',
+    'Wrap-Up & Homework Task',
+  ];
+
+  useEffect(() => {
+    if (!showSlideViewer) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'ArrowRight' || e.key === 'PageDown' || e.key === ' ') {
+        setCurrentSlideIndex((prev) => (prev < 7 ? prev + 1 : prev));
+      } else if (e.key === 'ArrowLeft' || e.key === 'PageUp') {
+        setCurrentSlideIndex((prev) => (prev > 0 ? prev - 1 : prev));
+      } else if (e.key === 'Escape') {
+        setShowSlideViewer(false);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [showSlideViewer]);
+
+  const formalAssessmentsList: FormalAssessment[] = React.useMemo(() => {
+    if (sessionPackage?.generated_assessments && sessionPackage.generated_assessments.length > 0) {
+      return sessionPackage.generated_assessments;
+    }
+    const effectiveCount = sessionPackage?.school_meta?.assessmentsCount || sessionPackage?.college_meta?.assessmentsCount || 4;
+    return generateFormalAssessments(
+      sessionPackage?.language || 'German',
+      sessionPackage?.level || 'A1.1',
+      sessionPackage?.topic || 'General Curriculum',
+      effectiveCount,
+      totalDays || 60,
+      allDays || [activeDay],
+      sessionPackage?.extracted_source_context || sessionPackage?.raw_source_context,
+      sessionPackage?.master_pillar_priority || 'COMPREHENSIVE'
+    );
+  }, [sessionPackage, allDays, activeDay, totalDays]);
   // 📎 Multi-file persistent memory attachment state
   const [attachedChatFiles, setAttachedChatFiles] = useState<Array<{ name: string; size: number; content?: string; pages?: number; wordCount?: number }>>([]);
   const [isExtractingChatFile, setIsExtractingChatFile] = useState(false);
@@ -174,6 +248,158 @@ export function DayContentView({
     ...(localOverrides[activeDay.day_number] || {})
   };
 
+  React.useEffect(() => {
+    if (effectiveDay.classroom_dialogues && effectiveDay.classroom_dialogues.length > 0) {
+      setAudioStudioText(effectiveDay.classroom_dialogues.join('\n\n'));
+    } else if (effectiveDay.grammar_rules_detail) {
+      setAudioStudioText(effectiveDay.grammar_rules_detail);
+    } else {
+      setAudioStudioText(`Instructor: Welcome to Period ${effectiveDay.day_number}.\nLearner: Thank you! We are ready to learn.`);
+    }
+    setAudioStudioLang(sessionPackage?.language || 'English');
+  }, [activeDay.day_number, sessionPackage?.language]);
+
+  const handleFillFromDialogues = () => {
+    if (effectiveDay.classroom_dialogues && effectiveDay.classroom_dialogues.length > 0) {
+      setAudioStudioText(effectiveDay.classroom_dialogues.join('\n\n'));
+    } else {
+      setAudioStudioText(`Instructor: Welcome to Period ${effectiveDay.day_number}.\nLearner: Thank you, I am ready to practice.`);
+    }
+  };
+
+  const handleFillFromVocabulary = () => {
+    if (effectiveDay.vocabulary_bank && effectiveDay.vocabulary_bank.length > 0) {
+      const vocabLines = effectiveDay.vocabulary_bank.map((v: any) => 
+        `${v.word} (${v.pronunciation || ''}): ${v.meaning}. Example: ${v.example_sentence || ''}`
+      ).join('\n\n');
+      setAudioStudioText(vocabLines);
+    }
+  };
+
+  const handleFillFromLecture = () => {
+    if (effectiveDay.grammar_rules_detail) {
+      setAudioStudioText(effectiveDay.grammar_rules_detail);
+    }
+  };
+
+  const [isAddingAudioToPeriod, setIsAddingAudioToPeriod] = useState(false);
+
+  const handleGenerateAndDownloadAudio = async () => {
+    const text = (audioStudioText || '').trim();
+    if (!text) {
+      setAudioStudioErrorMsg('Please enter or paste text to generate audio.');
+      return;
+    }
+    setIsGeneratingCustomAudio(true);
+    setAudioStudioErrorMsg(null);
+    setAudioStudioSuccessMsg(null);
+    const targetLang = sessionPackage?.language || audioStudioLang || 'English';
+    const targetDayNum = effectiveDay.day_number || 1;
+    const cleanLang = targetLang.replace(/[^a-zA-Z0-9]/g, '_');
+    const cleanLevel = (sessionPackage?.level || 'A1.1').replace(/[^a-zA-Z0-9]/g, '_');
+    const totalDaysCount = totalDays || allDays?.length || 2;
+    const effectiveUnit = unitName || 'Period';
+
+    try {
+      const response = await fetchWithEndpointFallback('/api/v1/sessions/synthesize-speech', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          text: text,
+          language: targetLang,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Audio generation server error');
+      }
+
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      const ext = blob.type.includes('mpeg') || blob.type.includes('mp3') ? 'mp3' : 'wav';
+      const fileName = `${cleanLang}_${cleanLevel}_Total_${totalDaysCount}_${effectiveUnit}s_${effectiveUnit}_${targetDayNum}_Listening_Audio.${ext}`;
+      a.download = fileName;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+
+      setAudioStudioSuccessMsg(`Downloaded file: ${fileName}`);
+      setTimeout(() => setAudioStudioSuccessMsg(null), 5000);
+    } catch (err: any) {
+      console.warn('Backend audio synthesis failed:', err);
+      playNativeAudio(text, `studio-${effectiveDay.day_number}`);
+      setAudioStudioErrorMsg('Server audio download temporarily unavailable. Playing live in browser voice.');
+    } finally {
+      setIsGeneratingCustomAudio(false);
+    }
+  };
+
+  const handleAddAudioToPeriod = () => {
+    const text = (audioStudioText || '').trim();
+    if (!text) {
+      setAudioStudioErrorMsg('Please enter or paste text first.');
+      return;
+    }
+    setAudioStudioErrorMsg(null);
+    setAudioStudioSuccessMsg(null);
+    setIsAddingAudioToPeriod(true);
+
+    const targetLang = sessionPackage?.language || audioStudioLang || 'English';
+    const targetDayNum = effectiveDay.day_number || 1;
+    const effectiveUnit = unitName || 'Period';
+    const words = text.split(/\s+/).filter(Boolean);
+    const wordCount = words.length;
+    const durMin = Math.max(1, Math.ceil(wordCount / 120));
+    const newTrack = {
+      title: `${targetLang} Listening & Practice Drill (${effectiveUnit} ${targetDayNum})`,
+      script: text,
+      word_count: wordCount,
+      duration_minutes: durMin,
+      dialogue_turns: text.split('\n').filter(Boolean).map(line => {
+        const parts = line.split(':');
+        return {
+          speaker: parts.length > 1 ? parts[0].trim() : 'Speaker',
+          text: parts.length > 1 ? parts.slice(1).join(':').trim() : line.trim()
+        };
+      }),
+      created_at: new Date().toISOString()
+    };
+
+    const existingTracks = effectiveDay.generated_audio_tracks || (effectiveDay.generated_audio_track ? [effectiveDay.generated_audio_track] : []);
+    const allTracks = [...existingTracks, newTrack];
+    const audioPayload: any = {
+      generated_audio_track: newTrack,
+      generated_audio_tracks: allTracks,
+    };
+
+    setLocalOverrides(prev => ({
+      ...prev,
+      [targetDayNum]: { ...(prev[targetDayNum] || {}), ...audioPayload }
+    }));
+    if (onApplyPeriodUpdate) onApplyPeriodUpdate(targetDayNum, audioPayload);
+    setChatAudioTrack(newTrack);
+    setChatAudioTracks(allTracks);
+
+    setIsAddingAudioToPeriod(false);
+    setAudioStudioSuccessMsg(`Audio track successfully added to ${effectiveUnit} ${targetDayNum}!`);
+    setTimeout(() => setAudioStudioSuccessMsg(null), 5000);
+  };
+
+  const resolvedPillars = resolveAcademicPillars(
+    sessionPackage?.language || 'German',
+    sessionPackage?.level || 'A1',
+    effectiveDay.day_topic || 'Foundational Competency',
+    effectiveDay.day_number || 1
+  );
+
+  const canDoCompetencies = effectiveDay.proficiency_framework_can_do || resolvedPillars.proficiency_framework.can_do_descriptors;
+  const cultureData = effectiveDay.cultural_context_notes || resolvedPillars.culture_society;
+  const academicContext = effectiveDay.academic_professional_context || resolvedPillars.academic_professional;
+  const provenanceData = effectiveDay.provenance_audit_trail || resolvedPillars.provenance;
+
   const playNativeAudio = async (textToSpeak: string, key: string) => {
     // Stop if already playing this item
     if (playingAudioKey === key) {
@@ -217,15 +443,21 @@ export function DayContentView({
         const u = new SpeechSynthesisUtterance(cleanUtterance);
         u.lang = targetLocale;
         u.rate = audioSpeed;
-        u.pitch = 1.0;
+        u.pitch = 1.05; // Articulate, warm female vocal range
+        u.rate = audioSpeed || 0.92;
 
-        // Try to pick the best matching native voice available on user device
+        // Try to pick the best matching female native voice available on user device
         const voices = window.speechSynthesis.getVoices();
         if (voices.length > 0) {
-          const matchingVoice = voices.find(v => v.lang.startsWith(targetLocale.slice(0, 2)) && (v.name.includes('Natural') || v.name.includes('Google') || v.name.includes('Neural') || v.name.includes('Premium'))) 
-            || voices.find(v => v.lang.startsWith(targetLocale.slice(0, 2)));
-          if (matchingVoice) {
-            u.voice = matchingVoice;
+          const langPrefix = targetLocale.slice(0, 2).toLowerCase();
+          const matchedLangVoices = voices.filter(v => v.lang.toLowerCase().startsWith(langPrefix));
+          const femaleKeywords = ['female', 'zira', 'jenny', 'samantha', 'victoria', 'karen', 'fiona', 'moira', 'denise', 'hortense', 'hedda', 'katja', 'laura', 'helena', 'nanami', 'haruka', 'sun-hi', 'yuna', 'natural', 'neural', 'google'];
+          const femaleVoice = matchedLangVoices.find(v => {
+            const n = v.name.toLowerCase();
+            return femaleKeywords.some(kw => n.includes(kw)) && !n.includes('male') && !n.includes('david') && !n.includes('george') && !n.includes('mark');
+          }) || matchedLangVoices.find(v => !v.name.toLowerCase().includes('male')) || matchedLangVoices[0];
+          if (femaleVoice) {
+            u.voice = femaleVoice;
           }
         }
 
@@ -279,31 +511,25 @@ export function DayContentView({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           text: textToSpeak,
-          language: sessionPackage?.language || 'French',
+          language: sessionPackage?.language || 'English',
         }),
       });
 
       if (!response.ok) throw new Error('Audio download failed');
       const blob = await response.blob();
-      const url = URL.createObjectURL(blob);
+      const mp3Blob = blob.type === 'audio/mpeg' ? blob : new Blob([blob], { type: 'audio/mpeg' });
+      const url = URL.createObjectURL(mp3Blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `${filename}.wav`;
+      const cleanBaseName = filename.replace(/\.(wav|mp3|txt)$/i, '');
+      a.download = `${cleanBaseName}.mp3`;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
     } catch (err) {
       console.error('Error downloading audio:', err);
-      // Fallback synthesizer audio file creation in browser
-      const blob = new Blob([textToSpeak], { type: 'text/plain;charset=utf-8' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `${filename}_transcript.txt`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
+      alert('Unable to download MP3 audio right now. Please verify server connection.');
     }
   };
 
@@ -370,178 +596,642 @@ export function DayContentView({
   };
 
   return (
-    <div className="bg-white border border-slate-200/90 rounded-2xl shadow-sm overflow-hidden">
+    <div className="bg-white border-y sm:border border-slate-200/90 rounded-none sm:rounded-2xl shadow-sm overflow-hidden -mx-4 sm:mx-0">
       {/* Active Day Header Bar - Clean White / Slate Modern Style */}
-      <div className="p-4 sm:p-5 border-b border-slate-200 bg-white flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div className="flex items-start sm:items-center gap-3">
-          <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-blue-600 to-indigo-600 text-white font-black flex flex-col items-center justify-center shadow-md shadow-blue-500/20 shrink-0">
-            <span className="text-[9px] uppercase tracking-wider opacity-80 leading-none">
-              {unitName}
-            </span>
-            <span className="text-base font-extrabold leading-tight mt-0.5">
-              {effectiveDay.day_number}
-            </span>
-          </div>
-
-          <div>
-            <div className="flex items-center gap-2">
-              <span className="text-[10px] font-bold uppercase tracking-wider text-blue-600 bg-blue-50 border border-blue-200/80 px-2 py-0.5 rounded-md">
-                {sessionPackage.institution_type === 'SCHOOL'
-                  ? `Period ${effectiveDay.day_number} of ${totalDays}`
-                  : `Session ${effectiveDay.day_number} of ${totalDays}`}
+      {/* Mobile-First Responsive Studio Header */}
+      <div className="p-3 sm:p-4 border-b border-slate-200 bg-white space-y-2.5">
+        {/* Row 1: Period Title & Mode Switcher */}
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-gradient-to-br from-[#0052CC] to-blue-700 text-white font-black flex flex-col items-center justify-center shadow-xs shrink-0">
+              <span className="text-[8px] uppercase tracking-wider opacity-80 leading-none">
+                {unitName === 'Period' ? 'P' : 'S'}
               </span>
-              <span className="text-[11px] text-slate-400 font-medium">
-                Comprehensive Syllabus Unit
+              <span className="text-xs sm:text-sm font-black leading-none mt-0.5">
+                {effectiveDay.day_number}
               </span>
             </div>
-            <h3 className="text-base sm:text-lg font-black text-slate-900 mt-1 tracking-tight">
-              {effectiveDay.day_topic}
-            </h3>
-            {effectiveDay.source_reference_url && (
-              <div className="mt-1.5 flex items-center gap-1.5">
-                <a
-                  href={effectiveDay.source_reference_url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-blue-700 hover:text-blue-900 bg-blue-50/90 hover:bg-blue-100 border border-blue-200/80 px-2.5 py-0.5 rounded-md transition-colors max-w-lg truncate shadow-2xs"
-                  title={effectiveDay.source_reference_url}
-                >
-                  <span className="text-[12px]">🔗</span>
-                  <span className="font-bold">Resource:</span>
-                  <span className="truncate underline font-mono text-[10px]">{effectiveDay.source_reference_url}</span>
-                </a>
+            <div className="min-w-0">
+              <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                {unitName} {effectiveDay.day_number} of {totalDays}
               </div>
-            )}
+              <h3 className="text-xs sm:text-sm font-black text-slate-900 truncate">
+                {effectiveDay.day_topic}
+              </h3>
+            </div>
           </div>
-        </div>
 
-        {/* Action Controls: Mode Switcher, Speed & DOCX */}
-        <div className="flex flex-wrap items-center gap-2.5">
-          {/* Segmented Mode Switcher */}
-          <div className="flex items-center bg-slate-100 p-1 rounded-xl border border-slate-200">
+          {/* Segmented Mode Switcher (Teacher / Student) */}
+          <div className="flex items-center bg-slate-100 p-0.5 rounded-xl border border-slate-200 shrink-0">
             <button
               type="button"
               onClick={() => onToggleOutputMode('TEACHER')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-black transition-all flex items-center gap-1.5 cursor-pointer ${
+              className={`px-2.5 py-1 rounded-lg text-xs font-black transition-all cursor-pointer ${
                 outputMode === 'TEACHER'
-                  ? 'bg-white text-blue-700 shadow-sm'
-                  : 'text-slate-600 hover:text-slate-900'
+                  ? 'bg-white text-blue-700 shadow-2xs'
+                  : 'text-slate-500 hover:text-slate-900'
               }`}
             >
-              <BookOpen className="w-3.5 h-3.5 text-blue-600" />
-              <span>Teacher Guide</span>
+              Teacher
             </button>
             <button
               type="button"
               onClick={() => onToggleOutputMode('STUDENT')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-black transition-all flex items-center gap-1.5 cursor-pointer ${
+              className={`px-2.5 py-1 rounded-lg text-xs font-black transition-all cursor-pointer ${
                 outputMode === 'STUDENT'
-                  ? 'bg-emerald-600 text-white shadow-sm'
-                  : 'text-slate-600 hover:text-slate-900'
+                  ? 'bg-emerald-600 text-white shadow-2xs'
+                  : 'text-slate-500 hover:text-slate-900'
               }`}
             >
-              <GraduationCap className="w-3.5 h-3.5" />
-              <span>Student Practice</span>
-            </button>
-          </div>
-
-          {/* Speed Toggle */}
-          <div className="flex items-center gap-1 bg-slate-100 px-2.5 py-1.5 rounded-xl border border-slate-200 text-xs">
-            <Volume2 className="w-3.5 h-3.5 text-slate-500" />
-            <span className="text-slate-500 font-bold text-[10px]">Speed:</span>
-            {[0.8, 1.0, 1.25, 1.5, 2.0].map((s) => (
-              <button
-                key={s}
-                type="button"
-                onClick={() => {
-                  setAudioSpeed(s);
-                  if (currentAudio) {
-                    currentAudio.playbackRate = s;
-                  }
-                }}
-                className={`px-1.5 py-0.5 rounded text-[10px] font-black cursor-pointer transition-colors ${
-                  audioSpeed === s
-                    ? 'bg-blue-600 text-white shadow-xs'
-                    : 'text-slate-600 hover:text-slate-900 bg-white/70 hover:bg-white'
-                }`}
-              >
-                {s}x
-              </button>
-            ))}
-          </div>
-
-          {/* Download Action Buttons: Day DOCX and All Periods DOCX */}
-          <div className="flex items-center gap-1.5">
-            {handleDownloadFullCurriculumDocx && allDays && (
-              <button
-                type="button"
-                onClick={() => handleDownloadFullCurriculumDocx(allDays)}
-                disabled={downloadingFullDocx || downloadingDocx}
-                className="px-3 py-1.5 bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-700 hover:from-emerald-700 hover:to-teal-800 text-white font-extrabold rounded-xl text-xs shadow-sm transition-all flex items-center gap-1.5 disabled:opacity-50 cursor-pointer"
-                title="Download complete Master Guide for all periods and modules"
-              >
-                {downloadingFullDocx ? (
-                  <>
-                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                    <span>Compiling All {totalDays}...</span>
-                  </>
-                ) : (
-                  <>
-                    <Download className="w-3.5 h-3.5 text-amber-300" />
-                    <span>Download All {totalDays} {unitName}s</span>
-                  </>
-                )}
-              </button>
-            )}
-
-            <button
-              type="button"
-              onClick={() => handleDownloadDayDocx(activeDay)}
-              disabled={downloadingDocx || downloadingFullDocx}
-              className="px-3 py-1.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-bold rounded-xl text-xs shadow-sm transition-all flex items-center gap-1.5 disabled:opacity-50 cursor-pointer"
-              title={`Download ${unitName} ${effectiveDay.day_number} DOCX`}
-            >
-              {downloadingDocx ? (
-                <>
-                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                  <span>Exporting...</span>
-                </>
-              ) : (
-                <>
-                  <Download className="w-3.5 h-3.5" />
-                  <span>{unitName} {effectiveDay.day_number} DOCX</span>
-                </>
-              )}
-            </button>
-          </div>
-
-          {/* Prev/Next Navigation */}
-          <div className="flex items-center gap-1">
-            <button
-              type="button"
-              onClick={onPrevDay}
-              disabled={effectiveDay.day_number <= 1}
-              className="p-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-bold disabled:opacity-30 cursor-pointer border border-slate-200"
-              title="Previous Unit"
-            >
-              ←
-            </button>
-            <button
-              type="button"
-              onClick={onNextDay}
-              disabled={effectiveDay.day_number >= totalDays}
-              className="p-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-bold disabled:opacity-30 cursor-pointer border border-slate-200"
-              title="Next Unit"
-            >
-              →
+              Student
             </button>
           </div>
         </div>
+
+        {/* Row 2: Horizontal Swipeable Action Bar (Single Row on Mobile, No Stacking) */}
+        <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar py-0.5">
+          {/* View PPTX Button */}
+          <button
+            type="button"
+            onClick={() => {
+              setCurrentSlideIndex(0);
+              setShowSlideViewer(true);
+            }}
+            className="px-2.5 py-1 bg-slate-900 hover:bg-slate-800 text-white font-bold rounded-lg text-xs transition-all flex items-center gap-1 shrink-0 cursor-pointer shadow-2xs border border-slate-700"
+            title="Preview Presentation Slides"
+          >
+            <Eye className="w-3.5 h-3.5 text-cyan-300" />
+            <span>View Slides</span>
+          </button>
+
+          {/* Period PPTX Download */}
+          {handleDownloadDayPptx && (
+            <button
+              type="button"
+              onClick={() => handleDownloadDayPptx(activeDay)}
+              disabled={downloadingPptx || downloadingDocx || downloadingFullDocx || downloadingAllPptxZip}
+              className="px-2.5 py-1 bg-amber-600 hover:bg-amber-700 text-white font-bold rounded-lg text-xs transition-all flex items-center gap-1 shrink-0 disabled:opacity-50 cursor-pointer shadow-2xs"
+              title="Download Period PPTX"
+            >
+              {downloadingPptx ? (
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+              ) : (
+                <Presentation className="w-3.5 h-3.5" />
+              )}
+              <span>P{effectiveDay.day_number} PPTX</span>
+            </button>
+          )}
+
+          {/* Download All PPTX ZIP */}
+          {handleDownloadAllPptxZip && allDays && (
+            <button
+              type="button"
+              onClick={() => handleDownloadAllPptxZip(allDays)}
+              disabled={downloadingAllPptxZip || downloadingFullDocx || downloadingDocx || downloadingPptx}
+              className="px-2.5 py-1 bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-700 hover:to-orange-700 text-white font-extrabold rounded-lg text-xs transition-all flex items-center gap-1 shrink-0 disabled:opacity-50 cursor-pointer shadow-2xs"
+              title="Download all period presentations as ZIP"
+            >
+              {downloadingAllPptxZip ? (
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+              ) : (
+                <FileArchive className="w-3.5 h-3.5 text-amber-200" />
+              )}
+              <span>All PPTX (.zip)</span>
+            </button>
+          )}
+
+          {/* Period DOCX Download */}
+          <button
+            type="button"
+            onClick={() => handleDownloadDayDocx(activeDay)}
+            disabled={downloadingDocx || downloadingFullDocx || downloadingPptx || downloadingAllPptxZip}
+            className="px-2.5 py-1 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-lg text-xs transition-all flex items-center gap-1 shrink-0 disabled:opacity-50 cursor-pointer shadow-2xs"
+            title="Download Period DOCX"
+          >
+            {downloadingDocx ? (
+              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+            ) : (
+              <Download className="w-3.5 h-3.5" />
+            )}
+            <span>P{effectiveDay.day_number} DOCX</span>
+          </button>
+
+          {/* Download All DOCX */}
+          {handleDownloadFullCurriculumDocx && allDays && (
+            <button
+              type="button"
+              onClick={() => handleDownloadFullCurriculumDocx(allDays)}
+              disabled={downloadingFullDocx || downloadingDocx || downloadingAllPptxZip || downloadingPptx}
+              className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-lg text-xs transition-all flex items-center gap-1 shrink-0 disabled:opacity-50 cursor-pointer shadow-2xs"
+              title="Download all periods DOCX"
+            >
+              {downloadingFullDocx ? (
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+              ) : (
+                <Download className="w-3.5 h-3.5 text-emerald-200" />
+              )}
+              <span>All DOCX</span>
+            </button>
+          )}
+
+          {/* Assessments Hub Toggle */}
+          <button
+            type="button"
+            onClick={() => setStudioActiveView(studioActiveView === 'ASSESSMENTS' ? 'DAILY_PLAN' : 'ASSESSMENTS')}
+            className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1 shrink-0 cursor-pointer shadow-2xs border ${
+              studioActiveView === 'ASSESSMENTS'
+                ? 'bg-blue-600 text-white border-blue-600'
+                : 'bg-slate-100 hover:bg-slate-200 text-slate-700 border-slate-200'
+            }`}
+          >
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 inline-block animate-pulse" />
+            <span>Tests ({formalAssessmentsList.length})</span>
+          </button>
+
+          {/* Audio Studio Quick Button */}
+          <button
+            type="button"
+            onClick={() => {
+              const el = document.getElementById('period-audio-studio-section');
+              if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            }}
+            className="px-2.5 py-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold rounded-lg text-xs border border-indigo-200 transition-all flex items-center gap-1 shrink-0 cursor-pointer"
+          >
+            <Headphones className="w-3.5 h-3.5 text-indigo-600" />
+            <span>Audio Studio</span>
+          </button>
+        </div>
       </div>
 
-      {/* Body Content: Teacher vs Student View */}
-      <div className="p-5 sm:p-6 space-y-5 text-xs">
-        {outputMode === 'STUDENT' ? (
+      {/* Body Content: Daily Lesson (Teacher/Student) vs Formal Assessments Hub */}
+      <div className="p-4 sm:p-6 space-y-5 text-xs">
+        {studioActiveView === 'ASSESSMENTS' ? (
+          /* ========================================================================= */
+          /* ISML SENIOR ACADEMIC ASSESSMENT CENTER (15+ YEARS EXAM DIRECTOR SPEC)     */
+          /* ========================================================================= */
+          <div className="space-y-6">
+            {/* Assessment Center Top Hero Banner */}
+            <div className="bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 text-white p-5 sm:p-6 rounded-2xl border border-indigo-500/30 shadow-lg space-y-4">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-indigo-800/50 pb-3">
+                <div className="space-y-1">
+                  <div className="flex items-center gap-2">
+                    <span className="px-2 py-0.5 rounded bg-blue-500/20 text-blue-300 font-bold text-[10px] border border-blue-400/30 uppercase tracking-wider">
+                      ISML Academic Assessment Center
+                    </span>
+                    <span className="text-[10px] font-mono bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 px-2 py-0.5 rounded">
+                      CEFR {sessionPackage.level} Aligned
+                    </span>
+                    <span className="text-[10px] text-slate-300">
+                      • {formalAssessmentsList.length} Tests Configured from Setup Metrics
+                    </span>
+                  </div>
+                  <h3 className="text-lg sm:text-xl font-black text-white">
+                    Course Exams &amp; Assessment Hub
+                  </h3>
+                  <p className="text-xs text-slate-300 max-w-2xl leading-relaxed">
+                    Tests and practice questions covering Listening, Reading, Speaking, and Writing with answer keys and scoring.
+                  </p>
+                </div>
+
+                {/* Print / Export Action */}
+                <button
+                  type="button"
+                  onClick={() => window.print()}
+                  className="px-3.5 py-2 bg-white hover:bg-slate-100 text-slate-900 font-bold text-xs rounded-xl shadow-xs transition-all flex items-center gap-1.5 cursor-pointer shrink-0"
+                >
+                  <Download className="w-3.5 h-3.5" />
+                  <span>Print / Export Exam Paper</span>
+                </button>
+              </div>
+
+              {/* Assessment Selector Tab Bar */}
+              <div className="flex items-center gap-2 overflow-x-auto pb-1 text-xs scrollbar-thin">
+                {formalAssessmentsList.map((test, tIdx) => {
+                  const isSelected = selectedAssessmentIndex === tIdx;
+                  return (
+                    <button
+                      key={test.id}
+                      type="button"
+                      onClick={() => setSelectedAssessmentIndex(tIdx)}
+                      className={`px-3.5 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition-all flex items-center gap-2 cursor-pointer border ${
+                        isSelected
+                          ? 'bg-blue-600 text-white border-blue-400 shadow-md ring-1 ring-white/30'
+                          : 'bg-white/10 hover:bg-white/20 text-slate-200 border-white/10'
+                      }`}
+                    >
+                      <span className={`px-1.5 py-0.5 rounded text-[9px] font-black ${
+                        isSelected ? 'bg-white/25 text-white' : 'bg-black/20 text-slate-300'
+                      }`}>
+                        Test {test.assessment_number}
+                      </span>
+                      <span>{test.title.split(':')[1]?.trim() || test.title}</span>
+                      <span className="text-[9px] bg-black/20 text-slate-300 px-1.5 py-0.5 rounded font-mono">
+                        Period {test.scheduled_period_number}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Active Test Paper Container */}
+            {(() => {
+              const currentTest = formalAssessmentsList[selectedAssessmentIndex] || formalAssessmentsList[0];
+              if (!currentTest) return null;
+
+              return (
+                <div className="space-y-6">
+                  {/* Test Overview Ribbon & Mode Switcher */}
+                  <div className="bg-white border border-slate-200 rounded-2xl p-4 sm:p-5 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-2">
+                        <span className="px-2 py-0.5 rounded text-[10px] font-black bg-blue-50 text-blue-700 border border-blue-200">
+                          {currentTest.benchmark_code}
+                        </span>
+                        <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+                          Scheduled: {currentTest.scheduled_period_label}
+                        </span>
+                      </div>
+                      <h4 className="text-base font-extrabold text-slate-900">
+                        {currentTest.title}
+                      </h4>
+                      <div className="flex flex-wrap items-center gap-4 text-xs text-slate-500 pt-0.5">
+                        <span>Duration: <strong className="text-slate-800">{currentTest.duration_minutes} Mins</strong></span>
+                        <span>•</span>
+                        <span>Total Marks: <strong className="text-slate-800">{currentTest.total_marks} Marks</strong></span>
+                        <span>•</span>
+                        <span>Pass Threshold: <strong className="text-emerald-700">{currentTest.passing_marks} Marks (60%)</strong></span>
+                      </div>
+                    </div>
+
+                    {/* Student Paper vs Teacher Key Switcher */}
+                    <div className="flex items-center bg-slate-100 p-1 rounded-xl border border-slate-200 shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => setAssessmentPaperMode('STUDENT_PAPER')}
+                        className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                          assessmentPaperMode === 'STUDENT_PAPER'
+                            ? 'bg-white text-slate-900 shadow-xs'
+                            : 'text-slate-600 hover:text-slate-900'
+                        }`}
+                      >
+                        Student Question Paper
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setAssessmentPaperMode('TEACHER_KEY')}
+                        className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                          assessmentPaperMode === 'TEACHER_KEY'
+                            ? 'bg-emerald-600 text-white shadow-xs'
+                            : 'text-slate-600 hover:text-slate-900'
+                        }`}
+                      >
+                        Teacher Key &amp; Solutions
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* SECTION A: LISTENING (10 Marks) */}
+                  <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-xs space-y-4 p-5 sm:p-6">
+                    <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                      <div>
+                        <h4 className="font-extrabold text-sm text-slate-900 uppercase tracking-wider">
+                          {currentTest.listening_section.section_title}
+                        </h4>
+                        <p className="text-[11px] text-slate-500">{currentTest.listening_section.stimulus_scene}</p>
+                      </div>
+                      <span className="bg-blue-50 text-blue-700 border border-blue-200 font-extrabold text-xs px-2.5 py-1 rounded-lg">
+                        {currentTest.listening_section.total_marks} Marks
+                      </span>
+                    </div>
+
+                    {/* Audio Stimulus Player & Transcript Box */}
+                    <div className="bg-purple-50/70 border border-purple-200 rounded-xl p-4 space-y-2.5">
+                      <div className="flex items-center justify-between">
+                        <span className="font-bold text-xs text-purple-950 uppercase tracking-wider">
+                          Listening Stimulus: Native Spoken Dialogue Exchange
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => playNativeAudio(currentTest.listening_section.audio_transcript, `test-${currentTest.assessment_number}-listening`)}
+                          className={`px-3 py-1 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer ${
+                            playingAudioKey === `test-${currentTest.assessment_number}-listening`
+                              ? 'bg-rose-500 text-white animate-pulse'
+                              : 'bg-purple-600 hover:bg-purple-700 text-white shadow-xs'
+                          }`}
+                        >
+                          <Volume2 className="w-3.5 h-3.5" />
+                          <span>{playingAudioKey === `test-${currentTest.assessment_number}-listening` ? 'Stop Audio' : 'Play Audio Prompt'}</span>
+                        </button>
+                      </div>
+                      <div className="bg-white p-3 rounded-lg border border-purple-100 text-xs font-mono text-purple-950 whitespace-pre-wrap leading-relaxed">
+                        {currentTest.listening_section.audio_transcript}
+                      </div>
+                    </div>
+
+                    {/* Listening Questions */}
+                    <div className="space-y-3 pt-1">
+                      {currentTest.listening_section.questions.map((q) => (
+                        <div key={q.id} className="p-3.5 bg-slate-50/80 border border-slate-200 rounded-xl space-y-2">
+                          <div className="flex items-start justify-between gap-3">
+                            <span className="font-extrabold text-xs text-slate-900 leading-snug">
+                              Question {q.question_number}: {q.question_text}
+                            </span>
+                            <span className="text-[10px] font-bold text-slate-500 bg-white border border-slate-200 px-2 py-0.5 rounded shrink-0">
+                              [{q.marks_allocated} Marks]
+                            </span>
+                          </div>
+
+                          {q.options && (
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
+                              {q.options.map((opt, oIdx) => (
+                                <div key={oIdx} className="bg-white p-2.5 rounded-lg border border-slate-200 text-xs text-slate-800 flex items-center gap-2">
+                                  <span className="w-4 h-4 rounded-full bg-slate-100 text-slate-600 text-[10px] font-bold flex items-center justify-center shrink-0">
+                                    {String.fromCharCode(65 + oIdx)}
+                                  </span>
+                                  <span>{opt}</span>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+
+                          {assessmentPaperMode === 'TEACHER_KEY' && (
+                            <div className="bg-emerald-50 border border-emerald-200 p-2.5 rounded-lg space-y-1 text-xs">
+                              <span className="font-black text-emerald-900 block text-[11px]">
+                                Verified Solution: {q.correct_answer}
+                              </span>
+                              <p className="text-[11px] text-emerald-800">{q.marking_explanation}</p>
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* SECTION B: READING (15 Marks) */}
+                  <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-xs space-y-4 p-5 sm:p-6">
+                    <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                      <div>
+                        <h4 className="font-extrabold text-sm text-slate-900 uppercase tracking-wider">
+                          {currentTest.reading_section.section_title}
+                        </h4>
+                        <p className="text-[11px] text-slate-500">{currentTest.reading_section.passage_context_notes}</p>
+                      </div>
+                      <span className="bg-blue-50 text-blue-700 border border-blue-200 font-extrabold text-xs px-2.5 py-1 rounded-lg">
+                        {currentTest.reading_section.total_marks} Marks
+                      </span>
+                    </div>
+
+                    {/* Reading Passage Card */}
+                    <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 space-y-2">
+                      <span className="font-extrabold text-xs text-slate-900 block border-b border-slate-200 pb-1.5">
+                        Reading Text: {currentTest.reading_section.passage_title}
+                      </span>
+                      <p className="text-xs text-slate-800 leading-relaxed font-sans">
+                        {currentTest.reading_section.reading_passage_text}
+                      </p>
+                    </div>
+
+                    {/* Reading Questions */}
+                    <div className="space-y-3 pt-1">
+                      {currentTest.reading_section.questions.map((q) => (
+                        <div key={q.id} className="p-3.5 bg-slate-50/80 border border-slate-200 rounded-xl space-y-2">
+                          <div className="flex items-start justify-between gap-3">
+                            <span className="font-extrabold text-xs text-slate-900 leading-snug">
+                              Question {q.question_number}: {q.question_text}
+                            </span>
+                            <span className="text-[10px] font-bold text-slate-500 bg-white border border-slate-200 px-2 py-0.5 rounded shrink-0">
+                              [{q.marks_allocated} Marks]
+                            </span>
+                          </div>
+
+                          {q.options && (
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
+                              {q.options.map((opt, oIdx) => (
+                                <div key={oIdx} className="bg-white p-2.5 rounded-lg border border-slate-200 text-xs text-slate-800 flex items-center gap-2">
+                                  <span className="w-4 h-4 rounded-full bg-slate-100 text-slate-600 text-[10px] font-bold flex items-center justify-center shrink-0">
+                                    {String.fromCharCode(65 + oIdx)}
+                                  </span>
+                                  <span>{opt}</span>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+
+                          {assessmentPaperMode === 'TEACHER_KEY' && (
+                            <div className="bg-emerald-50 border border-emerald-200 p-2.5 rounded-lg space-y-1 text-xs">
+                              <span className="font-black text-emerald-900 block text-[11px]">
+                                Verified Solution: {q.correct_answer}
+                              </span>
+                              <p className="text-[11px] text-emerald-800">{q.marking_explanation}</p>
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* SECTION C: LANGUAGE KNOWLEDGE & GRAMMAR / VOCAB (15 Marks) */}
+                  <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-xs space-y-4 p-5 sm:p-6">
+                    <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                      <div>
+                        <h4 className="font-extrabold text-sm text-slate-900 uppercase tracking-wider">
+                          {currentTest.language_knowledge_section.section_title}
+                        </h4>
+                        <p className="text-[11px] text-slate-500">{currentTest.language_knowledge_section.structural_focus}</p>
+                      </div>
+                      <span className="bg-blue-50 text-blue-700 border border-blue-200 font-extrabold text-xs px-2.5 py-1 rounded-lg">
+                        {currentTest.language_knowledge_section.total_marks} Marks
+                      </span>
+                    </div>
+
+                    {/* Grammar Questions */}
+                    <div className="space-y-3">
+                      {currentTest.language_knowledge_section.grammar_questions.map((q) => (
+                        <div key={q.id} className="p-3.5 bg-slate-50/80 border border-slate-200 rounded-xl space-y-2">
+                          <div className="flex items-start justify-between gap-3">
+                            <span className="font-extrabold text-xs text-slate-900 leading-snug">
+                              Question {q.question_number}: {q.question_text}
+                            </span>
+                            <span className="text-[10px] font-bold text-slate-500 bg-white border border-slate-200 px-2 py-0.5 rounded shrink-0">
+                              [{q.marks_allocated} Marks]
+                            </span>
+                          </div>
+
+                          {q.options && (
+                            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-1">
+                              {q.options.map((opt, oIdx) => (
+                                <div key={oIdx} className="bg-white p-2 rounded-lg border border-slate-200 text-xs text-slate-800 flex items-center gap-1.5">
+                                  <span className="text-[10px] font-bold text-slate-400">{String.fromCharCode(65 + oIdx)}.</span>
+                                  <span>{opt}</span>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+
+                          {assessmentPaperMode === 'TEACHER_KEY' && (
+                            <div className="bg-emerald-50 border border-emerald-200 p-2.5 rounded-lg space-y-1 text-xs">
+                              <span className="font-black text-emerald-900 block text-[11px]">
+                                Verified Solution: {q.correct_answer}
+                              </span>
+                              <p className="text-[11px] text-emerald-800">{q.marking_explanation}</p>
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+
+                    {/* Vocabulary Lexicon Bank Matching Table */}
+                    <div className="space-y-2 pt-2">
+                      <span className="font-extrabold text-xs text-slate-900 uppercase tracking-wider block">
+                        Part 2: Vocabulary &amp; Word Meaning Match
+                      </span>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                        {currentTest.language_knowledge_section.vocabulary_matching_items.map((vItem, vIdx) => (
+                          <div key={vIdx} className="bg-slate-50 border border-slate-200 p-3 rounded-xl space-y-1">
+                            <div className="flex items-center justify-between">
+                              <strong className="text-xs font-extrabold text-blue-900">{vItem.term}</strong>
+                              <span className="text-[10px] bg-white border border-slate-200 px-2 py-0.5 rounded text-slate-600 font-bold">
+                                {assessmentPaperMode === 'TEACHER_KEY' ? vItem.definition : 'Define / Match'}
+                              </span>
+                            </div>
+                            <p className="text-[11px] text-slate-600 italic">Context: "{vItem.example_sentence}"</p>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* SECTION D: PRODUCTION (SPEAKING & WRITING) (10 Marks) */}
+                  <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-xs space-y-4 p-5 sm:p-6">
+                    <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                      <div>
+                        <h4 className="font-extrabold text-sm text-slate-900 uppercase tracking-wider">
+                          {currentTest.production_section.section_title}
+                        </h4>
+                        <p className="text-[11px] text-slate-500">Evaluates Oral Production (5 Marks) and Controlled Written Composition (5 Marks)</p>
+                      </div>
+                      <span className="bg-blue-50 text-blue-700 border border-blue-200 font-extrabold text-xs px-2.5 py-1 rounded-lg">
+                        {currentTest.production_section.total_marks} Marks
+                      </span>
+                    </div>
+
+                    {/* Oral Task */}
+                    <div className="p-4 bg-indigo-50/60 border border-indigo-200 rounded-xl space-y-2.5">
+                      <div className="flex items-center justify-between">
+                        <span className="font-extrabold text-xs text-indigo-950 uppercase tracking-wider">
+                          Part 1: Spoken Production Task (2-Minute Native Interaction) [5 Marks]
+                        </span>
+                        <span className="text-[10px] bg-indigo-200/70 text-indigo-900 font-bold px-2 py-0.5 rounded">
+                          CEFR Oral Descriptors
+                        </span>
+                      </div>
+                      <p className="text-xs text-slate-800 leading-relaxed font-sans">
+                        <strong>Situation:</strong> {currentTest.production_section.oral_speaking_task.prompt_situation}
+                      </p>
+                      <ul className="text-xs text-slate-700 space-y-1 list-disc list-inside">
+                        {currentTest.production_section.oral_speaking_task.guiding_bullet_points.map((pt, ptIdx) => (
+                          <li key={ptIdx}>{pt}</li>
+                        ))}
+                      </ul>
+
+                      {assessmentPaperMode === 'TEACHER_KEY' && (
+                        <div className="bg-white border border-indigo-200 p-3 rounded-lg space-y-1.5 text-xs">
+                          <strong className="text-indigo-950 font-bold block text-[11px]">Model High-Band Spoken Response:</strong>
+                          <p className="text-slate-800 italic leading-relaxed">
+                            "{currentTest.production_section.oral_speaking_task.model_exemplar_response}"
+                          </p>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Writing Task */}
+                    <div className="p-4 bg-cyan-50/60 border border-cyan-200 rounded-xl space-y-2.5">
+                      <div className="flex items-center justify-between">
+                        <span className="font-extrabold text-xs text-cyan-950 uppercase tracking-wider">
+                          Part 2: Guided Written Composition ({currentTest.production_section.written_composition_task.target_word_count}) [5 Marks]
+                        </span>
+                        <span className="text-[10px] bg-cyan-200/70 text-cyan-900 font-bold px-2 py-0.5 rounded">
+                          Controlled Writing
+                        </span>
+                      </div>
+                      <p className="text-xs text-slate-800 leading-relaxed font-sans">
+                        <strong>Task:</strong> {currentTest.production_section.written_composition_task.prompt_topic}
+                      </p>
+                      <ul className="text-xs text-slate-700 space-y-1 list-disc list-inside">
+                        {currentTest.production_section.written_composition_task.required_communicative_functions.map((fn, fIdx) => (
+                          <li key={fIdx}>{fn}</li>
+                        ))}
+                      </ul>
+
+                      {assessmentPaperMode === 'TEACHER_KEY' && (
+                        <div className="bg-white border border-cyan-200 p-3 rounded-lg space-y-1.5 text-xs">
+                          <strong className="text-cyan-950 font-bold block text-[11px]">Model Exemplar Composition:</strong>
+                          <p className="text-slate-800 whitespace-pre-wrap leading-relaxed font-sans">
+                            {currentTest.production_section.written_composition_task.model_exemplar_composition}
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Faculty Marking Policy & Pass Guidance */}
+                  <div className="bg-slate-900 text-white rounded-2xl p-5 border border-slate-800 space-y-3">
+                    <div className="flex items-center justify-between border-b border-slate-800 pb-2.5">
+                      <span className="font-extrabold text-xs uppercase tracking-wider text-slate-100">
+                        Senior Assessment Director: Grading Policy &amp; Remedial Thresholds
+                      </span>
+                      <span className="text-[10px] bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 px-2 py-0.5 rounded font-mono font-bold">
+                        ISML Psychometric Standard
+                      </span>
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs text-slate-300">
+                      <div className="space-y-1">
+                        <strong className="text-slate-100 block text-xs">Grading Thresholds:</strong>
+                        <p className="text-[11px] text-slate-400 leading-relaxed">{currentTest.faculty_marking_policy.passing_threshold_guidance}</p>
+                      </div>
+                      <div className="space-y-1">
+                        <strong className="text-slate-100 block text-xs">Pedagogical Remediation:</strong>
+                        <p className="text-[11px] text-slate-400 leading-relaxed">{currentTest.faculty_marking_policy.remedial_pedagogical_interventions}</p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
+          </div>
+        ) : (
+          <>
+            {/* If today is an assessment milestone day, show prompt banner */}
+            {effectiveDay.is_assessment_day && (
+              <div className="bg-gradient-to-r from-blue-900 via-indigo-950 to-blue-900 text-white p-3.5 rounded-xl border border-blue-400/40 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div className="flex items-center gap-2.5">
+                  <span className="px-2 py-0.5 rounded bg-blue-500/30 text-blue-200 font-bold text-[10px] border border-blue-400/40 tracking-wider">
+                    SCHEDULED BENCHMARK
+                  </span>
+                  <div>
+                    <h4 className="font-extrabold text-xs text-white">
+                      {effectiveDay.assessment_benchmark_title || 'Formal Assessment Benchmark Day'}
+                    </h4>
+                    <p className="text-[10px] text-blue-200">
+                      {effectiveDay.assessment_benchmark_code} • Evaluates cumulative receptive &amp; productive competencies
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const idx = formalAssessmentsList.findIndex((a) => a.scheduled_period_number === effectiveDay.day_number);
+                    if (idx >= 0) setSelectedAssessmentIndex(idx);
+                    setStudioActiveView('ASSESSMENTS');
+                  }}
+                  className="px-3.5 py-1.5 bg-white hover:bg-blue-50 text-blue-900 font-black rounded-lg text-xs transition-all cursor-pointer shadow-xs self-start sm:self-auto"
+                >
+                  Open Test Paper &amp; Marking Key →
+                </button>
+              </div>
+            )}
+            {outputMode === 'STUDENT' ? (
           /* ---------------- STUDENT LSRW PRACTICE SUITE (WORLD-CLASS IMMERSIVE EDITION) ---------------- */
           <div className="space-y-6">
             {/* Student Edition Hero Banner */}
@@ -655,7 +1345,7 @@ export function DayContentView({
 
             {/* 🎧 AI Voice Studio Track Player (Included in Student Mode) */}
             {effectiveDay.generated_audio_track && (
-              <div className="bg-gradient-to-r from-indigo-950 via-slate-900 to-indigo-900 border border-indigo-500/40 rounded-2xl p-4 sm:p-5 text-white shadow-xl space-y-3">
+              <div className="-mx-4 sm:mx-0 bg-gradient-to-r from-indigo-950 via-slate-900 to-indigo-900 border-y sm:border border-indigo-500/40 rounded-none sm:rounded-2xl p-4 sm:p-5 text-white shadow-xl space-y-3">
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-indigo-800/50 pb-3">
                   <div className="flex items-center gap-3">
                     <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-amber-400 to-indigo-500 flex items-center justify-center text-slate-950 font-black shadow-lg shadow-indigo-500/30 shrink-0">
@@ -806,7 +1496,7 @@ export function DayContentView({
                   </div>
                   <div>
                     <h4 className="font-extrabold text-sm sm:text-base text-slate-900 flex items-center gap-2">
-                      <span>🎯 Targeted LSRW Practice Drills & Competency Checks</span>
+                      <span>Targeted LSRW Practice Drills & Competency Checks</span>
                     </h4>
                     <p className="text-[11px] text-slate-500">
                       Interactive drills covering Listening, Speaking, Reading & Writing for {effectiveDay.day_topic.replace(/^(Period|Session)\s*\d+:\s*/i, '')}.
@@ -970,7 +1660,7 @@ export function DayContentView({
                     </span>
                     <div>
                       <h4 className="font-extrabold text-sm sm:text-base text-slate-900 flex items-center gap-2">
-                        <span>🎧 Listening Comprehension & Situational Dialogue</span>
+                        <span>Listening Comprehension & Situational Dialogue</span>
                       </h4>
                     <p className="text-[11px] text-slate-500">
                       Listen to native conversational exchanges. Practice shadow repetition line by line.
@@ -994,11 +1684,11 @@ export function DayContentView({
                     }`}
                   >
                     <Volume2 className="w-3.5 h-3.5" />
-                    <span>{playingAudioKey === `full-dialogue-${effectiveDay.day_number}` ? '⏹ Stop Full Audio' : '▶ Play Full Audio Exchange'}</span>
+                    <span>{playingAudioKey === `full-dialogue-${effectiveDay.day_number}` ? 'Stop Audio' : 'Play Audio Exchange'}</span>
                   </button>
 
                   <span className="text-[11px] font-bold text-purple-800 bg-purple-50 px-2.5 py-1 rounded-lg border border-purple-200/70">
-                    🗣️ Multi-Speaker Audio ({audioSpeed}x)
+                    Multi-Speaker Audio ({audioSpeed}x)
                   </span>
                 </div>
               </div>
@@ -1058,7 +1748,7 @@ export function DayContentView({
                   <div className="mt-3 bg-amber-50 border border-amber-200/80 p-3.5 rounded-xl text-xs text-amber-950 space-y-2">
                     <div className="flex items-center justify-between">
                       <span className="font-extrabold text-[10px] uppercase tracking-wider text-amber-800 block">
-                        🎯 Auditory Comprehension Check Question:
+                        Auditory Comprehension Check Question:
                       </span>
                       <button
                         type="button"
@@ -1104,7 +1794,7 @@ export function DayContentView({
                     </span>
                     <div>
                       <h4 className="font-extrabold text-sm sm:text-base text-slate-900 flex items-center gap-2">
-                        <span>🗣️ Spoken Production & Situational Roleplay</span>
+                        <span>Spoken Production & Situational Roleplay</span>
                       </h4>
                     <p className="text-[11px] text-slate-500">
                       Record oral turns in {sessionPackage.language} or compare your voice with the native model.
@@ -1204,16 +1894,16 @@ export function DayContentView({
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-1">
                     <span className="text-[10px] text-slate-500 flex items-center gap-1.5">
                       <span className="w-2 h-2 rounded-full bg-teal-500" />
-                      <span>Non-Evaluator Boundary: Graded by dedicated ISML LSRW Evaluation Agent</span>
+                      <span>Practice Task for Student Practice</span>
                     </span>
 
                     <button
                       type="button"
-                      onClick={() => alert(`Assignment successfully submitted for ${unitName} ${effectiveDay.day_number}! Handoff queued for ISML LSRW Evaluation Agent.`)}
+                      onClick={() => alert(`Assignment successfully submitted for ${unitName} ${effectiveDay.day_number}!`)}
                       className="px-5 py-2.5 bg-gradient-to-r from-teal-600 to-emerald-600 hover:from-teal-500 hover:to-emerald-500 text-white font-extrabold rounded-xl text-xs shadow-md shadow-teal-600/20 flex items-center justify-center gap-2 cursor-pointer transition-transform active:scale-95"
                     >
                       <Send className="w-3.5 h-3.5" />
-                      <span>Submit Assignment for Evaluation</span>
+                      <span>Submit Assignment for Review</span>
                     </button>
                   </div>
                 </div>
@@ -1226,442 +1916,647 @@ export function DayContentView({
             )}
           </div>
         ) : (
-          /* ---------------- TEACHER PACKAGE & LESSON PLAN VIEW ---------------- */
-          <div className="space-y-5">
-            {/* Faculty Session Breakdown */}
-            {effectiveDay.teacher_lesson_breakdown && (
-              <div className="bg-gradient-to-r from-blue-50 via-indigo-50 to-sky-50 border border-blue-200 p-4 rounded-xl space-y-3">
-                <div className="flex items-center justify-between">
-                  <span className="font-extrabold text-blue-950 text-xs uppercase tracking-wider flex items-center gap-1.5">
-                    <Clock className="w-3.5 h-3.5 text-blue-600" />
-                    <span>Faculty Session Breakdown ({effectiveDay.teacher_lesson_breakdown.allocated_minutes} Minutes Allocated)</span>
-                  </span>
-                  <span className="text-[10px] font-bold bg-blue-600 text-white px-2.5 py-0.5 rounded-full">
-                    Step-by-Step Delivery
-                  </span>
-                </div>
-                <div className="grid grid-cols-1 sm:grid-cols-4 gap-2">
-                  {effectiveDay.teacher_lesson_breakdown.phases.map((ph, phIdx) => (
-                    <div key={phIdx} className="bg-white p-2.5 rounded-lg border border-blue-200/80 shadow-2xs space-y-1">
-                      <div className="flex items-center justify-between text-[11px]">
-                        <strong className="text-blue-900 font-bold">{ph.phase}</strong>
-                        <span className="text-blue-600 font-extrabold bg-blue-50 px-1.5 py-0.5 rounded text-[10px]">{ph.minutes}m</span>
-                      </div>
-                      <p className="text-[10px] text-slate-600 leading-snug">{ph.instruction}</p>
-                    </div>
-                  ))}
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-1">
-                  <div className="bg-white p-2.5 rounded-lg border border-indigo-200 text-[11px] text-indigo-950">
-                    <span className="font-bold block text-indigo-900 mb-0.5">📋 Blackboard Formula:</span>
-                    <p className="font-mono text-[10px] text-slate-700">{effectiveDay.teacher_lesson_breakdown.board_notes}</p>
-                  </div>
-                  <div className="bg-white p-2.5 rounded-lg border border-amber-200 text-[11px] text-amber-950">
-                    <span className="font-bold block text-amber-900 mb-0.5">💡 Remedial Activity:</span>
-                    <p className="text-[10px] text-slate-700">{effectiveDay.teacher_lesson_breakdown.remedial_activity}</p>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* Grammar Lecture Detail */}
-            <div className="bg-slate-50 p-4 rounded-xl border border-slate-200">
-              <span className="font-bold text-blue-900 uppercase tracking-wider block mb-1">
-                📖 {unitName} {effectiveDay.day_number} ({sessionPackage.school_meta?.periodDurationMinutes || sessionPackage.college_meta?.sessionMinutes || 60} Mins) Teaching Blueprint & Structural Grammar:
-              </span>
-              <p className="text-slate-800 leading-relaxed font-sans text-xs">
-                {effectiveDay.grammar_rules_detail}
-              </p>
-            </div>
-
-            {/* Vocabulary Bank */}
-            {effectiveDay.vocabulary_bank && effectiveDay.vocabulary_bank.length > 0 && (
-              <div>
-                <span className="font-bold text-slate-700 uppercase tracking-wider block mb-2">
-                  🗂️ {unitName} {effectiveDay.day_number} Target Vocabulary & AI Audio Pronunciation:
-                </span>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                  {effectiveDay.vocabulary_bank.map((v, vIdx) => {
-                    const vKey = `vocab-${effectiveDay.day_number}-${vIdx}`;
-                    const isVPlaying = playingAudioKey === vKey;
-                    return (
-                      <div key={vIdx} className="bg-amber-50/70 border border-amber-200 p-3 rounded-xl space-y-1">
-                        <div className="flex items-center justify-between">
-                          <span className="font-bold text-amber-950 text-xs">{v.word}</span>
-                          <div className="flex items-center gap-1.5">
-                            {v.pronunciation && (
-                              <span className="font-mono text-[11px] text-amber-800 bg-amber-100/70 px-2 py-0.5 rounded font-medium">
-                                {v.pronunciation}
-                              </span>
-                            )}
-                            <button
-                              type="button"
-                              onClick={() => playNativeAudio(v.word, vKey)}
-                              className={`px-2 py-0.5 rounded text-[10px] font-bold flex items-center gap-1 shrink-0 cursor-pointer transition-all ${
-                                isVPlaying
-                                  ? 'bg-rose-500 text-white animate-pulse'
-                                  : 'bg-amber-200/80 hover:bg-amber-300 text-amber-950'
-                              }`}
-                              title="Listen to native AI pronunciation"
-                            >
-                              <span>{isVPlaying ? '⏹' : '🔊'}</span>
-                              <span>{isVPlaying ? 'Stop' : 'Listen'}</span>
-                            </button>
-                          </div>
-                        </div>
-                        <p className="text-slate-700 text-xs mt-1">{v.meaning}</p>
-                        {v.example_sentence && (
-                          <div className="flex items-center justify-between bg-white/70 p-1.5 rounded border border-amber-100 mt-1 gap-2">
-                            <p className="text-slate-600 text-[11px] italic">
-                              &quot;{v.example_sentence}&quot;
-                            </p>
-                            <button
-                              type="button"
-                              onClick={() => playNativeAudio(v.example_sentence, `${vKey}-sentence`)}
-                              className="text-[10px] text-amber-900 hover:text-amber-700 font-bold shrink-0 cursor-pointer"
-                              title="Listen to full sentence"
-                            >
-                              {playingAudioKey === `${vKey}-sentence` ? '⏹ Stop' : '🔊 Read'}
-                            </button>
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
-
-            {/* 🎧 AI Voice Studio Track Player (Supports Single & Multiple Audio Tracks) */}
-            {(() => {
-              const allCurriculumTracks = (effectiveDay.generated_audio_tracks && effectiveDay.generated_audio_tracks.length > 0)
-                ? effectiveDay.generated_audio_tracks
-                : effectiveDay.generated_audio_track
-                ? [effectiveDay.generated_audio_track]
-                : [];
-
-              if (allCurriculumTracks.length === 0) return null;
-
-              return (
-                <div className="bg-gradient-to-r from-indigo-950 via-slate-900 to-indigo-900 border border-indigo-500/40 rounded-2xl p-4 sm:p-5 text-white shadow-xl space-y-4">
-                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-indigo-800/50 pb-3">
-                    <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-amber-400 to-indigo-500 flex items-center justify-center text-slate-950 font-black shadow-lg shadow-indigo-500/30 shrink-0">
-                        <Headphones className="w-5 h-5 text-slate-950" />
-                      </div>
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <span className="text-sm sm:text-base font-extrabold text-white tracking-tight">
-                            {allCurriculumTracks.length > 1 
-                              ? `Curriculum Audio Suite (${allCurriculumTracks.length} Audio Tracks Ready)`
-                              : (allCurriculumTracks[0].title || "Curriculum Audio Track")}
-                          </span>
-                          <span className="bg-amber-400 text-slate-950 text-[10px] font-black px-2 py-0.5 rounded-full uppercase tracking-wider">
-                            {allCurriculumTracks.length} MP3 Track{allCurriculumTracks.length > 1 ? 's' : ''}
-                          </span>
-                        </div>
-                        <p className="text-[11px] text-slate-300">
-                          Continuous native speech synthesis • CEFR ${sessionPackage?.level || 'A1'} aligned • Individual audio controls
-                        </p>
-                      </div>
-                    </div>
-
-                    <div className="flex items-center gap-2 shrink-0">
-                      <span className="text-[11px] font-mono text-cyan-300 bg-white/10 px-2.5 py-1 rounded-lg border border-white/15">
-                        Native Voice: {sessionPackage?.language || 'French'} ({audioSpeed}x)
-                      </span>
-                    </div>
-                  </div>
-
-                  {/* Render Each Track in the Curriculum Section */}
-                  <div className="space-y-3">
-                    {allCurriculumTracks.map((trk: any, tIdx: number) => {
-                      const trackKey = `curriculum-body-track-${effectiveDay.day_number}-${tIdx}`;
-                      const isPlayingThis = playingAudioKey === trackKey;
-                      const scriptText = trk.script || (trk.dialogue_turns?.map((t: any) => `${t.speaker}: ${t.text}`).join(' ')) || '';
-
-                      return (
-                        <div 
-                          key={tIdx} 
-                          className="bg-slate-950/70 border border-indigo-800/40 rounded-xl p-3.5 space-y-2.5 transition-all"
-                        >
-                          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-indigo-800/40 pb-2">
-                            <div className="flex items-center gap-2.5">
-                              <span className="w-7 h-7 rounded-lg bg-blue-600/40 border border-blue-400/50 text-blue-200 flex items-center justify-center font-mono font-bold text-xs shrink-0">
-                                0{tIdx + 1}
-                              </span>
-                              <div>
-                                <strong className="text-xs sm:text-sm font-bold text-white block">
-                                  {trk.title || `Audio Track ${tIdx + 1}`}
-                                </strong>
-                                <span className="text-[10px] text-slate-400">
-                                  ⏱️ ~{trk.duration_minutes || 2} Mins • {trk.word_count || 280} words
-                                </span>
-                              </div>
-                            </div>
-
-                            <div className="flex items-center gap-2 shrink-0">
-                              <button
-                                type="button"
-                                onClick={() => playNativeAudio(scriptText, trackKey)}
-                                className={`px-3 py-1.5 rounded-xl text-xs font-black flex items-center gap-1.5 cursor-pointer shadow-md transition-all ${
-                                  isPlayingThis
-                                    ? 'bg-rose-500 text-white animate-pulse shadow-rose-500/30'
-                                    : 'bg-gradient-to-r from-amber-400 to-amber-500 hover:from-amber-300 hover:to-amber-400 text-slate-950'
-                                }`}
-                              >
-                                <Volume2 className="w-3.5 h-3.5" />
-                                <span>{isPlayingThis ? 'Stop Audio' : 'Play Audio'}</span>
-                              </button>
-
-                              <button
-                                type="button"
-                                onClick={() => downloadAudioTrack(scriptText, `${sessionPackage?.language || 'Language'}_Period_${effectiveDay.day_number}_Track_${tIdx + 1}`)}
-                                className="px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1 cursor-pointer bg-white/10 hover:bg-white/20 text-white border border-white/20 transition-all"
-                                title="Download MP3"
-                              >
-                                <Download className="w-3.5 h-3.5 text-slate-300" />
-                                <span>Download MP3</span>
-                              </button>
-                            </div>
-                          </div>
-
-                          {/* Spoken Script Transcript Preview */}
-                          <p className="text-xs text-slate-200 leading-relaxed max-h-24 overflow-y-auto pr-1 font-serif italic">
-                            "{scriptText}"
-                          </p>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              );
-            })()}
-
-            {/* Live Class Dialogues with AI Voice Audio Player */}
-            {effectiveDay.classroom_dialogues && effectiveDay.classroom_dialogues.length > 0 && (
-              <div className="bg-purple-50/60 p-4 rounded-xl border border-purple-200 space-y-2.5">
-                <div className="flex items-center justify-between">
-                  <span className="font-bold text-purple-950 uppercase tracking-wider block text-xs">
-                    💬 Live Practice Script & Spoken Exchange (Native AI Audio):
-                  </span>
-                  <span className="text-[10px] bg-purple-200/70 text-purple-950 font-bold px-2 py-0.5 rounded">
-                    🎙️ AI Voice Generation
-                  </span>
-                </div>
-                <div className="space-y-1.5 font-mono text-xs text-purple-950">
-                  {effectiveDay.classroom_dialogues.map((dlg, dIdx) => {
-                    const dlgKey = `teacher-dlg-${effectiveDay.day_number}-${dIdx}`;
-                    const isPlaying = playingAudioKey === dlgKey;
-                    return (
-                      <div key={dIdx} className="bg-white p-2.5 rounded-lg border border-purple-100 flex items-center justify-between gap-3 shadow-2xs">
-                        <span className="leading-relaxed font-sans">{dlg}</span>
-                        <button
-                          type="button"
-                          onClick={() => playNativeAudio(dlg, dlgKey)}
-                          className={`px-2.5 py-1 rounded-md text-[10px] font-bold flex items-center gap-1 shrink-0 cursor-pointer transition-all ${
-                            isPlaying
-                              ? 'bg-rose-500 text-white animate-pulse'
-                              : 'bg-purple-100 hover:bg-purple-200 text-purple-900'
-                          }`}
-                        >
-                          <span>{isPlaying ? '⏹ Stop' : '🔊 AI Voice'}</span>
-                        </button>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
-
-            {/* Master Study Notes Markdown */}
-            {effectiveDay.study_notes_markdown && (
-              <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden shadow-md">
-                <div className="bg-slate-800/80 px-4 py-2.5 border-b border-slate-700 flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <BookOpen className="w-4 h-4 text-cyan-400" />
-                    <span className="font-bold text-xs text-cyan-300 uppercase tracking-wider">
-                      Master Study Guide Handbook ({unitName} {effectiveDay.day_number})
-                    </span>
-                  </div>
-                  <span className="text-[10px] text-slate-400 font-mono">
-                    Textbook-Grade Pedagogical Theory
-                  </span>
-                </div>
-
-                <div className="p-5 font-sans text-xs text-slate-200 leading-relaxed space-y-3 overflow-x-auto">
-                  {effectiveDay.study_notes_markdown.split('\n\n').map((paragraph, pIdx) => {
-                    if (paragraph.includes('|') && paragraph.includes('---')) {
-                      const lines = paragraph.trim().split('\n');
-                      const headerLine = lines[0];
-                      const headers = headerLine.split('|').map(h => h.trim()).filter(Boolean);
-                      const rows = lines.slice(2).map(l => l.split('|').map(c => c.trim()).filter(Boolean));
-
-                      return (
-                        <div key={pIdx} className="my-3 overflow-x-auto rounded-xl border border-slate-800 shadow-sm bg-slate-950/60">
-                          <table className="w-full text-left text-xs border-collapse">
-                            <thead>
-                              <tr className="bg-slate-800/80 text-cyan-300 font-bold border-b border-slate-700">
-                                {headers.map((h, hIdx) => (
-                                  <th key={hIdx} className="py-2 px-3 border-r border-slate-700/60 last:border-r-0">
-                                    {h}
-                                  </th>
-                                ))}
-                              </tr>
-                            </thead>
-                            <tbody className="divide-y divide-slate-800">
-                              {rows.map((row, rIdx) => (
-                                <tr key={rIdx} className="hover:bg-slate-800/30 transition-colors">
-                                  {row.map((cell, cIdx) => (
-                                    <td key={cIdx} className="py-2 px-3 border-r border-slate-800/60 last:border-r-0 font-mono text-[11px] text-slate-300">
-                                      {cell}
-                                    </td>
-                                  ))}
-                                </tr>
-                              ))}
-                            </tbody>
-                          </table>
-                        </div>
-                      );
-                    }
-
-                    if (paragraph.startsWith('### ') || paragraph.startsWith('**')) {
-                      return (
-                        <p key={pIdx} className="font-bold text-sm text-cyan-300 pt-1">
-                          {paragraph.replace(/^###\s+/, '')}
-                        </p>
-                      );
-                    }
-
-                    return (
-                      <p key={pIdx} className="text-slate-300 text-xs leading-relaxed whitespace-pre-wrap">
-                        {paragraph}
-                      </p>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
-
-            {/* Video Breakdown Analysis */}
-            {effectiveDay.video_breakdown_analysis && (
-              <div className="bg-gradient-to-br from-indigo-50/90 via-white to-purple-50/60 border-2 border-indigo-300 rounded-2xl p-5 shadow-sm space-y-2.5">
-                <div className="flex items-center gap-2 border-b border-indigo-100 pb-2.5">
-                  <Video className="w-4 h-4 text-indigo-600 shrink-0" />
-                  <h4 className="font-extrabold text-sm text-indigo-950">
-                    🎬 Reference Video Breakdown & Native Spoken Audio Analysis
-                  </h4>
-                </div>
-                <p className="text-slate-800 text-xs leading-relaxed whitespace-pre-wrap">
-                  {effectiveDay.video_breakdown_analysis}
-                </p>
-              </div>
-            )}
-
-            {/* Verified Answer Key & Solutions - Standardized LSRW Practice Drills */}
-            <div className="bg-white border border-slate-200/90 rounded-2xl p-6 shadow-xs space-y-5">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-4">
+          /* ---------------- TEACHER PACKAGE & LESSON PLAN VIEW (6 UNIVERSAL MASTER PILLARS) ---------------- */
+          <div className="space-y-6">
+            {/* Lesson Notes & Grammar Guide */}
+            <div className="space-y-4">
+              <div className="bg-slate-900 text-white p-3.5 rounded-xl border border-slate-800 shadow-sm flex items-center justify-between">
                 <div>
-                  <div className="flex items-center gap-2 mb-1">
-                    <span className="bg-blue-100 text-blue-800 text-[10px] font-mono font-extrabold px-2.5 py-0.5 rounded-md uppercase tracking-wider">
-                      LSRW Core Questions
-                    </span>
-                    <span className="text-[10px] text-slate-400 font-bold">•</span>
-                    <span className="text-[11px] font-bold text-slate-600">CEFR {sessionPackage.level} Proficiency</span>
-                  </div>
-                  <h4 className="font-extrabold text-base text-slate-900 flex items-center gap-2">
-                    <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
-                    <span>LSRW Practice Exercises with Verified Model Answers & Linguistic Tips</span>
-                  </h4>
-                  <p className="text-xs text-slate-500 mt-0.5">
-                    Standardized LSRW classroom drills engineered for student self-study, instant evaluation, and faculty feedback.
+                  <h4 className="font-extrabold text-xs sm:text-sm uppercase tracking-wider text-white">Lesson Notes & Grammar Guide</h4>
+                  <p className="text-[11px] text-slate-300">Classroom instructions, structural grammar rules, and core vocabulary</p>
+                </div>
+                <span className="text-[10px] bg-blue-900/80 text-blue-200 border border-blue-400/30 px-2.5 py-0.5 rounded font-mono font-bold">
+                  CEFR {sessionPackage.level}
+                </span>
+              </div>
+
+              {/* Grammar Lecture Detail */}
+              <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-1.5">
+                <span className="font-bold text-blue-900 uppercase tracking-wider block text-xs">
+                  Teacher Lecture & Grammar Guide ({sessionPackage.school_meta?.periodDurationMinutes || sessionPackage.college_meta?.sessionMinutes || 60} Mins):
+                </span>
+                <p className="text-slate-800 leading-relaxed font-sans text-xs">
+                    {effectiveDay.grammar_rules_detail}
                   </p>
                 </div>
-                <span className="bg-emerald-50 text-emerald-700 border border-emerald-200 font-bold text-xs px-3 py-1 rounded-full uppercase tracking-wider self-start sm:self-auto shrink-0">
-                  ✓ Verified Solutions Included
-                </span>
-              </div>
 
-              {/* Clean List Items (No clunky nested boxes) */}
-              <div className="divide-y divide-slate-100">
-                {(effectiveDay.exercise_solutions && effectiveDay.exercise_solutions.length > 0
-                  ? effectiveDay.exercise_solutions
-                  : (effectiveDay.in_class_exercises || []).map((ex) => ({
-                      question: ex,
-                      answer: `Model answer demonstrating certified ${sessionPackage.level} fluency in ${sessionPackage.language}`,
-                      explanation: `Linguistic breakdown: Verify syntactic formula and verb conjugation agreement.`
-                    }))
-                ).map((sol, sIdx) => (
-                  <div key={sIdx} className="py-4 first:pt-0 last:pb-0 space-y-3">
-                    {/* Question Header */}
-                    <div className="flex items-start gap-3">
-                      <span className="w-7 h-7 rounded-lg bg-blue-600 text-white font-black text-xs flex items-center justify-center shrink-0 shadow-2xs">
-                        Q{sIdx + 1}
-                      </span>
-                      <div className="flex-1 space-y-1">
-                        <div className="flex items-center gap-1.5">
-                          {sol.question.includes('[R') ? (
-                            <span className="text-[10px] font-extrabold uppercase px-2 py-0.5 rounded bg-blue-100 text-blue-800 border border-blue-200">
-                              Reading & Syntax
-                            </span>
-                          ) : sol.question.includes('[S') ? (
-                            <span className="text-[10px] font-extrabold uppercase px-2 py-0.5 rounded bg-indigo-100 text-indigo-800 border border-indigo-200">
-                              Speaking & Oral
-                            </span>
-                          ) : sol.question.includes('[L') ? (
-                            <span className="text-[10px] font-extrabold uppercase px-2 py-0.5 rounded bg-purple-100 text-purple-800 border border-purple-200">
-                              Listening & Auditory
-                            </span>
-                          ) : sol.question.includes('[W') ? (
-                            <span className="text-[10px] font-extrabold uppercase px-2 py-0.5 rounded bg-teal-100 text-teal-800 border border-teal-200">
-                              Writing & Production
-                            </span>
-                          ) : null}
-                        </div>
-                        <p className="font-bold text-sm text-slate-900 leading-snug">
-                          {sol.question.replace(/^\[[A-Za-z0-9\s\-:&]+\]\s*/i, '')}
-                        </p>
+                {/* Master Study Notes Markdown */}
+                {effectiveDay.study_notes_markdown && (
+                  <div className="-mx-4 sm:mx-0 bg-slate-900 border-y sm:border border-slate-800 rounded-none sm:rounded-2xl overflow-hidden shadow-md">
+                    <div className="bg-slate-800/80 px-4 py-2.5 border-b border-slate-700 flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <BookOpen className="w-4 h-4 text-cyan-400" />
+                        <span className="font-bold text-xs text-cyan-300 uppercase tracking-wider">
+                          Study Notes & Grammar Reference ({unitName} {effectiveDay.day_number})
+                        </span>
                       </div>
+                      <span className="text-[10px] text-slate-400 font-mono">
+                        Grammar Reference
+                      </span>
                     </div>
 
-                    {/* Clean Answer & Explanation Row */}
-                    <div className="ml-10 space-y-2">
-                      <div className="flex flex-wrap items-center gap-2 text-xs">
-                        <span className="font-bold text-slate-500 uppercase tracking-wider text-[11px]">Correct Answer:</span>
-                        <span className="font-mono bg-emerald-50 text-emerald-900 font-bold px-3 py-1 rounded-md border border-emerald-200 text-xs">
-                          {sol.answer}
+                    <div className="p-5 font-sans text-xs text-slate-200 leading-relaxed space-y-3 overflow-x-auto">
+                      {effectiveDay.study_notes_markdown.split('\n\n').map((paragraph, pIdx) => {
+                        if (paragraph.includes('|') && paragraph.includes('---')) {
+                          const lines = paragraph.trim().split('\n');
+                          const headerLine = lines[0];
+                          const headers = headerLine.split('|').map(h => h.trim()).filter(Boolean);
+                          const rows = lines.slice(2).map(l => l.split('|').map(c => c.trim()).filter(Boolean));
+
+                          return (
+                            <div key={pIdx} className="my-3 overflow-x-auto rounded-xl border border-slate-800 shadow-sm bg-slate-950/60">
+                              <table className="w-full text-left text-xs border-collapse">
+                                <thead>
+                                  <tr className="bg-slate-800/80 text-cyan-300 font-bold border-b border-slate-700">
+                                    {headers.map((h, hIdx) => (
+                                      <th key={hIdx} className="py-2 px-3 border-r border-slate-700/60 last:border-r-0">
+                                        {h}
+                                      </th>
+                                    ))}
+                                  </tr>
+                                </thead>
+                                <tbody className="divide-y divide-slate-800">
+                                  {rows.map((row, rIdx) => (
+                                    <tr key={rIdx} className="hover:bg-slate-800/30 transition-colors">
+                                      {row.map((cell, cIdx) => (
+                                        <td key={cIdx} className="py-2 px-3 border-r border-slate-800/60 last:border-r-0 font-mono text-[11px] text-slate-300">
+                                          {cell}
+                                        </td>
+                                      ))}
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                            </div>
+                          );
+                        }
+
+                        if (paragraph.startsWith('### ') || paragraph.startsWith('**')) {
+                          return (
+                            <p key={pIdx} className="font-bold text-sm text-cyan-300 pt-1">
+                              {paragraph.replace(/^###\s+/, '')}
+                            </p>
+                          );
+                        }
+
+                        return (
+                          <p key={pIdx} className="text-slate-300 text-xs leading-relaxed whitespace-pre-wrap">
+                            {paragraph}
+                          </p>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {/* Vocabulary Bank */}
+                {effectiveDay.vocabulary_bank && effectiveDay.vocabulary_bank.length > 0 && (
+                  <div>
+                    <span className="font-bold text-slate-700 uppercase tracking-wider block mb-2 text-xs">
+                      Target Vocabulary Bank & Audio Pronunciation:
+                    </span>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                      {effectiveDay.vocabulary_bank.map((v, vIdx) => {
+                        const vKey = `vocab-${effectiveDay.day_number}-${vIdx}`;
+                        const isVPlaying = playingAudioKey === vKey;
+                        return (
+                          <div key={vIdx} className="bg-amber-50/70 border border-amber-200 p-3 rounded-xl space-y-1">
+                            <div className="flex items-center justify-between">
+                              <span className="font-bold text-amber-950 text-xs">{v.word}</span>
+                              <div className="flex items-center gap-1.5">
+                                {v.pronunciation && (
+                                  <span className="font-mono text-[11px] text-amber-800 bg-amber-100/70 px-2 py-0.5 rounded font-medium">
+                                    {v.pronunciation}
+                                  </span>
+                                )}
+                                <button
+                                  type="button"
+                                  onClick={() => playNativeAudio(v.word, vKey)}
+                                  className={`px-2 py-0.5 rounded text-[10px] font-bold flex items-center gap-1 shrink-0 cursor-pointer transition-all ${
+                                    isVPlaying
+                                      ? 'bg-rose-500 text-white animate-pulse'
+                                      : 'bg-amber-200/80 hover:bg-amber-300 text-amber-950'
+                                  }`}
+                                  title="Listen to native pronunciation"
+                                >
+                                  <Volume2 className="w-3 h-3" />
+                                  <span>{isVPlaying ? 'Stop' : 'Listen'}</span>
+                                </button>
+                              </div>
+                            </div>
+                            <p className="text-slate-700 text-xs mt-1">{v.meaning}</p>
+                            {v.example_sentence && (
+                              <div className="flex items-center justify-between pt-1.5 mt-1 border-t border-amber-200/60 gap-2">
+                                <p className="text-slate-600 text-xs italic font-sans leading-relaxed">
+                                  &quot;{v.example_sentence}&quot;
+                                </p>
+                                <button
+                                  type="button"
+                                  onClick={() => playNativeAudio(v.example_sentence, `${vKey}-sentence`)}
+                                  className="text-[10px] text-amber-900 hover:text-amber-700 font-bold shrink-0 cursor-pointer flex items-center gap-1"
+                                  title="Listen to full sentence"
+                                >
+                                  <Volume2 className="w-2.5 h-2.5" />
+                                  <span>{playingAudioKey === `${vKey}-sentence` ? 'Stop' : 'Listen'}</span>
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {/* Prepared & Generated Curriculum Audio Tracks (Display & Play Only) */}
+                {(() => {
+                  const allCurriculumTracks = (effectiveDay.generated_audio_tracks && effectiveDay.generated_audio_tracks.length > 0)
+                    ? effectiveDay.generated_audio_tracks
+                    : effectiveDay.generated_audio_track
+                    ? [effectiveDay.generated_audio_track]
+                    : [];
+
+                  if (allCurriculumTracks.length === 0) return null;
+
+                  return (
+                    <div id="period-audio-studio-section" className="-mx-4 sm:mx-0 bg-slate-900 border-y sm:border border-slate-800 rounded-none sm:rounded-2xl text-white shadow-xl overflow-hidden">
+                      <div className="px-4 sm:px-5 py-3.5 border-b border-slate-800/90 bg-slate-900 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+                        <div className="flex items-center gap-2.5">
+                          <div className="w-8 h-8 rounded-lg bg-blue-500/20 border border-blue-500/30 flex items-center justify-center text-blue-400 shrink-0">
+                            <Headphones className="w-4 h-4 text-blue-400" />
+                          </div>
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <h4 className="font-extrabold text-xs sm:text-sm text-white tracking-tight">
+                                Curriculum Audio Tracks ({allCurriculumTracks.length})
+                              </h4>
+                              <span className="bg-blue-600/30 text-blue-300 border border-blue-500/40 text-[10px] font-mono font-bold px-2 py-0.5 rounded-full">
+                                {unitName} {effectiveDay.day_number}
+                              </span>
+                            </div>
+                            <p className="text-[11px] text-slate-400">
+                              Prepared listening exercises and native speech models for this {unitName.toLowerCase()}
+                            </p>
+                          </div>
+                        </div>
+
+                        <span className="text-[10px] text-emerald-400 font-semibold px-2.5 py-0.5 bg-emerald-950/70 border border-emerald-500/30 rounded-full w-fit self-start sm:self-auto">
+                          Native Female Voice • Learner Pace
                         </span>
                       </div>
 
-                      {sol.explanation && (
-                        <p className="text-xs text-slate-600 leading-relaxed bg-slate-50 p-2.5 rounded-lg border border-slate-100">
-                          <strong className="text-slate-800 font-semibold">Linguistic Explanation:</strong> {sol.explanation}
-                        </p>
-                      )}
+                      <div className="divide-y divide-slate-800/80">
+                        {allCurriculumTracks.map((trk: any, tIdx: number) => {
+                          const trackKey = `curriculum-body-track-${effectiveDay.day_number}-${tIdx}`;
+                          const isPlayingThis = playingAudioKey === trackKey;
+                          const scriptText = trk.script || (trk.dialogue_turns?.map((t: any) => `${t.speaker}: ${t.text}`).join(' ')) || '';
+                          const cleanLang = (sessionPackage?.language || 'Language').replace(/[^a-zA-Z0-9]/g, '_');
+                          const cleanLevel = (sessionPackage?.level || 'A1.1').replace(/[^a-zA-Z0-9]/g, '_');
+                          const totalDaysCount = totalDays || allDays?.length || 2;
+                          const effectiveUnit = unitName || 'Period';
+                          const trackFileName = `${cleanLang}_${cleanLevel}_Total_${totalDaysCount}_${effectiveUnit}s_${effectiveUnit}_${effectiveDay.day_number}_Track_${tIdx + 1}_Listening_Audio`;
+
+                          return (
+                            <div key={tIdx} className="px-4 sm:px-5 py-3.5 space-y-2.5 hover:bg-slate-800/25 transition-colors">
+                              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                                <div className="flex items-center gap-2.5 min-w-0">
+                                  <span className="w-7 h-7 rounded-lg bg-blue-600/25 border border-blue-500/30 text-blue-300 flex items-center justify-center font-mono font-bold text-xs shrink-0">
+                                    0{tIdx + 1}
+                                  </span>
+                                  <div className="min-w-0">
+                                    <strong className="text-xs sm:text-sm font-bold text-white block truncate">
+                                      {trk.title || `Audio Track ${tIdx + 1}`}
+                                    </strong>
+                                    <span className="text-[10px] text-slate-400">
+                                      ~{trk.duration_minutes || 2} Mins • {trk.word_count || 120} words
+                                    </span>
+                                  </div>
+                                </div>
+
+                                <div className="flex items-center gap-2 shrink-0 w-full sm:w-auto">
+                                  <button
+                                    type="button"
+                                    onClick={() => playNativeAudio(scriptText, trackKey)}
+                                    className={`flex-1 sm:flex-initial px-3 py-1.5 rounded-lg text-xs font-bold flex items-center justify-center gap-1.5 cursor-pointer transition-all ${
+                                      isPlayingThis
+                                        ? 'bg-rose-500 text-white animate-pulse'
+                                        : 'bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700'
+                                    }`}
+                                    title="Play native female voice"
+                                  >
+                                    <Volume2 className="w-3.5 h-3.5 text-blue-400" />
+                                    <span>{isPlayingThis ? 'Stop' : 'Play Voice'}</span>
+                                  </button>
+
+                                  <button
+                                    type="button"
+                                    onClick={() => downloadAudioTrack(scriptText, trackFileName)}
+                                    className="flex-1 sm:flex-initial px-3 py-1.5 rounded-lg text-xs font-bold flex items-center justify-center gap-1.5 cursor-pointer bg-blue-600/20 hover:bg-blue-600/30 text-blue-200 border border-blue-500/40 transition-all shadow-xs"
+                                    title="Download MP3 file"
+                                  >
+                                    <Download className="w-3.5 h-3.5 text-blue-300" />
+                                    <span>Download MP3</span>
+                                  </button>
+                                </div>
+                              </div>
+
+                              {scriptText && (
+                                <div className="pl-3 border-l-2 border-blue-500/60 py-0.5">
+                                  <p className="text-xs text-slate-300 leading-relaxed italic line-clamp-3 font-sans">
+                                    &quot;{scriptText}&quot;
+                                  </p>
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                })()}
+              </div>
+
+              {/* Learning Objectives & Framework Standards */}
+              <div className="space-y-4">
+                <div className="bg-slate-900 text-white p-3.5 rounded-xl border border-slate-800 shadow-sm flex items-center justify-between">
+                  <div>
+                    <h4 className="font-extrabold text-xs sm:text-sm uppercase tracking-wider text-white">Learning Objectives & Standards</h4>
+                    <p className="text-[11px] text-slate-300">{resolvedPillars.proficiency_framework.framework_name} • Competency Descriptors</p>
+                  </div>
+                  <span className="text-[10px] bg-emerald-900/80 text-emerald-200 border border-emerald-400/30 px-2.5 py-0.5 rounded font-mono font-bold">
+                    Level {sessionPackage.level} Target
+                  </span>
+                </div>
+
+                {/* Can-Do Competencies Card */}
+                <div className="bg-white border border-emerald-200 rounded-xl sm:rounded-2xl shadow-xs overflow-hidden">
+                  <div className="flex items-center justify-between border-b border-emerald-100 px-4 sm:px-5 py-3 bg-emerald-50/40">
+                    <span className="font-bold text-emerald-950 text-xs uppercase tracking-wider flex items-center gap-1.5">
+                      <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                      <span>Competency Milestones (Can-Do Descriptors)</span>
+                    </span>
+                    <span className="text-[10px] bg-emerald-100 text-emerald-800 font-bold px-2 py-0.5 rounded-full">
+                      CEFR {sessionPackage.level}
+                    </span>
+                  </div>
+
+                  <div className="divide-y divide-emerald-100">
+                    {canDoCompetencies.map((cdText: string, cIdx: number) => (
+                      <div key={cIdx} className="px-4 sm:px-5 py-3 flex items-start gap-3 hover:bg-emerald-50/30 transition-colors">
+                        <span className="w-5 h-5 rounded-full bg-emerald-600 text-white font-extrabold text-[10px] flex items-center justify-center shrink-0 mt-0.5">
+                          ✓
+                        </span>
+                        <div className="space-y-0.5">
+                          <strong className="text-xs text-emerald-950 block">Milestone {cIdx + 1}:</strong>
+                          <p className="text-xs text-slate-700 leading-relaxed font-sans">{cdText}</p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Level Boundary Guidelines */}
+                <div className="bg-slate-900 text-white p-4 rounded-xl border border-slate-800 shadow-sm space-y-2">
+                  <div className="flex items-center gap-2">
+                    <span className="text-emerald-400 font-bold text-xs">Language Level Guidelines & Scope:</span>
+                  </div>
+                  <p className="text-xs text-slate-200 leading-relaxed">
+                    {resolvedPillars.proficiency_framework.level_boundary_rules}
+                  </p>
+                </div>
+              </div>
+
+              {/* Culture, Formality & Everyday Etiquette */}
+              <div className="space-y-4">
+                <div className="bg-slate-900 text-white p-3.5 rounded-xl border border-slate-800 shadow-sm flex items-center justify-between">
+                  <div>
+                    <h4 className="font-extrabold text-xs sm:text-sm uppercase tracking-wider text-white">Culture, Formality & Everyday Etiquette</h4>
+                    <p className="text-[11px] text-slate-300">Everyday social customs, formality registers, and teacher guidance</p>
+                  </div>
+                  <span className="text-[10px] bg-amber-900/80 text-amber-200 border border-amber-400/30 px-2.5 py-0.5 rounded font-mono font-bold">
+                    Authentic Customs
+                  </span>
+                </div>
+
+                {/* Formality Registers Box */}
+                <div className="bg-amber-50/80 border border-amber-200 p-4 rounded-2xl space-y-2 shadow-xs">
+                  <div className="flex items-center gap-2">
+                    <span className="text-amber-800 font-black text-xs uppercase tracking-wider">
+                      Formality Registers & Conversational Usage:
+                    </span>
+                  </div>
+                  <p className="text-slate-800 text-xs leading-relaxed font-sans">
+                    {cultureData.formality_rule}
+                  </p>
+                </div>
+
+                {/* Real-World Cultural Etiquette & Customs */}
+                <div className="bg-white border border-slate-200 p-4 sm:p-5 rounded-2xl shadow-xs space-y-3">
+                  <span className="font-bold text-slate-900 uppercase tracking-wider block text-xs border-b border-slate-100 pb-2">
+                    Everyday Social Customs & Etiquette:
+                  </span>
+                  <div className="font-sans text-xs text-slate-700 leading-relaxed whitespace-pre-wrap space-y-1">
+                    {cultureData.cultural_etiquette}
+                  </div>
+                </div>
+
+                {/* Senior Faculty Tip */}
+                <div className="bg-amber-50/80 p-4 rounded-xl border border-amber-200 flex items-start gap-3">
+                  <span className="px-2 py-0.5 rounded bg-amber-200/80 text-amber-950 font-black text-[10px]">TIP</span>
+                  <div className="space-y-0.5">
+                    <strong className="text-xs font-bold text-amber-950 block">Faculty Teaching Tip:</strong>
+                    <p className="text-xs text-amber-900 leading-relaxed">{cultureData.sociolinguistic_tip}</p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Classroom Dialogues & Conversational Practice */}
+              <div className="space-y-4">
+                <div className="bg-slate-900 text-white p-3.5 rounded-xl border border-slate-800 shadow-sm flex items-center justify-between">
+                  <div>
+                    <h4 className="font-extrabold text-xs sm:text-sm uppercase tracking-wider text-white">Classroom Dialogues & Conversational Practice</h4>
+                    <p className="text-[11px] text-slate-300">Live conversational exchange, roleplay scripts, and native speech models</p>
+                  </div>
+                  <span className="text-[10px] bg-purple-900/80 text-purple-200 border border-purple-400/30 px-2.5 py-0.5 rounded font-mono font-bold">
+                    Spoken Practice
+                  </span>
+                </div>
+
+                {/* Live Class Dialogues with AI Voice Audio Player */}
+                {effectiveDay.classroom_dialogues && effectiveDay.classroom_dialogues.length > 0 && (
+                  <div className="bg-purple-50/70 border border-purple-200 rounded-xl overflow-hidden shadow-2xs">
+                    <div className="px-4 py-3 bg-purple-100/60 border-b border-purple-200/70 flex items-center justify-between">
+                      <span className="font-bold text-purple-950 uppercase tracking-wider block text-xs">
+                        Conversational Dialogues & Practice Scripts:
+                      </span>
+                      <span className="text-[10px] bg-purple-200 text-purple-950 font-bold px-2 py-0.5 rounded">
+                        Native Audio
+                      </span>
+                    </div>
+                    <div className="divide-y divide-purple-200/60 font-sans text-xs text-purple-950">
+                      {effectiveDay.classroom_dialogues.map((dlg, dIdx) => {
+                        const dlgKey = `teacher-dlg-${effectiveDay.day_number}-${dIdx}`;
+                        const isPlaying = playingAudioKey === dlgKey;
+                        return (
+                          <div key={dIdx} className="p-3.5 flex items-center justify-between gap-3 hover:bg-purple-100/30 transition-colors">
+                            <span className="leading-relaxed font-sans text-slate-800">{dlg}</span>
+                            <button
+                              type="button"
+                              onClick={() => playNativeAudio(dlg, dlgKey)}
+                              className={`px-2.5 py-1 rounded-md text-[10px] font-bold flex items-center gap-1 shrink-0 cursor-pointer transition-all ${
+                                isPlaying
+                                  ? 'bg-rose-500 text-white animate-pulse'
+                                  : 'bg-purple-200/70 hover:bg-purple-200 text-purple-950'
+                              }`}
+                            >
+                              <Volume2 className="w-3 h-3" />
+                              <span>{isPlaying ? 'Stop' : 'Play Voice'}</span>
+                            </button>
+                          </div>
+                        );
+                      })}
                     </div>
                   </div>
-                ))}
+                )}
               </div>
-            </div>
 
-            {/* Daily Homework Directives */}
-            <div className="bg-blue-50/50 p-4 rounded-xl border border-blue-100">
-              <span className="font-bold text-blue-950 uppercase tracking-wider block mb-1.5 text-xs">
-                📝 Daily Homework & LMS Submission Directives:
-              </span>
-              <ul className="space-y-1.5 text-slate-800 text-xs">
-                {(effectiveDay.homework_tasks || []).map((hw, hIdx) => (
-                  <li key={hIdx} className="flex items-start gap-1.5">
-                    <span className="text-blue-600 font-bold">›</span>
-                    <span>{hw}</span>
-                  </li>
-                ))}
-              </ul>
+              {/* Practical Workplace & Situational Applications */}
+              <div className="space-y-4">
+                <div className="bg-slate-900 text-white p-3.5 rounded-xl border border-slate-800 shadow-sm flex items-center justify-between">
+                  <div>
+                    <h4 className="font-extrabold text-xs sm:text-sm uppercase tracking-wider text-white">Practical Workplace & Situational Scenarios</h4>
+                    <p className="text-[11px] text-slate-300">Professional context, formal registers, and reference multimedia analysis</p>
+                  </div>
+                  <span className="text-[10px] bg-cyan-900/80 text-cyan-200 border border-cyan-400/30 px-2.5 py-0.5 rounded font-mono font-bold">
+                    Professional Context
+                  </span>
+                </div>
+
+                {/* Professional Workplace Applications */}
+                <div className="bg-white border border-cyan-200 rounded-xl sm:rounded-2xl shadow-xs overflow-hidden">
+                  <div className="px-4 sm:px-5 py-3 bg-cyan-50/40 border-b border-cyan-100">
+                    <span className="font-bold text-cyan-950 uppercase tracking-wider block text-xs">
+                      Workplace & Practical Applications:
+                    </span>
+                  </div>
+                  <div className="divide-y divide-cyan-100">
+                    {academicContext.workplace_applications.map((app: string, aIdx: number) => (
+                      <div key={aIdx} className="px-4 sm:px-5 py-3 flex items-start gap-2.5 hover:bg-cyan-50/30 transition-colors">
+                        <span className="text-cyan-700 font-bold text-xs mt-0.5">›</span>
+                        <p className="text-xs text-slate-800 leading-snug">{app}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Corporate Situational Scenario Callout */}
+                <div className="bg-slate-900 text-white p-4 rounded-2xl border border-slate-800 space-y-2">
+                  <strong className="text-xs font-bold text-cyan-300 block">Practical Situational Scenario:</strong>
+                  <p className="text-xs text-slate-200 leading-relaxed">{academicContext.corporate_scenario}</p>
+                  <p className="text-[11px] text-cyan-200/90 font-sans italic pt-1 border-t border-slate-800">
+                    {academicContext.formal_register_note}
+                  </p>
+                </div>
+
+                {/* Video Breakdown Analysis */}
+                {effectiveDay.video_breakdown_analysis && (
+                  <div className="bg-white border border-slate-200 rounded-2xl p-4 sm:p-5 shadow-xs space-y-2.5">
+                    <div className="flex items-center gap-2 border-b border-slate-100 pb-2.5">
+                      <Video className="w-4 h-4 text-indigo-600 shrink-0" />
+                      <h4 className="font-bold text-xs sm:text-sm text-slate-900">
+                        Reference Video & Audio Breakdown
+                      </h4>
+                    </div>
+                    <p className="text-slate-700 text-xs leading-relaxed whitespace-pre-wrap">
+                      {effectiveDay.video_breakdown_analysis}
+                    </p>
+                  </div>
+                )}
+              </div>
+
+            {/* Teaching Procedure, Formative Practice & Homework */}
+            <div className="space-y-4">
+              {/* Faculty Session Breakdown */}
+              {effectiveDay.teacher_lesson_breakdown && (
+                <div className="bg-gradient-to-r from-blue-50 via-indigo-50 to-sky-50 border border-blue-200 p-4 rounded-xl space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="font-extrabold text-blue-950 text-xs uppercase tracking-wider flex items-center gap-1.5">
+                      <Clock className="w-3.5 h-3.5 text-blue-600" />
+                      <span>Faculty Session Breakdown ({effectiveDay.teacher_lesson_breakdown.allocated_minutes} Minutes Allocated)</span>
+                    </span>
+                    <span className="text-[10px] font-bold bg-blue-600 text-white px-2.5 py-0.5 rounded-full">
+                      Step-by-Step Delivery
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-4 gap-2">
+                    {effectiveDay.teacher_lesson_breakdown.phases.map((ph, phIdx) => (
+                      <div key={phIdx} className="bg-white p-2.5 rounded-lg border border-blue-200/80 shadow-2xs space-y-1">
+                        <div className="flex items-center justify-between text-[11px]">
+                          <strong className="text-blue-900 font-bold">{ph.phase}</strong>
+                          <span className="text-blue-600 font-extrabold bg-blue-50 px-1.5 py-0.5 rounded text-[10px]">{ph.minutes}m</span>
+                        </div>
+                        <p className="text-[10px] text-slate-600 leading-snug">{ph.instruction}</p>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-1">
+                    <div className="bg-white p-2.5 rounded-lg border border-indigo-200 text-[11px] text-indigo-950">
+                      <span className="font-bold block text-indigo-900 mb-0.5">Blackboard Formula:</span>
+                      <p className="font-mono text-[10px] text-slate-700">{effectiveDay.teacher_lesson_breakdown.board_notes}</p>
+                    </div>
+                    <div className="bg-white p-2.5 rounded-lg border border-amber-200 text-[11px] text-amber-950">
+                      <span className="font-bold block text-amber-900 mb-0.5">Remedial Activity:</span>
+                      <p className="text-[10px] text-slate-700">{effectiveDay.teacher_lesson_breakdown.remedial_activity}</p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Verified Answer Key & Solutions - Standardized LSRW Practice Drills */}
+              <div className="bg-white border border-slate-200/90 rounded-2xl p-4 sm:p-6 shadow-xs space-y-4">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-3">
+                  <div>
+                    <div className="flex items-center gap-2 mb-1">
+                      <span className="bg-blue-100 text-blue-800 text-[10px] font-mono font-extrabold px-2.5 py-0.5 rounded-md uppercase tracking-wider">
+                        Practice Tasks
+                      </span>
+                      <span className="text-[10px] text-slate-400 font-bold">•</span>
+                      <span className="text-[11px] font-bold text-slate-600">CEFR {sessionPackage.level} Proficiency</span>
+                    </div>
+                    <h4 className="font-extrabold text-sm sm:text-base text-slate-900 flex items-center gap-2">
+                      <CheckCircle2 className="w-4 sm:w-5 h-4 sm:h-5 text-emerald-600 shrink-0" />
+                      <span>Classroom Practice Exercises & Model Solutions</span>
+                    </h4>
+                    <p className="text-xs text-slate-500 mt-0.5">
+                      Standardized classroom drills engineered for student self-study, instant evaluation, and faculty feedback.
+                    </p>
+                  </div>
+                  <span className="bg-emerald-50 text-emerald-700 border border-emerald-200 font-bold text-xs px-3 py-1 rounded-full uppercase tracking-wider self-start sm:self-auto shrink-0">
+                    Model Answers Included
+                  </span>
+                </div>
+
+                {/* Clean List Items */}
+                <div className="divide-y divide-slate-100">
+                  {(effectiveDay.exercise_solutions && effectiveDay.exercise_solutions.length > 0
+                    ? effectiveDay.exercise_solutions
+                    : (effectiveDay.in_class_exercises || []).map((ex) => ({
+                        question: ex,
+                        answer: `Model answer demonstrating certified ${sessionPackage.level} fluency in ${sessionPackage.language}`,
+                        explanation: `Linguistic breakdown: Verify syntactic formula and verb conjugation agreement.`
+                      }))
+                  ).map((sol, sIdx) => (
+                    <div key={sIdx} className="py-4 first:pt-0 last:pb-0 space-y-3">
+                      <div className="flex items-start gap-3">
+                        <span className="w-7 h-7 rounded-lg bg-blue-600 text-white font-black text-xs flex items-center justify-center shrink-0 shadow-2xs">
+                          Q{sIdx + 1}
+                        </span>
+                        <div className="flex-1 space-y-1">
+                          <div className="flex items-center gap-1.5">
+                            {sol.question.includes('[R') ? (
+                              <span className="text-[10px] font-extrabold uppercase px-2 py-0.5 rounded bg-blue-100 text-blue-800 border border-blue-200">
+                                Reading & Syntax
+                              </span>
+                            ) : sol.question.includes('[S') ? (
+                              <span className="text-[10px] font-extrabold uppercase px-2 py-0.5 rounded bg-indigo-100 text-indigo-800 border border-indigo-200">
+                                Speaking & Oral
+                              </span>
+                            ) : sol.question.includes('[L') ? (
+                              <span className="text-[10px] font-extrabold uppercase px-2 py-0.5 rounded bg-purple-100 text-purple-800 border border-purple-200">
+                                Listening & Auditory
+                              </span>
+                            ) : sol.question.includes('[W') ? (
+                              <span className="text-[10px] font-extrabold uppercase px-2 py-0.5 rounded bg-teal-100 text-teal-800 border border-teal-200">
+                                Writing & Production
+                              </span>
+                            ) : null}
+                          </div>
+                          <p className="font-bold text-xs sm:text-sm text-slate-900 leading-snug">
+                            {sol.question.replace(/^\[[A-Za-z0-9\s\-:&]+\]\s*/i, '')}
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="ml-10 space-y-2">
+                        <div className="flex flex-wrap items-center gap-2 text-xs">
+                          <span className="font-bold text-slate-500 uppercase tracking-wider text-[11px]">Correct Answer:</span>
+                          <span className="font-mono bg-emerald-50 text-emerald-900 font-bold px-3 py-1 rounded-md border border-emerald-200 text-xs">
+                            {sol.answer}
+                          </span>
+                        </div>
+
+                        {sol.explanation && (
+                          <p className="text-xs text-slate-600 leading-relaxed bg-slate-50 p-2.5 rounded-lg border border-slate-100">
+                            <strong className="text-slate-800 font-semibold">Linguistic Explanation:</strong> {sol.explanation}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Daily Homework Directives */}
+              <div className="bg-blue-50/50 p-4 rounded-xl border border-blue-100">
+                <span className="font-bold text-blue-950 uppercase tracking-wider block mb-1.5 text-xs">
+                  Daily Homework & Practice Tasks:
+                </span>
+                <ul className="space-y-1.5 text-slate-800 text-xs">
+                  {(effectiveDay.homework_tasks || []).map((hw, hIdx) => (
+                    <li key={hIdx} className="flex items-start gap-1.5">
+                      <span className="text-blue-600 font-bold">›</span>
+                      <span>{hw}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+
+              {effectiveDay.source_reference_url && (
+                <div className="text-[11px] text-slate-600 bg-slate-50 p-3 rounded-xl border border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-1.5">
+                  <div>
+                    <span className="font-bold text-slate-700">Course Source Material: </span>
+                    <a href={effectiveDay.source_reference_url} target="_blank" rel="noreferrer" className="underline text-blue-600 hover:text-blue-700">
+                      {effectiveDay.source_reference_url}
+                    </a>
+                  </div>
+                  <span className="text-[10px] text-emerald-700 font-medium">Verified Grounded</span>
+                </div>
+              )}
             </div>
 
             {/* 🤖 Professional Clean Academic Curriculum Assistant (Seamless In-Page Continuation) */}
             <div className="bg-white rounded-2xl p-5 sm:p-6 text-slate-900 border border-slate-200 shadow-xs space-y-5 mt-6">
+              {isSessionSaved === false ? (
+                <div className="p-6 sm:p-8 bg-gradient-to-br from-blue-50/80 via-indigo-50/40 to-white border border-blue-200/90 rounded-2xl text-center space-y-3.5">
+                  <div className="w-12 h-12 rounded-2xl bg-blue-100 text-[#0052CC] flex items-center justify-center mx-auto shadow-2xs">
+                    <Sparkles className="w-6 h-6 text-[#0052CC]" />
+                  </div>
+                  <div className="space-y-1 max-w-md mx-auto">
+                    <h4 className="text-sm sm:text-base font-black text-[#0B2447]">
+                      Save Curriculum to Unlock AI Assistant
+                    </h4>
+                    <p className="text-xs text-slate-600 leading-relaxed font-medium">
+                      Save this curriculum session to activate the continuous AI Lesson Assistant, real-time period modification, and multi-turn chat memory.
+                    </p>
+                  </div>
+                  {onManualSaveSession && (
+                    <button
+                      type="button"
+                      onClick={onManualSaveSession}
+                      disabled={savingSession}
+                      className="inline-flex items-center gap-2 px-5 py-2.5 bg-[#0052CC] hover:bg-blue-700 text-white font-extrabold text-xs rounded-xl shadow-md transition-all cursor-pointer active:scale-95 disabled:opacity-50"
+                    >
+                      {savingSession ? (
+                        <span>Saving Curriculum...</span>
+                      ) : (
+                        <span>Save Curriculum &amp; Unlock Chat</span>
+                      )}
+                    </button>
+                  )}
+                </div>
+              ) : (
+                <>
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-3">
                 <div className="flex items-center gap-3">
                   <div className="w-10 h-10 rounded-xl bg-blue-50 border border-blue-200 flex items-center justify-center text-blue-600 shadow-xs shrink-0">
@@ -1780,7 +2675,7 @@ export function DayContentView({
                                   {msg.regeneratedSummary.grammarRule && (
                                     <div className="bg-amber-50/70 border border-amber-200/80 rounded-xl p-2.5 text-[11px] space-y-1">
                                       <span className="text-[10px] font-black text-amber-900 uppercase tracking-wide flex items-center gap-1">
-                                        📐 Blackboard Grammar Equation &amp; Syntactic Rule:
+                                        Board Notes &amp; Grammar Rule:
                                       </span>
                                       <p className="font-mono text-slate-800 font-semibold bg-white/90 p-1.5 rounded border border-amber-200">
                                         {msg.regeneratedSummary.grammarRule}
@@ -1792,7 +2687,7 @@ export function DayContentView({
                                   {msg.regeneratedSummary.vocabulary && msg.regeneratedSummary.vocabulary.length > 0 && (
                                     <div className="space-y-1">
                                       <span className="text-[10px] font-black uppercase text-slate-500 tracking-wide block">
-                                        🗂️ Target Vocabulary ({msg.regeneratedSummary.vocabulary.length} Words):
+                                        Key Vocabulary ({msg.regeneratedSummary.vocabulary.length} Words):
                                       </span>
                                       <div className="flex flex-wrap gap-1.5">
                                         {msg.regeneratedSummary.vocabulary.map((v: any, vIdx: number) => (
@@ -1813,7 +2708,7 @@ export function DayContentView({
                                     <div className="space-y-2 pt-1">
                                       <div className="flex items-center justify-between">
                                         <span className="text-[10px] font-black uppercase text-slate-500 tracking-wide flex items-center gap-1">
-                                          🎯 Verified LSRW Classroom Drills:
+                                          Verified LSRW Classroom Drills:
                                         </span>
                                         <span className="text-[10px] text-blue-700 font-bold">
                                           {msg.regeneratedSummary.exercises.length} Questions &amp; Solutions
@@ -1900,7 +2795,7 @@ export function DayContentView({
                                                 type="button"
                                                 onClick={() => downloadAudioTrack(textToPlay, `${sessionPackage?.language || "Language"}_Period_${effectiveDay.day_number}_Track_${tIdx + 1}`)}
                                                 className="px-2.5 py-1 rounded-lg text-xs font-bold flex items-center gap-1 cursor-pointer bg-white hover:bg-slate-100 text-slate-700 border border-slate-300 shadow-2xs transition-all"
-                                                title="Download Audio File (MP3/WAV)"
+                                                title="Download MP3 Audio File"
                                               >
                                                 <Download className="w-3 h-3 text-slate-600" />
                                                 <span>Download MP3</span>
@@ -2395,49 +3290,527 @@ export function DayContentView({
                       onClick={() => setChatInput(`Generate 10 extensive practice questions covering Listening, Speaking, Reading and Writing with detailed answers and pronunciation notes`)}
                       className="bg-slate-100 hover:bg-slate-200 text-slate-700 px-2.5 py-1 rounded-lg border border-slate-200 cursor-pointer transition-colors flex items-center gap-1 text-[11px] font-medium"
                     >
-                      <span>🎯 10 LSRW Drills + Answers</span>
+                      <span>10 LSRW Drills + Answers</span>
                     </button>
                     <button
                       type="button"
                       onClick={() => setChatInput(`3 audio tracks generate pannu verbs base pani`)}
                       className="bg-blue-50 hover:bg-blue-100 text-blue-800 px-2.5 py-1 rounded-lg border border-blue-200 cursor-pointer transition-colors flex items-center gap-1 text-[11px] font-semibold"
                     >
-                      <span>🎧 3 Audio Tracks (Verbs)</span>
+                      <span>3 Audio Tracks (Verbs)</span>
                     </button>
                     <button
                       type="button"
                       onClick={() => setChatInput(`Add 6 conversational dialogue turns between teacher and student with natural phonetics`)}
                       className="bg-purple-50 hover:bg-purple-100 text-purple-800 px-2.5 py-1 rounded-lg border border-purple-200 cursor-pointer transition-colors flex items-center gap-1 text-[11px] font-medium"
                     >
-                      <span>🗣️ Realistic Dialogues</span>
+                      <span>Realistic Dialogues</span>
                     </button>
                     <button
                       type="button"
                       onClick={() => setChatInput(`grammar pathi detailed ah explain pannu with blackboard formula and 3 common mistakes`)}
                       className="bg-amber-50 hover:bg-amber-100 text-amber-800 px-2.5 py-1 rounded-lg border border-amber-200 cursor-pointer transition-colors flex items-center gap-1 text-[11px] font-medium"
                     >
-                      <span>📐 Grammar & Formula</span>
+                      <span>Grammar & Formula</span>
                     </button>
                     <button
                       type="button"
                       onClick={() => setChatInput(`verb pathi sollu da detailed ah`)}
                       className="bg-emerald-50 hover:bg-emerald-100 text-emerald-800 px-2.5 py-1 rounded-lg border border-emerald-200 cursor-pointer transition-colors flex items-center gap-1 text-[11px] font-medium"
                     >
-                      <span>📖 Explain Verbs</span>
+                      <span>Explain Verbs</span>
                     </button>
                     <button
                       type="button"
                       onClick={() => setChatInput(`10 vocabulary words kudu with pronunciation and examples`)}
                       className="bg-cyan-50 hover:bg-cyan-100 text-cyan-800 px-2.5 py-1 rounded-lg border border-cyan-200 cursor-pointer transition-colors flex items-center gap-1 text-[11px] font-medium"
                     >
-                      <span>📚 10 Vocabulary Cards</span>
+                      <span>10 Vocabulary Cards</span>
                     </button>
                   </div>
                 </div>
               </div>
+                </>
+              )}
             </div>
           </div>
         )}
+          </>
+        )}
+
+        {/* ========================================================================= */}
+        {/* 16:9 IN-BROWSER PRESENTATION SLIDE VIEWER MODAL WITH ISML WATERMARK & LOGO */}
+        {/* ========================================================================= */}
+        {showSlideViewer && (() => {
+          const rawTopic = effectiveDay.day_topic || `Foundations & Communicative Patterns (${unitName} ${effectiveDay.day_number})`;
+          const cleanTopic = rawTopic
+            .replace(new RegExp(`^${unitName}\\s*\\d+[:\\-]?\\s*`, 'i'), '')
+            .replace(new RegExp(`^(Period|Session)\\s*\\d+[:\\-]?\\s*`, 'i'), '')
+            .trim() || rawTopic;
+
+          const vocabList = (effectiveDay.vocabulary_bank && effectiveDay.vocabulary_bank.length > 0)
+            ? effectiveDay.vocabulary_bank.slice(0, 4)
+            : [
+                { word: 'Guten Tag', meaning: 'Good day / Hello', pronunciation: '/ˈɡuːtn̩ ˈtaːk/', example_sentence: 'Guten Tag, wie geht es Ihnen?' },
+                { word: 'Auf Wiedersehen', meaning: 'Goodbye (formal)', pronunciation: '/aʊ̯f ˈviːdɐˌzeːən/', example_sentence: 'Auf Wiedersehen und bis morgen!' },
+                { word: 'Danke schön', meaning: 'Thank you very much', pronunciation: '/ˈdaŋkə ʃøːn/', example_sentence: 'Vielen Dank für Ihre Hilfe.' },
+                { word: 'Bitte sehr', meaning: 'You are welcome', pronunciation: '/ˈbɪtə zeːɐ̯/', example_sentence: 'Bitte sehr, gern geschehen.' },
+              ];
+
+          const dialogueLines = (effectiveDay.classroom_dialogues && effectiveDay.classroom_dialogues.length > 0)
+            ? effectiveDay.classroom_dialogues.slice(0, 4)
+            : [
+                "Instructor: Welcome everyone. Today we examine practical conversation structures.",
+                "Learner: Could you explain how this phrase changes in formal settings?",
+                "Instructor: Notice the respectful verb conjugation and address pronoun.",
+                "Learner: Understood, I will practice this pattern with my dialogue partner."
+              ];
+
+          const canDoList = (canDoCompetencies && canDoCompetencies.length > 0)
+            ? canDoCompetencies.slice(0, 4)
+            : [
+                `Can greet and introduce oneself appropriately in ${sessionPackage?.language || 'the target language'}`,
+                `Can understand and use familiar everyday expressions at CEFR ${sessionPackage?.level || 'A1.1'}`,
+                `Can ask and answer simple questions about personal details and surroundings`,
+                `Can interact in a simple way provided the other person talks slowly and clearly`
+              ];
+
+          const homeworkList = (effectiveDay.homework_tasks && effectiveDay.homework_tasks.length > 0)
+            ? effectiveDay.homework_tasks.slice(0, 3)
+            : [
+                `Write 5 complete sentences applying today's grammar blueprint.`,
+                `Practice vocalizing the 4 key vocabulary terms with correct phonetics.`,
+                `Record a 60-second audio dialogue rehearsing the classroom roleplay.`
+              ];
+
+          return (
+            <div
+              className="fixed inset-0 z-50 bg-slate-950/85 backdrop-blur-md flex flex-col justify-between p-3 sm:p-5 text-slate-800 animate-in fade-in duration-200 overflow-y-auto"
+              role="dialog"
+              aria-modal="true"
+              aria-label="ISML Presentation Slide Viewer"
+            >
+              {/* Modal Top Control Bar */}
+              <div className="w-full max-w-6xl mx-auto flex items-center justify-between gap-4 pb-2 border-b border-slate-800 shrink-0">
+                <div className="flex items-center gap-2 sm:gap-3 shrink-0">
+                  <span className="px-2.5 py-1 bg-[#0052CC] text-white font-extrabold rounded-lg text-[10px] sm:text-xs uppercase tracking-wider">
+                    {unitName} {effectiveDay.day_number}
+                  </span>
+                </div>
+
+                <div className="text-center min-w-0 flex-1 px-2">
+                  <h3 className="text-white font-bold text-xs sm:text-sm truncate">
+                    {cleanTopic}
+                  </h3>
+                  <p className="text-slate-400 text-[10px] sm:text-xs truncate">
+                    {sessionPackage?.language || 'Language'} • CEFR {sessionPackage?.level || 'A1.1'} • Slide {currentSlideIndex + 1} of 8: {SLIDE_TITLES[currentSlideIndex]}
+                  </p>
+                </div>
+
+                <div className="flex items-center gap-2 shrink-0">
+                  {handleDownloadDayPptx && (
+                    <button
+                      type="button"
+                      onClick={() => handleDownloadDayPptx(activeDay)}
+                      disabled={downloadingPptx}
+                      className="px-3 py-1.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-bold rounded-lg text-xs shadow-sm transition-all flex items-center gap-1.5 disabled:opacity-50 cursor-pointer"
+                      title="Download presentation as .pptx file"
+                    >
+                      {downloadingPptx ? (
+                        <>
+                          <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                          <span className="hidden sm:inline">Exporting...</span>
+                        </>
+                      ) : (
+                        <>
+                          <Download className="w-3.5 h-3.5" />
+                          <span className="hidden sm:inline">Download PPTX</span>
+                        </>
+                      )}
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => setShowSlideViewer(false)}
+                    className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white rounded-lg text-xs font-bold transition-all border border-slate-700 cursor-pointer"
+                    title="Close presentation viewer (Escape)"
+                  >
+                    Close ✕
+                  </button>
+                </div>
+              </div>
+
+              {/* Main 16:9 Presentation Canvas */}
+              <div className="w-full max-w-6xl mx-auto my-auto py-2 flex items-center justify-center relative">
+                {/* Lateral Previous Slide Button */}
+                <button
+                  type="button"
+                  onClick={() => setCurrentSlideIndex((prev) => (prev > 0 ? prev - 1 : prev))}
+                  disabled={currentSlideIndex === 0}
+                  className="hidden md:flex absolute -left-4 z-20 w-10 h-10 rounded-full bg-slate-900/90 hover:bg-slate-800 text-white border border-slate-700 items-center justify-center disabled:opacity-20 cursor-pointer transition-all shadow-lg"
+                  title="Previous Slide (Left Arrow)"
+                >
+                  <ChevronLeft className="w-5 h-5" />
+                </button>
+
+                {/* Lateral Next Slide Button */}
+                <button
+                  type="button"
+                  onClick={() => setCurrentSlideIndex((prev) => (prev < 7 ? prev + 1 : prev))}
+                  disabled={currentSlideIndex === 7}
+                  className="hidden md:flex absolute -right-4 z-20 w-10 h-10 rounded-full bg-slate-900/90 hover:bg-slate-800 text-white border border-slate-700 items-center justify-center disabled:opacity-20 cursor-pointer transition-all shadow-lg"
+                  title="Next Slide (Right Arrow)"
+                >
+                  <ChevronRight className="w-5 h-5" />
+                </button>
+
+                <div className="w-full aspect-[16/9] bg-white rounded-2xl shadow-2xl border border-slate-200 flex flex-col relative overflow-hidden select-none">
+                  {/* Top Royal Blue Institutional Accent Bar */}
+                  <div className="h-1.5 bg-[#0052CC] w-full shrink-0" />
+
+                  {/* Subtle Background Watermark with Official ISML Logo */}
+                  <div className="absolute inset-0 flex items-center justify-center pointer-events-none select-none overflow-hidden z-0">
+                    <img
+                      src="/isml_logo.jpg"
+                      alt=""
+                      className="w-72 sm:w-96 h-72 sm:h-96 object-contain opacity-[0.045]"
+                    />
+                  </div>
+
+                  {/* Standard Slide Header (Visible on Content Slides 1-7) - Centered */}
+                  {currentSlideIndex > 0 && (
+                    <div className="px-6 pt-3.5 pb-2 border-b border-slate-100 flex items-center justify-between relative z-10 shrink-0">
+                      <div className="w-12 sm:w-16 hidden sm:block shrink-0" />
+                      <div className="text-center flex-1">
+                        <div className="text-[10px] sm:text-xs font-extrabold uppercase tracking-widest text-[#0052CC] text-center">
+                          {sessionPackage?.language || 'Language'} • CEFR {sessionPackage?.level || 'A1.1'} • {unitName} {effectiveDay.day_number}
+                        </div>
+                        <h2 className="text-base sm:text-xl font-black text-[#0B2447] tracking-tight text-center">
+                          {SLIDE_TITLES[currentSlideIndex]}
+                        </h2>
+                      </div>
+                      <div className="w-12 sm:w-16 flex justify-end shrink-0">
+                        <img
+                          src="/isml_logo.jpg"
+                          alt="ISML"
+                          className="h-8 sm:h-10 w-auto object-contain"
+                        />
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Slide Content Body (Index 0 to 7) - Centered Layout */}
+                  <div className="flex-1 p-5 sm:p-7 relative z-10 overflow-y-auto flex flex-col justify-center items-center text-center">
+                    {/* SLIDE 0: TITLE & COURSE COVER - CENTERED */}
+                    {currentSlideIndex === 0 && (
+                      <div className="flex flex-col justify-between items-center text-center h-full py-2 w-full max-w-4xl mx-auto">
+                        <div className="flex flex-col items-center justify-center space-y-2">
+                          <img
+                            src="/isml_logo.jpg"
+                            alt="ISML Official Logo"
+                            className="h-16 sm:h-20 w-auto object-contain mx-auto"
+                          />
+                          <span className="px-3 py-1 bg-blue-50 border border-blue-200 text-[#0052CC] font-bold text-xs uppercase tracking-wider rounded-lg inline-block">
+                            Faculty Lesson Deck
+                          </span>
+                        </div>
+
+                        <div className="my-auto space-y-2 text-center max-w-3xl mx-auto">
+                          <span className="text-xs sm:text-sm font-bold uppercase tracking-widest text-[#0052CC] block text-center">
+                            Indian School for Modern Languages
+                          </span>
+                          <h1 className="text-2xl sm:text-4xl font-black text-[#0B2447] leading-tight tracking-tight text-center">
+                            {cleanTopic}
+                          </h1>
+                          <p className="text-xs sm:text-sm text-slate-600 font-medium text-center">
+                            Comprehensive Academic Curriculum • {sessionPackage?.language || 'Target Language'} • CEFR Level {sessionPackage?.level || 'A1.1'}
+                          </p>
+                        </div>
+
+                        <div className="pt-4 border-t border-slate-200 flex flex-wrap items-center justify-center gap-2 text-[11px] sm:text-xs w-full">
+                          <span className="px-2.5 py-1 bg-slate-100 border border-slate-200 text-slate-700 font-bold rounded-md">
+                            {unitName} {effectiveDay.day_number} of {totalDays}
+                          </span>
+                          <span className="px-2.5 py-1 bg-blue-50 border border-blue-200 text-blue-800 font-bold rounded-md">
+                            16:9 Widescreen Institutional Format
+                          </span>
+                          <span className="px-2.5 py-1 bg-emerald-50 border border-emerald-200 text-emerald-800 font-bold rounded-md">
+                            Certified Light Theme
+                          </span>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* SLIDE 1: LEARNING OBJECTIVES & CAN-DO - CENTERED */}
+                    {currentSlideIndex === 1 && (
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4 my-auto max-w-4xl mx-auto w-full">
+                        {canDoList.map((item, idx) => (
+                          <div
+                            key={idx}
+                            className="p-4 bg-slate-50 border border-slate-200 rounded-xl flex flex-col items-center justify-center text-center space-y-2 hover:border-blue-300 transition-colors"
+                          >
+                            <span className="w-6 h-6 rounded-full bg-[#0052CC] text-white text-xs font-bold flex items-center justify-center mx-auto">
+                              {idx + 1}
+                            </span>
+                            <div className="space-y-1 text-center w-full">
+                              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block text-center">
+                                Can-Do Competency {idx + 1}
+                              </span>
+                              <p className="text-xs sm:text-sm font-semibold text-slate-800 leading-snug text-center">
+                                {item}
+                              </p>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* SLIDE 2: GRAMMAR & SENTENCE BLUEPRINT - CENTERED */}
+                    {currentSlideIndex === 2 && (
+                      <div className="space-y-4 my-auto max-w-4xl mx-auto w-full">
+                        <div className="p-4 bg-blue-50/70 border border-blue-200 rounded-xl space-y-1.5 text-center">
+                          <span className="text-[10px] font-bold uppercase tracking-wider text-[#0052CC] block text-center">
+                            Core Syntactic Architecture & Sentence Formula
+                          </span>
+                          <div className="p-3 bg-white border border-blue-200 rounded-lg text-xs sm:text-sm font-mono font-bold text-[#0B2447] text-center max-w-2xl mx-auto">
+                            [Subject] + [Conjugated Verb] + [Direct/Indirect Object] + [Contextual Adverbial]
+                          </div>
+                        </div>
+
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
+                          <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-xl space-y-1 text-center">
+                            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 block text-center">
+                              Structural Grammar Breakdown
+                            </span>
+                            <p className="text-xs text-slate-700 leading-relaxed text-center">
+                              {effectiveDay.grammar_rules_detail || "Focus on primary verb inflections, agreement rules, and placement of grammatical markers."}
+                            </p>
+                          </div>
+                          <div className="p-3.5 bg-amber-50/80 border border-amber-200 rounded-xl space-y-1 text-center">
+                            <span className="text-[10px] font-bold uppercase tracking-wider text-amber-700 block text-center">
+                              Common Pitfalls & Faculty Guidance
+                            </span>
+                            <p className="text-xs text-slate-700 leading-relaxed text-center">
+                              Ensure learners do not transfer native word-order patterns directly. Drill verb positioning and inflection endings systematically.
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* SLIDE 3: TARGET VOCABULARY BANK - CENTERED */}
+                    {currentSlideIndex === 3 && (
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4 my-auto max-w-4xl mx-auto w-full">
+                        {vocabList.map((v, idx) => (
+                          <div
+                            key={idx}
+                            className="p-3.5 bg-white border border-slate-200 rounded-xl shadow-sm flex flex-col items-center justify-center text-center space-y-1.5"
+                          >
+                            <div className="flex flex-col items-center justify-center space-y-1">
+                              <span className="font-extrabold text-sm sm:text-base text-[#0B2447] text-center">
+                                {v.word}
+                              </span>
+                              <span className="px-2 py-0.5 bg-amber-50 border border-amber-200 text-amber-800 text-[10px] font-mono rounded text-center inline-block">
+                                {v.pronunciation || '/phonetics/'}
+                              </span>
+                            </div>
+                            <p className="text-xs font-medium text-slate-600 text-center">
+                              Meaning: {v.meaning}
+                            </p>
+                            {v.example_sentence && (
+                              <p className="text-[11px] text-slate-500 italic bg-slate-50 p-1.5 rounded border border-slate-100 text-center w-full">
+                                "{v.example_sentence}"
+                              </p>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* SLIDE 4: CLASSROOM DIALOGUES & PAIR WORK - CENTERED */}
+                    {currentSlideIndex === 4 && (
+                      <div className="space-y-2.5 my-auto max-w-3xl mx-auto w-full text-center">
+                        <div className="space-y-2">
+                          {dialogueLines.map((line, idx) => {
+                            const isInstructor = line.toLowerCase().startsWith('instructor') || idx % 2 === 0;
+                            return (
+                              <div
+                                key={idx}
+                                className={`p-2.5 sm:p-3 rounded-xl border text-xs sm:text-sm font-medium text-center ${
+                                  isInstructor
+                                    ? 'bg-blue-50/70 border-blue-200 text-blue-950 mx-auto'
+                                    : 'bg-emerald-50/70 border-emerald-200 text-emerald-950 mx-auto'
+                                }`}
+                              >
+                                {line}
+                              </div>
+                            );
+                          })}
+                        </div>
+                        <div className="p-2 bg-slate-50 border border-slate-200 rounded-lg text-[11px] text-slate-600 font-semibold text-center">
+                          Pedagogical Prompt: Students partner in pairs to rehearse dialogue exchanges with natural pacing and rhythm.
+                        </div>
+                      </div>
+                    )}
+
+                    {/* SLIDE 5: CULTURE & FORMALITY REGISTERS - CENTERED */}
+                    {currentSlideIndex === 5 && (
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4 my-auto max-w-4xl mx-auto w-full">
+                        <div className="p-4 bg-purple-50/60 border border-purple-200 rounded-xl space-y-2 text-center flex flex-col items-center justify-center">
+                          <span className="text-[10px] font-bold uppercase tracking-wider text-purple-700 block text-center">
+                            Cultural Context & Pragmatics
+                          </span>
+                          <p className="text-xs text-slate-700 leading-relaxed text-center">
+                            {(cultureData as any)?.cultural_etiquette || (cultureData as any)?.notes || "Cultural competence requires understanding non-verbal cues, conversational distance, and standard greetings across diverse regions."}
+                          </p>
+                        </div>
+                        <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-2 text-center flex flex-col items-center justify-center">
+                          <span className="text-[10px] font-bold uppercase tracking-wider text-slate-600 block text-center">
+                            Sociolinguistic Formality Registers
+                          </span>
+                          <div className="space-y-1.5 text-xs text-slate-700 w-full">
+                            <div className="p-2 bg-white rounded border border-slate-200 text-center">
+                              <span className="font-bold text-[#0052CC]">Formality Rule:</span> {(cultureData as any)?.formality_rule || "Peer-to-peer informal forms versus polite formal registers."}
+                            </div>
+                            <div className="p-2 bg-white rounded border border-slate-200 text-center">
+                              <span className="font-bold text-[#0B2447]">Sociolinguistic Tip:</span> {(cultureData as any)?.sociolinguistic_tip || "Pay close attention to respectful titles and honorific markers."}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* SLIDE 6: INTERACTIVE LSRW DRILLS - CENTERED */}
+                    {currentSlideIndex === 6 && (
+                      <div className="grid grid-cols-2 gap-2.5 sm:gap-3 my-auto text-xs max-w-4xl mx-auto w-full">
+                        <div className="p-3 bg-blue-50/70 border border-blue-200 rounded-xl space-y-1 flex flex-col items-center justify-center text-center">
+                          <span className="font-bold text-[#0052CC] uppercase text-[10px] block text-center">
+                            Listening Drill
+                          </span>
+                          <p className="text-slate-700 text-[11px] text-center">
+                            Identify phonetic stress and intonation patterns in native audio recordings.
+                          </p>
+                        </div>
+                        <div className="p-3 bg-emerald-50/70 border border-emerald-200 rounded-xl space-y-1 flex flex-col items-center justify-center text-center">
+                          <span className="font-bold text-emerald-800 uppercase text-[10px] block text-center">
+                            Speaking Drill
+                          </span>
+                          <p className="text-slate-700 text-[11px] text-center">
+                            Deliver 3 complete oral responses utilizing target vocabulary without hesitation.
+                          </p>
+                        </div>
+                        <div className="p-3 bg-amber-50/70 border border-amber-200 rounded-xl space-y-1 flex flex-col items-center justify-center text-center">
+                          <span className="font-bold text-amber-800 uppercase text-[10px] block text-center">
+                            Reading Drill
+                          </span>
+                          <p className="text-slate-700 text-[11px] text-center">
+                            Scan authentic short passages to extract key factual details accurately.
+                          </p>
+                        </div>
+                        <div className="p-3 bg-purple-50/70 border border-purple-200 rounded-xl space-y-1 flex flex-col items-center justify-center text-center">
+                          <span className="font-bold text-purple-800 uppercase text-[10px] block text-center">
+                            Writing Drill
+                          </span>
+                          <p className="text-slate-700 text-[11px] text-center">
+                            Draft a structured 4-sentence paragraph following the lesson's grammar blueprint.
+                          </p>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* SLIDE 7: SESSION WRAP-UP & HOMEWORK - CENTERED */}
+                    {currentSlideIndex === 7 && (
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4 my-auto max-w-4xl mx-auto w-full">
+                        <div className="p-4 bg-emerald-50/60 border border-emerald-200 rounded-xl space-y-2 text-center flex flex-col items-center">
+                          <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-800 block text-center">
+                            Session Takeaways & Mastery Checks
+                          </span>
+                          <ul className="space-y-1.5 text-xs text-slate-700 text-center">
+                            <li className="flex flex-col items-center">
+                              Mastered core grammatical formulas and structural conjugations.
+                            </li>
+                            <li className="flex flex-col items-center">
+                              Internalized 4 key active vocabulary items with pronunciation.
+                            </li>
+                            <li className="flex flex-col items-center">
+                              Practiced authentic conversational turns and formal registers.
+                            </li>
+                          </ul>
+                        </div>
+
+                        <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-2 text-center flex flex-col items-center">
+                          <span className="text-[10px] font-bold uppercase tracking-wider text-slate-700 block text-center">
+                            Guided Homework Tasks
+                          </span>
+                          <ul className="space-y-1.5 text-xs text-slate-700 text-center">
+                            {homeworkList.map((hw, idx) => (
+                              <li key={idx} className="flex flex-col items-center">
+                                <span className="text-[#0052CC] font-bold text-[10px]">Task {idx + 1}</span>
+                                <span>{hw}</span>
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Standard Slide Footer Bar inside slide - Centered */}
+                  <div className="px-6 py-2 border-t border-slate-100 flex items-center justify-center text-[10px] sm:text-[11px] text-slate-400 relative z-10 shrink-0 text-center">
+                    <span className="text-center">
+                      ISML AI Academic Agent | Indian School for Modern Languages | {sessionPackage?.language || 'Language'} • CEFR {sessionPackage?.level || 'A1.1'} | {unitName} {effectiveDay.day_number} | Slide {currentSlideIndex + 1} of 8
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Bottom Navigation & Pagination Controls */}
+              <div className="w-full max-w-6xl mx-auto flex items-center justify-between gap-2 pt-2 border-t border-slate-800 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => setCurrentSlideIndex((prev) => (prev > 0 ? prev - 1 : prev))}
+                  disabled={currentSlideIndex === 0}
+                  className="px-3 sm:px-4 py-1.5 bg-slate-800 hover:bg-slate-700 disabled:opacity-40 text-white rounded-lg text-xs font-bold transition-all flex items-center gap-1 cursor-pointer border border-slate-700"
+                >
+                  <ChevronLeft className="w-4 h-4" />
+                  <span className="hidden sm:inline">Previous Slide</span>
+                </button>
+
+                {/* 8 Slide Pagination Pills */}
+                <div className="flex items-center gap-1 sm:gap-1.5 overflow-x-auto no-scrollbar">
+                  {SLIDE_TITLES.map((title, idx) => {
+                    const isActive = currentSlideIndex === idx;
+                    return (
+                      <button
+                        key={idx}
+                        type="button"
+                        onClick={() => setCurrentSlideIndex(idx)}
+                        className={`h-7 px-2.5 sm:px-3 rounded-lg text-xs font-bold transition-all cursor-pointer border ${
+                          isActive
+                            ? 'bg-[#0052CC] text-white border-[#0052CC] shadow-sm'
+                            : 'bg-slate-900 text-slate-400 hover:text-slate-200 border-slate-800 hover:bg-slate-800'
+                        }`}
+                        title={`Go to Slide ${idx + 1}: ${title}`}
+                      >
+                        {idx + 1}
+                      </button>
+                    );
+                  })}
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setCurrentSlideIndex((prev) => (prev < 7 ? prev + 1 : prev))}
+                  disabled={currentSlideIndex === 7}
+                  className="px-3 sm:px-4 py-1.5 bg-slate-800 hover:bg-slate-700 disabled:opacity-40 text-white rounded-lg text-xs font-bold transition-all flex items-center gap-1 cursor-pointer border border-slate-700"
+                >
+                  <span className="hidden sm:inline">Next Slide</span>
+                  <ChevronRight className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+          );
+        })()}
       </div>
     </div>
   );

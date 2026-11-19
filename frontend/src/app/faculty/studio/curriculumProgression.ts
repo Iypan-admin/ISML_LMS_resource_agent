@@ -14,6 +14,7 @@ import {
   sanitizeSourceTextForVocabulary,
   ThematicPedagogicalKit
 } from './thematicCurriculumResolver';
+import { resolveAcademicPillars, AcademicPillarsData } from './academicPillars';
 
 const GLOBAL_STOP_WORDS = new Set([
   'the', 'and', 'for', 'are', 'but', 'not', 'you', 'all', 'any', 'can', 'had', 'her', 'was', 'one', 'our', 'out', 'everything', 'within',
@@ -96,6 +97,27 @@ export interface DayCurriculumItem {
     writing_task: { task: string; rubric_summary: string };
   };
   source_reference_url?: string;
+  // 6 Universal Master Knowledge Pillars (ISML Technical Specification v1.0)
+  proficiency_framework_can_do?: string[];
+  cultural_context_notes?: {
+    formality_rule: string;
+    cultural_etiquette: string;
+    sociolinguistic_tip: string;
+  };
+  academic_professional_context?: {
+    workplace_applications: string[];
+    corporate_scenario: string;
+    formal_register_note: string;
+  };
+  provenance_audit_trail?: {
+    institution: string;
+    provenance_standard: string;
+    zero_hallucination_guarantee: string;
+  };
+  // Formal Assessment Milestone Flags
+  is_assessment_day?: boolean;
+  assessment_benchmark_title?: string;
+  assessment_benchmark_code?: string;
 }
 
 /**
@@ -529,8 +551,8 @@ Language: **${language}** • Certified CEFR **${level}** • Topic: **${baseTop
       rawDocTopic = `${baseDocTopic} — Part ${dayNumber}: ${comprehensiveSyllabus.topic}`;
     }
     rawDocTopic = rawDocTopic
-      .replace(/\b(English|French|German|Spanish|Japanese|Korean)\s+(A1|A1\.1|A1\.2|A2|B1|B2)\b/gi, '')
-      .replace(/\b(A1|A1\.1|A1\.2|A2|B1|B2)\b/gi, '')
+      .replace(/\b(English|French|German|Spanish|Japanese|Korean)\s+(A1|A1\.1|A1\.2|A2|B1|B2|L1|L2|L3|L4)\b/gi, '')
+      .replace(/\b(A1|A1\.1|A1\.2|A2|B1|B2|L1|L2|L3|L4)\b/gi, '')
       .replace(/\b(Day\s*\d+|Report|Standup|Sprint)\b/gi, '')
       .trim();
     analyzedGrammar = [rawDocTopic || comprehensiveSyllabus.topic];
@@ -663,8 +685,8 @@ Language: **${language}** • Certified CEFR **${level}** • Topic: **${baseTop
     .replace(/^(Period|Session)\s*\d+:?\s*/i, "")
     .replace(/\.(docx|doc|pdf|txt|pptx|xlsx|csv|zip)\b/gi, "")
     .replace(/_FINAL_V\d+|_V\d+|\(1\)|\(\d+\)/gi, "")
-    .replace(/\b(English|French|German|Spanish|Japanese|Korean)\s+(A1|A1\.1|A1\.2|A2|B1|B2)\b/gi, "")
-    .replace(/\b(A1|A1\.1|A1\.2|A2|B1|B2)\b/gi, "")
+    .replace(/\b(English|French|German|Spanish|Japanese|Korean)\s+(A1|A1\.1|A1\.2|A2|B1|B2|L1|L2|L3|L4)\b/gi, "")
+    .replace(/\b(A1|A1\.1|A1\.2|A2|B1|B2|L1|L2|L3|L4)\b/gi, "")
     .replace(/\(Applied Context:\s*/gi, "— ")
     .replace(/\)/g, "")
     .replace(/(Durkkas|EMS|Final|Sample Question Paper|MCQ Question Paper Sample|Template|DIPL-[A-Z0-9\-]+|Aruppukottai)/gi, "")
@@ -905,6 +927,9 @@ ${thematicKit?.boardNotes ? thematicKit.boardNotes : `1. **Grammar Rule**: Adher
     studyNotesMarkdown += `\n\n---\n\n#### 🔗 Primary Reference & Study Resource\n- **Target Lesson Resource:** [${cleanGrammarLabel}](${currentDocUrl})`;
   }
 
+  // Resolve 6 Universal Master Knowledge Pillars
+  const pillarData = resolveAcademicPillars(language, level, cleanGrammarLabel, dayNumber, sessionPackage?.master_pillar_priority || 'COMPREHENSIVE');
+
   return {
     day_number: dayNumber,
     month_number: monthNumber,
@@ -974,6 +999,23 @@ ${thematicKit?.boardNotes ? thematicKit.boardNotes : `1. **Grammar Rule**: Adher
         task: `Write a short 50-75 word paragraph in ${language} describing ${unitTopic} using today's target structures and vocabulary (${currentVocabList.map(v => v.word).join(', ')}).`,
         rubric_summary: `Scored out of 100 on Grammatical Accuracy (40%), Lexical Range (30%), and Communicative Task Completion (30%) by the ISML LSRW Evaluation Agent.`
       }
+    },
+    // 6 Universal Master Knowledge Pillars Attached
+    proficiency_framework_can_do: pillarData.proficiency_framework.can_do_descriptors,
+    cultural_context_notes: {
+      formality_rule: pillarData.culture_society.formality_rule,
+      cultural_etiquette: pillarData.culture_society.cultural_etiquette,
+      sociolinguistic_tip: pillarData.culture_society.sociolinguistic_tip
+    },
+    academic_professional_context: {
+      workplace_applications: pillarData.academic_professional.workplace_applications,
+      corporate_scenario: pillarData.academic_professional.corporate_scenario,
+      formal_register_note: pillarData.academic_professional.formal_register_note
+    },
+    provenance_audit_trail: {
+      institution: pillarData.provenance.institution,
+      provenance_standard: pillarData.provenance.provenance_standard,
+      zero_hallucination_guarantee: pillarData.provenance.zero_hallucination_guarantee
     }
   };
 }

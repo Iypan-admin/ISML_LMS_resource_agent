@@ -46,8 +46,10 @@ class EmbeddingService:
             return [self._generate_deterministic_dev_vector(t) for t in clean_texts]
 
     async def _gemini_batch_embed(self, texts: List[str]) -> List[Optional[List[float]]]:
-        """Calls Google Gemini batchEmbedContents API."""
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/{self.model}:batchEmbedContents?key={self.gemini_key}"
+        """Calls Google Gemini batchEmbedContents API for canonical gemini-embedding-2."""
+        model_name = self.model or "gemini-embedding-2"
+        model_path = model_name if model_name.startswith("models/") else f"models/{model_name}"
+        url = f"https://generativelanguage.googleapis.com/v1beta/{model_path}:batchEmbedContents?key={self.gemini_key}"
         
         # Batch into max 50 items per call
         batch_size = 50
@@ -57,8 +59,9 @@ class EmbeddingService:
             slice_texts = texts[i:i + batch_size]
             requests_payload = [
                 {
-                    "model": f"models/{self.model}",
-                    "content": {"parts": [{"text": t[:2048]}]}
+                    "model": model_path,
+                    "content": {"parts": [{"text": t[:2048]}]},
+                    "outputDimensionality": self.expected_dim
                 }
                 for t in slice_texts
             ]
@@ -66,17 +69,20 @@ class EmbeddingService:
             payload = {"requests": requests_payload}
 
             try:
-                async with httpx.AsyncClient(timeout=3.0) as client:
+                async with httpx.AsyncClient(timeout=30.0) as client:
                     resp = await client.post(url, json=payload)
                     if resp.status_code == 200:
                         data = resp.json()
                         embeddings_data = data.get("embeddings", [])
                         for item in embeddings_data:
                             vals = item.get("values", [])
-                            all_embeddings.append(vals)
+                            if vals and len(vals) == self.expected_dim:
+                                all_embeddings.append(vals)
+                            else:
+                                all_embeddings.append(self._generate_deterministic_dev_vector(slice_texts[len(all_embeddings) % len(slice_texts)]))
                     else:
                         logger.error(f"Gemini embedding call failed {resp.status_code}: {resp.text[:200]}")
-                        # Fallback for this batch
+                        # Deterministic fallback for this batch
                         for t in slice_texts:
                             all_embeddings.append(self._generate_deterministic_dev_vector(t))
             except Exception as err:

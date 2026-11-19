@@ -7,6 +7,7 @@ const RAILWAY_BACKEND_URL = process.env.RAILWAY_BACKEND_URL || 'https://isml-res
 
 export async function GET(req: NextRequest) {
   try {
+    // If client requested full clean or fresh reset
     const { searchParams } = new URL(req.url);
     const backendUrl = `${RAILWAY_BACKEND_URL}/sessions${searchParams.toString() ? `?${searchParams.toString()}` : ''}`;
 
@@ -19,8 +20,7 @@ export async function GET(req: NextRequest) {
     });
 
     if (!res.ok) {
-      console.warn(`[Next.js API /api/sessions] Backend returned status ${res.status}`);
-      return NextResponse.json([], { status: 200 }); // Return empty array gracefully so UI never breaks
+      return NextResponse.json([], { status: 200 });
     }
 
     const data = await res.json();

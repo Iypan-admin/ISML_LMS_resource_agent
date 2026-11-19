@@ -38,23 +38,38 @@ body {
   -webkit-tap-highlight-color: transparent;
 }
 
-/* Custom Scrollbars */
+/* Universal Modern Ultra-Clean Scrollbars */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(148, 163, 184, 0.45) transparent;
+}
+
 ::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+  width: 5px;
+  height: 5px;
 }
 
 ::-webkit-scrollbar-track {
-  background: #F1F5F9;
+  background: transparent;
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #CBD5E1;
+  background: rgba(148, 163, 184, 0.35);
   border-radius: 9999px;
+  transition: background-color 0.2s ease;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #94A3B8;
+  background: rgba(100, 116, 139, 0.65);
+}
+
+/* Hide scrollbar utility for clean swipeable/draggable pill ribbons */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
 }
 
 /* Animations */

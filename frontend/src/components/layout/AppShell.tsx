@@ -11,9 +11,9 @@ import { usePathname } from 'next/navigation';
 
 export default function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
-  const isAgentStudio = pathname?.startsWith('/faculty/studio');
+  const isStandalone = pathname?.startsWith('/faculty/studio') || pathname?.startsWith('/vault') || pathname === '/';
 
-  if (isAgentStudio) {
+  if (isStandalone) {
     return (
       <MasterDataProvider>
         <ResourceProvider>

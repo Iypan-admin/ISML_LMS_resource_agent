@@ -360,6 +360,7 @@ class SessionPlannerAgent:
             track_duration_label=track_label,
             institution_type=institution_type or "COLLEGE",
             target_days_number=total_days,
+            master_pillar_priority=master_pillar_priority or "COMPREHENSIVE",
             session_plan=SessionPlanResult(**parsed_data["session_plan"]),
             teacher_materials=TeacherMaterialResult(**parsed_data["teacher_materials"]),
             student_lsrw=StudentLSRWPackage(**parsed_data["student_lsrw"]),
@@ -391,6 +392,7 @@ class SessionPlannerAgent:
         source_context: str = "",
         pptx_output_dir: str = "static/presentations",
         use_deep_agent: bool = False,
+        master_pillar_priority: Optional[str] = "COMPREHENSIVE",
     ) -> FullSessionPackageResult:
         """
         Orchestrates content generation.
@@ -772,6 +774,7 @@ class SessionPlannerAgent:
             track_duration_label=track_label,
             institution_type=institution_type or "COLLEGE",
             target_days_number=total_days,
+            master_pillar_priority=master_pillar_priority or "COMPREHENSIVE",
             session_plan=SessionPlanResult(**parsed_data["session_plan"]),
             teacher_materials=TeacherMaterialResult(**parsed_data["teacher_materials"]),
             student_lsrw=StudentLSRWPackage(**parsed_data["student_lsrw"]),

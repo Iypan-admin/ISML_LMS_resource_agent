@@ -128,6 +128,41 @@ enum DiscoveryResultStatus {
   REJECTED
 }
 
+enum ProcessingStatus {
+  PENDING
+  PROCESSING
+  READY
+  FAILED
+}
+
+enum ApprovalStatus {
+  DRAFT
+  PENDING_REVIEW
+  CHANGES_REQUIRED
+  APPROVED
+  REJECTED
+}
+
+enum PublicationStatus {
+  UNPUBLISHED
+  PUBLISHED
+  ARCHIVED
+}
+
+enum CurriculumLockStatus {
+  DRAFT
+  PENDING_REVIEW
+  APPROVED_LOCKED
+}
+
+enum ProficiencyFramework {
+  CEFR
+  JLPT
+  TOPIK
+  ACTFL
+  CUSTOM
+}
+
 // =============================================================================
 // DOMAIN MASTER MODELS
 // =============================================================================
@@ -159,8 +194,9 @@ model Course {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  language    Language         @relation(fields: [languageId], references: [id], onDelete: Restrict)
-  resources   ResourceCourse[]
+  language          Language           @relation(fields: [languageId], references: [id], onDelete: Restrict)
+  resources         ResourceCourse[]
+  masterCurriculums MasterCurriculum[]
 
   @@unique([languageId, code])
   @@map("courses")
@@ -293,6 +329,21 @@ model Resource {
   createdAt         DateTime         @default(now())
   updatedAt         DateTime         @updatedAt
 
+  // Multi-Tenancy & Academic Governance Lifecycles
+  tenantId          String               @default("inst_legacy_quarantine")
+  isGlobal          Boolean              @default(false)
+  processingStatus  ProcessingStatus     @default(PENDING)
+  processingProgress Int                 @default(0)
+  failureReason     String?              @db.Text
+  approvalStatus    ApprovalStatus       @default(DRAFT)
+  publicationStatus PublicationStatus    @default(UNPUBLISHED)
+  fileHash          String?              // SHA-256 binary hash for deduplication
+  framework         ProficiencyFramework @default(CEFR)
+  cefrLevel         CEFRLevel?           // Nullable: unclassified until verified!
+  pageCount         Int?
+  wordCount         Int?
+  tokenCount        Int?
+
   language          Language                 @relation(fields: [languageId], references: [id], onDelete: Restrict)
   source            Source?                  @relation(fields: [sourceId], references: [id], onDelete: SetNull)
 
@@ -312,8 +363,11 @@ model Resource {
   discoveryResults  DiscoveryResult[]
   chunks            SessionVectorChunk[]
   claims            KnowledgeClaim[]
+  curriculumPeriodResources CurriculumPeriodResource[]
 
   @@index([languageId, status, updatedAt])
+  @@index([tenantId, languageId, processingStatus, approvalStatus])
+  @@index([fileHash])
   @@index([urlHash])
   @@index([status])
   @@map("resources")
@@ -596,11 +650,21 @@ model SessionPackage {
   sessionPlanJson       Json            // Objectives, steps, timing, homework
   teacherMaterialsJson  Json            // Slides, teacher cues, handout summary
   studentLsrwJson       Json            // Listening, Reading, Speaking, Writing + Evaluation Rubrics
+  deliverablesJson      Json?           // Phase 8: Segregated Teacher, Student, and Assessment packages
+  lmsPackageJson        Json?           // Phase 10: SCORM / IMS / QTI export package
 
   pptxFilePath          String?
   pptxDownloadUrl       String?
   status                SessionStatus   @default(READY)
   lmsSyncedAt           DateTime?
+
+  // Multi-Tenancy & Macro-Curriculum Lineage
+  tenantId              String          @default("inst_legacy_quarantine")
+  masterCurriculumId    String?
+  curriculumPeriodId    String?
+
+  masterCurriculum      MasterCurriculum? @relation(fields: [masterCurriculumId], references: [id], onDelete: SetNull)
+  curriculumPeriod      CurriculumPeriod? @relation(fields: [curriculumPeriodId], references: [id], onDelete: SetNull)
 
   createdAt             DateTime        @default(now())
   updatedAt             DateTime        @updatedAt
@@ -610,6 +674,7 @@ model SessionPackage {
   claims                KnowledgeClaim[]
 
   @@index([language, level, trackMode])
+  @@index([tenantId])
   @@map("session_packages")
 }
 
@@ -618,7 +683,7 @@ model SessionVectorChunk {
   sessionId             String?             // Optional: link to session package
   sessionPackage        SessionPackage?     @relation(fields: [sessionId], references: [sessionId], onDelete: Cascade)
   resourceId            String?             // Optional: link to central resource
-  resource              Resource?           @relation(fields: [resourceId], references: [id], onDelete: Cascade)
+  resource              Resource?           @relation(fields: [resourceId], references: [id], onDelete: SetNull) // Safe archival (never cascade delete knowledge)
   parentChunkId         String?             // Hierarchical Parent-Child link
   sourceType            String              // DOCUMENT, WEB_SCRAPE, VIDEO_TRANSCRIPT, AUDIO
   sourceTitle           String              // e.g. "French_Grammar.pdf", "YouTube: Café Dialogue"
@@ -632,6 +697,15 @@ model SessionVectorChunk {
   cefrLevel             String?             // A1, A2, etc.
   language              String?             // French, Spanish, etc.
   metadata              Json?               // keywords, grammar tags, timestamps
+
+  // Canonical Vector & Provenance Tracking (Zero Silent Defaults for Legacy Records)
+  embeddingProvider     String?             // 'GEMINI' | 'OPENAI' | NULL (Legacy unverified)
+  embeddingModel        String?             // 'gemini-embedding-2' | NULL
+  embeddingVersion      String?             // 'v1.0' | NULL
+  embeddingDimension    Int?                // 768 | NULL
+  duplicateClusterId    String?             // Near-duplicate cluster identifier
+  isVariant             Boolean             @default(false) // True if pedagogical variation
+
   createdAt             DateTime            @default(now())
 
   parentChunk           SessionVectorChunk?  @relation("ChunkHierarchy", fields: [parentChunkId], references: [id])
@@ -642,6 +716,7 @@ model SessionVectorChunk {
   @@index([resourceId])
   @@index([sourceType])
   @@index([parentChunkId])
+  @@index([duplicateClusterId])
   @@map("session_vector_chunks")
 }
 
@@ -690,5 +765,94 @@ model KnowledgeContradiction {
 
   @@unique([claimAId, claimBId])
   @@map("knowledge_contradictions")
+}
+
+// =============================================================================
+// NORMALIZED MASTER CURRICULUM ARCHITECTURE (Phase 2 Model Definitions)
+// =============================================================================
+
+model MasterCurriculum {
+  id                  String                @id @default(uuid())
+  tenantId            String                @default("inst_legacy_quarantine")
+  courseId            String
+  title               String                // e.g. "German A1 Comprehensive School Curriculum"
+  targetLanguage      String                // German, French, Spanish, Japanese, Korean
+  framework           ProficiencyFramework  @default(CEFR)
+  targetLevel         String                // A1, N5, TOPIK I
+  institutionType     String                @default("COLLEGE") // SCHOOL | COLLEGE
+  totalPeriods        Int                   @default(60)        // 103 or 60
+  courseHours         Int                   @default(80)
+  cadenceWeekly       Int                   @default(2)
+  periodMinutes       Int                   @default(60)
+
+  versionNumber       Int                   @default(1)
+  versionLabel        String                @default("v1.0")
+  parentCurriculumId  String?
+  lockStatus          CurriculumLockStatus  @default(DRAFT)
+  lockedAt            DateTime?
+  lockedByUserId      String?
+
+  createdAt           DateTime              @default(now())
+  updatedAt           DateTime              @updatedAt
+
+  course              Course                @relation(fields: [courseId], references: [id], onDelete: Restrict)
+  parentCurriculum    MasterCurriculum?     @relation("CurriculumLineage", fields: [parentCurriculumId], references: [id])
+  childRevisions      MasterCurriculum[]    @relation("CurriculumLineage")
+  modules             CurriculumModule[]
+  sessions            SessionPackage[]
+
+  @@unique([tenantId, courseId, versionNumber])
+  @@index([tenantId, targetLanguage, targetLevel, lockStatus])
+  @@map("master_curriculums")
+}
+
+model CurriculumModule {
+  id                  String                @id @default(uuid())
+  curriculumId        String
+  moduleIndex         Int                   // Module 1, Module 2...
+  title               String                // e.g. "Module 1: Foundations & Salutations"
+  levelCompetence     String?
+  periodsCount        Int                   @default(1)
+
+  curriculum          MasterCurriculum      @relation(fields: [curriculumId], references: [id], onDelete: Cascade)
+  periods             CurriculumPeriod[]
+
+  @@map("curriculum_modules")
+}
+
+model CurriculumPeriod {
+  id                  String                     @id @default(uuid())
+  moduleId            String
+  periodNumber        Int                        // Period 1 to N (dynamically configured)
+  weekNumber          Int                        @default(1)
+  periodType          String                     @default("INSTRUCTIONAL") // INSTRUCTIONAL | REVIEW_CONSOLIDATION | ASSESSMENT_MILESTONE
+  durationMinutes     Int?                       @default(45)              // User-selected duration: 30, 45, 60, 90 min
+  topicTitle          String
+  grammarObjective    String?                    @db.Text
+  vocabularyScope     String[]
+  canDoStatements     String[]                   @default([])
+  lsrwFocus           String?
+
+  module              CurriculumModule           @relation(fields: [moduleId], references: [id], onDelete: Cascade)
+  resources           CurriculumPeriodResource[]
+  sessionPackages     SessionPackage[]
+
+  @@map("curriculum_periods")
+}
+
+model CurriculumPeriodResource {
+  id                  String            @id @default(uuid())
+  curriculumPeriodId  String
+  resourceId          String?           // Nullable if resource is archived
+  sourceTitleSnapshot String
+  sourceTypeSnapshot  String            @default("DOCUMENT")
+  pageNumber          Int?
+  citationExcerpt     String?           @db.Text
+  addedAt             DateTime          @default(now())
+
+  curriculumPeriod    CurriculumPeriod  @relation(fields: [curriculumPeriodId], references: [id], onDelete: Cascade)
+  resource            Resource?         @relation(fields: [resourceId], references: [id], onDelete: SetNull) // Safe archival (never cascade delete)
+
+  @@map("curriculum_period_resources")
 }
 

@@ -890,7 +890,7 @@ const KOREAN_THEMATIC_BANK: Record<string, ThematicPedagogicalKit> = {
     topicTitle: "숫자 (Numbers): Sino-Korean vs. Native Korean and Counters",
     grammarFocus: "Dual number system: Sino-Korean (il, i, sam for dates, money, phone) vs. Native Korean (hana, dul, set for hours, counting objects)",
     pedagogicalObjective: "Accurately apply Sino-Korean numbers for prices and phone numbers, and Native numbers for age and items.",
-    cefrLevel: "A1 (TOPIK 1)",
+    cefrLevel: "L1 (Korean Foundation)",
     vocabulary: [
       { word: "일, 이, 삼 (Sino-Korean)", meaning: "Numbers 1, 2, 3 (for money, dates, minutes, phone numbers)", pronunciation: "/il, i, sam/", example_sentence: "이 책은 삼천 원이에요. (This book is 3,000 won.)" },
       { word: "하나, 둘, 셋 (Native Korean)", meaning: "Numbers 1, 2, 3 (for hours, counting people, items)", pronunciation: "/ha.na, dul, set/", example_sentence: "커피 두 잔 주세요. (Please give me two cups of coffee.)" },
@@ -921,7 +921,7 @@ const KOREAN_THEMATIC_BANK: Record<string, ThematicPedagogicalKit> = {
     topicTitle: "인사말 (Greetings), 자기소개 (Self-Introduction) and Politeness (Imnida / Ieyo)",
     grammarFocus: "Formal polite ending -ㅂ니다/습니다 (-mnida/-seumnida) vs. informal polite -이에요/예요 (-ieyo/-yeyo), topic markers 은/는",
     pedagogicalObjective: "Greet people with proper bowing honorifics and state your name and nationality clearly.",
-    cefrLevel: "A1 (TOPIK 1)",
+    cefrLevel: "L1 (Korean Foundation)",
     vocabulary: [
       { word: "안녕하세요 (Annyeonghaseyo)", meaning: "Hello / Good day (standard respectful greeting)", pronunciation: "/an.njʌŋ.ha.se.jo/", example_sentence: "선생님, 안녕하세요! (Hello, teacher!)" },
       { word: "감사합니다 / 고맙습니다", meaning: "Thank you (polite gratitude)", pronunciation: "/kam.sa.ham.ni.da / ko.map.sɯm.ni.da/", example_sentence: "도와주셔서 감사합니다. (Thank you for helping me.)" },

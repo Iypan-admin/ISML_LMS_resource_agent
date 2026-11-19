@@ -1,3 +1,4 @@
+
 "use client";
 
 import React, { useState } from 'react';
@@ -12,34 +13,21 @@ import {
   LogOut, 
   AlertTriangle,
   Database,
-  Globe
+  Globe,
+  Layers
 } from 'lucide-react';
 
 const navSections = [
   {
     title: 'MAIN MENU',
     items: [
-      { name: 'Resource Library', href: '/resources', icon: Library }
-    ]
-  },
-  {
-    title: 'AI & CONTENT TOOLS',
-    items: [
-      { name: 'Academic Studio', href: '/faculty/studio', icon: Sparkles, badge: 'NEW' },
-      { name: 'Add Resource', href: '/resources/add', icon: PlusCircle }
+      { name: 'Curriculum Studio', href: '/faculty/studio', icon: Sparkles, badge: 'AI STUDIO' },
+      { name: 'Knowledge Vault', href: '/vault', icon: Database, badge: 'READY' }
     ]
   }
 ];
 
 const isRouteActive = (pathname: string, href: string): boolean => {
-  if (href === '/resources') {
-    if (pathname === '/resources') return true;
-    if (pathname.startsWith('/resources/')) {
-      const subToolRoutes = ['/resources/find', '/resources/generate', '/resources/internal-ai', '/resources/add'];
-      return !subToolRoutes.some(sub => pathname.startsWith(sub));
-    }
-    return false;
-  }
   return pathname === href || pathname.startsWith(href + '/');
 };
 
@@ -52,7 +40,7 @@ export default function Sidebar() {
     <aside className="hidden lg:flex flex-col w-72 bg-[#0B2447] text-white border-r border-[#1E3A8A] h-screen sticky top-0 z-40 transition-all duration-300 shadow-xl overflow-hidden shrink-0 font-sans">
       {/* Platform Branding Header */}
       <div className="px-4 py-3 bg-[#071730] border-b border-[#1E3A8A] flex items-center justify-between">
-        <Link href="/resources" className="flex items-center gap-2.5 overflow-hidden group">
+        <Link href="/faculty/studio" className="flex items-center gap-2.5 overflow-hidden group">
           <div className="w-9 h-9 rounded-xl bg-white p-1 shrink-0 shadow-md group-hover:scale-105 transition-transform overflow-hidden flex items-center justify-center">
             <img src="/logo.png" alt="ISML Logo" className="w-full h-full object-contain" />
           </div>

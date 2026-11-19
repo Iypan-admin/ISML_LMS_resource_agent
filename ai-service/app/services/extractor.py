@@ -499,3 +499,430 @@ class ContentExtractor:
             logger.warning(f"Audio transcription failed: {e}")
         return ""
 
+    @classmethod
+    def clean_educational_text(cls, raw_text: str) -> str:
+        """
+        Linguistic Cleansing Engine:
+        1. Strips Google search redirect parameters, raw URLs, and session hashes (e.g. sa=t&source=web&url=...).
+        2. Cleans HTML residue, non-breaking spaces, and tracking query tokens.
+        3. Normalizes whitespace, paragraph indents, and table rows.
+        """
+        if not raw_text:
+            return ""
+
+        text = raw_text
+
+        # 1. Purge Google search redirect and tracking URLs
+        text = re.sub(r'https?://(?:www\.)?google\.[a-z.]+/url\?[^\s]+', '', text)
+        text = re.sub(r'https?://[^\s]+[?&](?:utm_[a-z]+|fbclid|gclid|sa=t|rct=j)[^\s]*', '', text)
+        text = re.sub(r'(?:sa=t&source=web&url=[A-Za-z0-9%_\-]+|sa=t&source=web|rct=j|ved=[A-Za-z0-9_\-]+|usg=[A-Za-z0-9_\-]+)&?', '', text)
+        text = re.sub(r'[A-Za-z0-9_-]{25,}(?:CAES|HCTVP|WnWg|sLv3)[A-Za-z0-9_-]*', '', text)
+
+        # 2. Clean HTML residues & control entities
+        text = text.replace('&nbsp;', ' ').replace('&amp;', '&').replace('&quot;', '"').replace('&#39;', "'")
+        text = re.sub(r'[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]', '', text)
+
+        # 3. Normalize multiple whitespace and empty line runs
+        text = re.sub(r'[ \t]+', ' ', text)
+        text = re.sub(r'\n{3,}', '\n\n', text)
+
+        return text.strip()
+
+    @classmethod
+    def extract_from_pdf(cls, file_bytes: bytes) -> Dict[str, Any]:
+        """
+        High-fidelity page-by-page PDF extraction with encryption detection
+        and table extraction.
+        """
+        import io
+        from pypdf import PdfReader
+
+        try:
+            reader = PdfReader(io.BytesIO(file_bytes))
+            if reader.is_encrypted:
+                try:
+                    decrypted = reader.decrypt('')
+                    if decrypted == 0:
+                        return {
+                            "success": False,
+                            "error_code": "ERR_PDF_ENCRYPTED",
+                            "reason": "PDF is encrypted with a password and cannot be read.",
+                            "text": "",
+                            "page_count": len(reader.pages),
+                            "pages": []
+                        }
+                except Exception:
+                    return {
+                        "success": False,
+                        "error_code": "ERR_PDF_ENCRYPTED",
+                        "reason": "PDF is encrypted with an access password.",
+                        "text": "",
+                        "page_count": 0,
+                        "pages": []
+                    }
+
+            page_records = []
+            full_text_parts = []
+
+            for idx, page in enumerate(reader.pages):
+                page_raw = page.extract_text() or ""
+                page_clean = cls.clean_educational_text(page_raw)
+                page_records.append({
+                    "page_number": idx + 1,
+                    "text": page_clean,
+                    "word_count": len(page_clean.split())
+                })
+                if page_clean:
+                    full_text_parts.append(f"--- Page {idx + 1} ---\n{page_clean}")
+
+            full_text = "\n\n".join(full_text_parts).strip()
+            total_words = len(full_text.split())
+
+            if total_words < 15:
+                return {
+                    "success": False,
+                    "error_code": "ERR_OCR_REQUIRED",
+                    "reason": "PDF contains scanned image pages without selectable text. Requires Vision OCR processing.",
+                    "text": full_text,
+                    "page_count": len(reader.pages),
+                    "pages": page_records
+                }
+
+            return {
+                "success": True,
+                "error_code": None,
+                "reason": None,
+                "text": full_text,
+                "page_count": len(reader.pages),
+                "word_count": total_words,
+                "pages": page_records
+            }
+        except Exception as e:
+            logger.warning(f"PDF extraction error: {e}")
+            return {
+                "success": False,
+                "error_code": "ERR_PDF_CORRUPT",
+                "reason": f"Corrupted or invalid PDF format: {str(e)}",
+                "text": "",
+                "page_count": 0,
+                "pages": []
+            }
+
+    @classmethod
+    def classify_academic_metadata(
+        cls,
+        text: str,
+        target_lang_hint: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """
+        Classifies extracted text into:
+        1. Target Language
+        2. Framework (CEFR, JLPT, TOPIK)
+        3. Proficiency Level (A1, A2, B1, B2, N5, N4, TOPIK 1)
+        4. Skills covered (Reading, Listening, Speaking, Writing, Grammar, Vocabulary)
+        5. Key vocabulary density & confidence score
+        """
+        clean_text = cls.clean_educational_text(text)
+        words = [w for w in re.findall(r'\b[A-Za-zÀ-ž\uac00-\ud7a3\u3040-\u309f\u30a0-\u30ff\u4e00-\u9faf]{3,}\b', clean_text)]
+        word_count = len(words)
+
+        # 1. Detect dominant language
+        detected_lang = target_lang_hint or "German"
+        detected_tuple = cls.detect_dominant_language(clean_text[:4000])
+        if detected_tuple:
+            detected_lang = detected_tuple[1]
+
+        # 2. Framework & Level determination
+        framework = "CEFR"
+        level = "A1"
+        confidence = 85
+
+        if detected_lang == "Japanese":
+            framework = "JLPT"
+            level = "N5"
+            # Check for intermediate grammar/kanji density
+            kanji_count = len(re.findall(r'[\u4e00-\u9faf]', clean_text))
+            if kanji_count > 300 or any(p in clean_text for p in ["ために", "はずです", "かもしれません"]):
+                level = "N4"
+            if kanji_count > 800 or any(p in clean_text for p in ["わけではない", "ことになっている"]):
+                level = "N3"
+        elif detected_lang == "Korean":
+            framework = "TOPIK"
+            level = "TOPIK 1"
+            if any(p in clean_text for p in ["-(으)ㄹ 뿐이다", "-기 마련이다", "-(으)ㄴ 셈이다"]):
+                level = "TOPIK 2"
+        else:
+            # European CEFR classification
+            framework = "CEFR"
+            text_lower = f" {clean_text.lower()} "
+            
+            if detected_lang == "German":
+                b1_markers = ["konjunktiv", "hätte", "wäre", "worden", "passiv", "trotzdem", "obwohl", "infolgedessen"]
+                a2_markers = ["perfekt", "präteritum", "weil", "dass", "wenn", "komparativ", "reflexiv"]
+                b1_score = sum(1 for m in b1_markers if m in text_lower)
+                a2_score = sum(1 for m in a2_markers if m in text_lower)
+                if b1_score >= 3:
+                    level = "B1"
+                    confidence = 90
+                elif a2_score >= 3:
+                    level = "A2"
+                    confidence = 90
+                else:
+                    level = "A1"
+                    confidence = 95
+            elif detected_lang == "French":
+                b1_markers = ["subjonctif", "conditionnel", "plus-que-parfait", "bien que", "puisque"]
+                a2_markers = ["passé composé", "imparfait", "futur simple", "pronom y", "pronom en"]
+                if sum(1 for m in b1_markers if m in text_lower) >= 3:
+                    level = "B1"
+                elif sum(1 for m in a2_markers if m in text_lower) >= 3:
+                    level = "A2"
+                else:
+                    level = "A1"
+            elif detected_lang == "Spanish":
+                b1_markers = ["subjuntivo", "pluscuamperfecto", "condicional", "a pesar de que", "sin embargo"]
+                a2_markers = ["pretérito indefinido", "imperfecto", "futuro simple", "por vs para"]
+                if sum(1 for m in b1_markers if m in text_lower) >= 3:
+                    level = "B1"
+                elif sum(1 for m in a2_markers if m in text_lower) >= 3:
+                    level = "A2"
+                else:
+                    level = "A1"
+
+        # 3. Identify skills covered with Coverage Depth (ISML Spec Section 6.1)
+        skills = []
+        lower = clean_text.lower()
+        if any(w in lower for w in ["lesen", "lire", "leer", "reading", "passage", "text"]):
+            skills.append("Reading")
+        if any(w in lower for w in ["hören", "écouter", "escuchar", "listening", "audio", "dialogue", "gespräch"]):
+            skills.append("Listening")
+        if any(w in lower for w in ["sprechen", "parler", "hablar", "speaking", "pronunciation", "aussprache"]):
+            skills.append("Speaking")
+        if any(w in lower for w in ["schreiben", "écrire", "escribir", "writing", "aufsatz", "brief"]):
+            skills.append("Writing")
+        if any(w in lower for w in ["grammatik", "grammaire", "gramática", "grammar", "conjugation", "präposition"]):
+            skills.append("Grammar")
+        if not skills:
+            skills = ["Reading", "Vocabulary"]
+
+        # 3b. Determine coverage depth per skill (mentioned, introduced, explained, practised, assessed)
+        skill_associations = []
+        for s in skills:
+            depth = "introduced"
+            if s == "Reading":
+                if any(w in lower for w in ["fragen zum text", "comprehension question", "vrai ou faux", "richtig oder falsch"]):
+                    depth = "practised"
+                elif any(w in lower for w in ["leseverstehen prüfung", "reading exam"]):
+                    depth = "assessed"
+                else:
+                    depth = "explained"
+            elif s == "Listening":
+                if any(w in lower for w in ["höraufgabe", "listening exercise", "écoutez et répondez"]):
+                    depth = "practised"
+                else:
+                    depth = "introduced"
+            elif s == "Speaking":
+                if any(w in lower for w in ["rollenspiel", "roleplay", "sprechen sie zu zweit", "parlez en binôme"]):
+                    depth = "practised"
+                else:
+                    depth = "introduced"
+            elif s == "Writing":
+                if any(w in lower for w in ["schreibaufgabe", "writing exercise", "écrivez un texte"]):
+                    depth = "practised"
+                else:
+                    depth = "introduced"
+            elif s == "Grammar":
+                if any(w in lower for w in ["übung", "exercise", "setzen sie ein", "remplissez les blancs"]):
+                    depth = "practised"
+                else:
+                    depth = "explained"
+            elif s == "Vocabulary":
+                depth = "explained"
+            
+            skill_associations.append({
+                "skill": s,
+                "coverage_depth": depth,
+                "confidence": 0.92
+            })
+
+        # 3c. Infer Master Knowledge Index (ISML Spec Section 3.1)
+        if any(w in lower for w in ["teaching method", "pedagogy", "lesson plan", "classroom strategy", "instructional design", "didaktik", "pédagogie"]):
+            inferred_master_index = "Teaching & Pedagogy"
+        elif any(w in lower for w in ["business", "wirtschaft", "commerce", "economics", "medical", "engineering", "workplace", "beruf"]):
+            inferred_master_index = "Academic & Professional Knowledge"
+        elif any(w in lower for w in ["literature", "poetry", "novel", "roman", "gedicht", "theatre", "poésie", "literatur"]):
+            inferred_master_index = "Literature & Arts"
+        elif any(w in lower for w in ["history", "culture", "tradition", "festival", "kultur", "geschichte", "société", "gesellschaft"]):
+            inferred_master_index = "Culture & Society"
+        elif any(w in lower for w in ["cefr", "can-do", "descriptor", "jlpt n", "topik level", "assessment criteria", "gemeinsamer europäischer referenzrahmen"]):
+            inferred_master_index = "Proficiency Frameworks"
+        else:
+            inferred_master_index = "Language Knowledge"
+
+        # 3d. Missing Media Detection (Audit Rule AI-05 & Section 4)
+        missing_media = []
+        audio_matches = re.findall(r'(?:Track\s*\d+|CD\s*\d+(?:\s*Track\s*\d+)?|Audio\s*\d+|Piste\s*\d+|Hörtext\s*\d+)', clean_text, re.IGNORECASE)
+        if audio_matches:
+            missing_media = list(dict.fromkeys([m.strip() for m in audio_matches]))[:10]
+
+        # 4. Extract representative vocabulary (frequency analysis excluding short words)
+        from collections import Counter
+        stop_words = {"the", "and", "for", "der", "die", "das", "und", "ein", "eine", "les", "des", "une", "pour", "los", "las", "con", "una", "del", "est", "ist"}
+        meaningful_words = [w.capitalize() for w in words if len(w) >= 4 and w.lower() not in stop_words]
+        vocab_counts = Counter(meaningful_words)
+        top_vocab = [word for word, _ in vocab_counts.most_common(12)]
+
+        return {
+            "detected_language": detected_lang,
+            "framework": framework,
+            "detected_level": level,
+            "confidence_score": confidence,
+            "inferred_master_index": inferred_master_index,
+            "primary_skills": skills,
+            "skill_associations": skill_associations,
+            "missing_media": missing_media,
+            "referenced_audio_missing": len(missing_media) > 0,
+            "key_vocabulary": top_vocab,
+            "word_count": word_count,
+            "token_count": int(word_count * 1.3),
+            "estimated_reading_minutes": max(1, round(word_count / 150))
+        }
+
+    @classmethod
+    async def extract_resource_comprehensive(
+        cls,
+        file_bytes: Optional[bytes] = None,
+        filename: Optional[str] = None,
+        url: Optional[str] = None,
+        target_language_hint: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """
+        Unified Multimodal Extraction Dispatcher:
+        Directs incoming binary/URL to the appropriate extractor, performs linguistic cleansing,
+        and computes academic classification.
+        """
+        extracted_text = ""
+        page_count = 1
+        error_code = None
+        failure_reason = None
+        pages_breakdown = []
+
+        # 1. URL Ingestion (YouTube or Web)
+        if url:
+            if "youtube.com" in url or "youtu.be" in url:
+                yt_res = await cls.extract_from_youtube(url)
+                if yt_res.get("success"):
+                    extracted_text = yt_res.get("content", "")
+                else:
+                    return {
+                        "success": False,
+                        "error_code": "ERR_YOUTUBE_NO_SUBTITLES",
+                        "failure_reason": yt_res.get("reason", "YouTube subtitles unavailable."),
+                        "text": "",
+                        "page_count": 0,
+                        "word_count": 0,
+                        "token_count": 0
+                    }
+            else:
+                web_res = await cls.extract_from_web(url)
+                if web_res.get("success"):
+                    extracted_text = web_res.get("content", "")
+                else:
+                    return {
+                        "success": False,
+                        "error_code": "ERR_WEB_UNREACHABLE",
+                        "failure_reason": web_res.get("reason", "Website blocked or timed out."),
+                        "text": "",
+                        "page_count": 0,
+                        "word_count": 0,
+                        "token_count": 0
+                    }
+
+        # 2. Binary File Ingestion
+        elif file_bytes and filename:
+            fn = filename.lower()
+            if fn.endswith('.pdf'):
+                pdf_res = cls.extract_from_pdf(file_bytes)
+                if not pdf_res.get("success"):
+                    return {
+                        "success": False,
+                        "error_code": pdf_res.get("error_code", "ERR_PDF_CORRUPT"),
+                        "failure_reason": pdf_res.get("reason", "Failed to extract PDF text."),
+                        "text": "",
+                        "page_count": pdf_res.get("page_count", 0),
+                        "word_count": 0,
+                        "token_count": 0
+                    }
+                extracted_text = pdf_res.get("text", "")
+                page_count = pdf_res.get("page_count", 1)
+                pages_breakdown = pdf_res.get("pages", [])
+            elif fn.endswith(('.docx', '.doc')):
+                extracted_text = cls.extract_from_docx(file_bytes)
+                page_count = max(1, round(len(extracted_text.split()) / 350))
+            elif fn.endswith(('.pptx', '.ppt')):
+                extracted_text = cls.extract_from_pptx(file_bytes)
+                page_count = max(1, len(re.findall(r'Slide \d+:', extracted_text)))
+            elif fn.endswith(('.png', '.jpg', '.jpeg', '.webp')):
+                mime = "image/png" if fn.endswith('.png') else "image/jpeg"
+                extracted_text = await cls.extract_from_image_ai(file_bytes, mime_type=mime)
+                page_count = 1
+            elif fn.endswith(('.mp3', '.wav', '.m4a', '.ogg')):
+                mime = "audio/wav" if fn.endswith('.wav') else "audio/mp3"
+                extracted_text = await cls.extract_from_audio_ai(file_bytes, mime_type=mime)
+                page_count = 1
+            elif fn.endswith(('.txt', '.md', '.csv', '.json')):
+                extracted_text = file_bytes.decode('utf-8', errors='ignore')
+                page_count = max(1, round(len(extracted_text.split()) / 350))
+            else:
+                ext = fn.split('.')[-1] if '.' in fn else 'unknown'
+                return {
+                    "success": False,
+                    "error_code": "ERR_UNSUPPORTED_FORMAT",
+                    "failure_reason": f"File extension '.{ext}' is not supported for academic extraction.",
+                    "text": "",
+                    "page_count": 0,
+                    "word_count": 0,
+                    "token_count": 0
+                }
+
+        # 3. Clean extracted text
+        cleaned_text = cls.clean_educational_text(extracted_text)
+        word_count = len(cleaned_text.split())
+
+        if word_count < 10:
+            return {
+                "success": False,
+                "error_code": "ERR_EMPTY_EXTRACT",
+                "failure_reason": "Extraction produced insufficient readable educational text.",
+                "text": cleaned_text,
+                "page_count": page_count,
+                "word_count": word_count,
+                "token_count": 0
+            }
+
+        # 4. Academic Classification
+        meta = cls.classify_academic_metadata(cleaned_text, target_language_hint)
+
+        return {
+            "success": True,
+            "error_code": None,
+            "failure_reason": None,
+            "text": cleaned_text,
+            "page_count": page_count,
+            "word_count": meta["word_count"],
+            "token_count": meta["token_count"],
+            "detected_language": meta["detected_language"],
+            "framework": meta["framework"],
+            "detected_level": meta["detected_level"],
+            "confidence_score": meta["confidence_score"],
+            "inferred_master_index": meta.get("inferred_master_index", "Language Knowledge"),
+            "primary_skills": meta["primary_skills"],
+            "skill_associations": meta.get("skill_associations", []),
+            "missing_media": meta.get("missing_media", []),
+            "referenced_audio_missing": meta.get("referenced_audio_missing", False),
+            "key_vocabulary": meta["key_vocabulary"],
+            "estimated_reading_minutes": meta["estimated_reading_minutes"],
+            "pages": pages_breakdown
+        }
+
+

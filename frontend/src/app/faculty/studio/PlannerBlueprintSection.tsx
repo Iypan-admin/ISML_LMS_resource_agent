@@ -10,7 +10,7 @@ interface PlannerBlueprintProps {
   isEditingPlanner: boolean;
   expandedPeriodId: number | null;
   setExpandedPeriodId: (id: number | null) => void;
-  updateDayInPlanner: (dayNum: number, field: any, val: any) => void;
+  updateDayInPlanner: (dayNum: number, field: any, val?: any) => void;
   setCoPilotPrompt?: (prompt: string) => void;
   onRefinePrompt?: (e?: React.FormEvent) => Promise<void>;
   coPilotLoading?: boolean;
@@ -36,7 +36,7 @@ export function PlannerBlueprintSection({
   const [selectedCalendarWeek, setSelectedCalendarWeek] = useState<number | 'ALL'>('ALL');
   const [showSourceMaterials, setShowSourceMaterials] = useState<boolean>(false);
   const [globalPrompt, setGlobalPrompt] = useState<string>('');
-  
+
   // Dedicated Per-Period Chatbot Prompts map { [dayNumber]: promptText }
   const [periodPrompts, setPeriodPrompts] = useState<Record<number, string>>({});
   const [periodChatLoading, setPeriodChatLoading] = useState<number | null>(null);
@@ -78,71 +78,210 @@ export function PlannerBlueprintSection({
         return;
       }
 
-      const lang = proposedPlanner.language || 'French';
+      const lang = proposedPlanner.language || 'English';
       const lvl = proposedPlanner.level || 'A1.1';
       const currentCleanTopic = (currentDay.day_topic || '')
         .replace(/^(Period|Session)\s*\d+:?\s*/i, '')
         .replace(/(isml|faculty|student|master|curriculum|blueprint|edition|multi-period|scheduled unit|executive lecture)/gi, '')
         .trim() || `Core Foundations in ${lang}`;
 
-      // Extract existing in-class exercises or build default set
-      let currentExercises: string[] = Array.isArray(currentDay.in_class_exercises) && currentDay.in_class_exercises.length > 0
-        ? [...currentDay.in_class_exercises]
+      const vWords = (currentDay.vocabulary_bank && currentDay.vocabulary_bank.length > 0)
+        ? currentDay.vocabulary_bank
         : [
-            `[R - Reading & Syntax] Read authentic context paragraph and identify structural agreements in ${lang}`,
-            `[S - Spoken Interaction] Formulate communicative conversational responses adhering to ${currentCleanTopic}`,
-            `[L - Auditory & Error Discrimination] Identify phonological or syntactic agreement errors in spoken ${lang}`,
-            `[W - Contextual Writing] Formulate 2 cohesive sentences applying target grammar and vocabulary`
-          ];
+          { word: "Alphabet", meaning: "Ordered set of letters used in a language" },
+          { word: "Vowel", meaning: "Speech sound produced without constriction in the vocal tract" },
+          { word: "Pronounce", meaning: "To make the correct sound of a word or letter" }
+        ];
 
-      let replyMessage = `Customized ${unitName} ${dayNum} according to your directive: "${prompt}"`;
+      const primaryWord = typeof vWords[0] === 'string' ? vWords[0] : (vWords[0]?.word || 'Alphabet');
+      const secondaryWord = typeof vWords[1] === 'string' ? vWords[1] : (vWords[1]?.word || 'Vowel');
+      const tertiaryWord = typeof vWords[2] === 'string' ? vWords[2] : (vWords[2]?.word || 'Pronounce');
 
-      // A. Specific Reading Task Modification (e.g. "reading la change panu content ah", "reading comprehension change")
-      if (lower.includes('reading') || lower.includes('read') || lower.includes('text') || lower.includes('passage')) {
+      // Baseline exercises in simple, practical English
+      const defaultExercises = [
+        `🎧 [Listening] Listen to the audio for "${currentCleanTopic}". How is "${primaryWord}" used in the sentence?`,
+        `🗣️ [Speaking] Speak a clear sentence using "${primaryWord}" to express a simple thought.`,
+        `📖 [Reading] Read the sentence with "${secondaryWord}" and explain its meaning in ${lang}.`,
+        `✍️ [Writing] Write two simple sentences using both "${primaryWord}" and "${secondaryWord}".`
+      ];
+
+      let currentExercises: string[] = (Array.isArray(currentDay.in_class_exercises) && currentDay.in_class_exercises.length > 0)
+        ? [...currentDay.in_class_exercises]
+        : defaultExercises;
+
+      let replyMessage = `Updated ${unitName} ${dayNum} based on your request.`;
+
+      // Helper for contextual drill questions
+      const generateDrills = (count: number, startIndex: number, topic: string, w1: string, w2: string, w3: string) => {
+        const drills: string[] = [];
+        const templates = [
+          () => `🎧 [Listening] Listen to the audio for "${topic}" and identify "${w1}".`,
+          () => `🗣️ [Speaking] Practice saying a sentence aloud using "${w1}" and "${w2}".`,
+          () => `📖 [Reading] Read the sentence and check where "${w2}" is placed.`,
+          () => `✍️ [Writing] Write a short 2-line dialogue using "${w1}".`,
+          () => `🎧 [Listening] Listen to the dialogue for "${topic}" and answer what "${w3 || w1}" means.`,
+          () => `🗣️ [Speaking] Practice clear pronunciation and accents using "${w2}".`,
+          () => `📖 [Reading] Read the sample sentence and spot any spelling or word mistake with "${w1}".`,
+          () => `✍️ [Writing] Write a question and answer using "${w2}".`
+        ];
+        for (let i = 0; i < count; i++) {
+          const tIdx = (startIndex + i) % templates.length;
+          drills.push(templates[tIdx]());
+        }
+        return drills;
+      };
+
+      // Detect Question Intent
+      const isQuestionIntent = /question|ques|drill|task|exercise|kelvi/i.test(lower);
+      const isAddIntent = /more|add|extra|innum|serthu|kooduthala|plus|further|rendum|pudhusaa/i.test(lower) ||
+        /\b\d+\s*(more|extra|add|questions?\s*add)\b/i.test(lower) ||
+        /(ques|question)\w*\s*(add|podu|serthu)/i.test(lower);
+
+      // Detect Audio Flow Intent
+      const isAudioFlow = (lower.includes('audio') || lower.includes('stream') || lower.includes('breakdown') || lower.includes('dialogue') || lower.includes('listening flow') || lower.includes('mins') || lower.includes('timing')) &&
+        !isQuestionIntent;
+
+      // Extract number if present
+      let count = 2;
+      const matchNum = lower.match(/\d+/);
+      if (matchNum) {
+        count = parseInt(matchNum[0], 10);
+      } else if (/one|oru|onnu/i.test(lower)) {
+        count = 1;
+      } else if (/two|rendu|irandu/i.test(lower)) {
+        count = 2;
+      } else if (/three|moonu|moondru/i.test(lower)) {
+        count = 3;
+      } else if (/four|naalu|naangu/i.test(lower)) {
+        count = 4;
+      } else if (/five|anju|aindhu/i.test(lower)) {
+        count = 5;
+      }
+
+      // ─────────────────────────────────────────────────────────────
+      // 1. ADD QUESTIONS (e.g. "2 more ques add panu", "add 2 questions", "innum 2 question venum")
+      // ─────────────────────────────────────────────────────────────
+      if (isQuestionIntent && isAddIntent) {
+        const toAdd = Math.min(10, Math.max(1, count));
+        const newDrills = generateDrills(toAdd, currentExercises.length, currentCleanTopic, primaryWord, secondaryWord, tertiaryWord);
+        const updatedTasks = [...currentExercises, ...newDrills];
+        updateDayInPlanner(dayNum, 'in_class_exercises', updatedTasks);
+        replyMessage = `Added ${toAdd} contextual questions to Auditory Decoding & Context Tasks (${updatedTasks.length} Tasks total).`;
+      }
+
+      // ─────────────────────────────────────────────────────────────
+      // 2. SET TOTAL QUESTIONS (e.g. "10 questions venum", "5 drills podu")
+      // ─────────────────────────────────────────────────────────────
+      else if (isQuestionIntent && !isAddIntent) {
+        const total = Math.min(20, Math.max(2, count));
+        const newTasks = generateDrills(total, 0, currentCleanTopic, primaryWord, secondaryWord, tertiaryWord);
+        updateDayInPlanner(dayNum, 'in_class_exercises', newTasks);
+        replyMessage = `Configured ${total} structured tasks for ${unitName} ${dayNum}.`;
+      }
+
+      // ─────────────────────────────────────────────────────────────
+      // 3. NATIVE LISTENING & AUDITORY IMMERSION FLOW ADJUSTMENTS
+      // ─────────────────────────────────────────────────────────────
+      else if (isAudioFlow) {
+        const matchMins = lower.match(/(\d+)\s*(m|min|minute|mins)/) || lower.match(/\b(\d+)\b/);
+        const explicitMins = matchMins ? parseInt(matchMins[1], 10) : null;
+
+        let newStream = currentDay.audio_stream_mins ?? Math.max(5, Math.round(periodDuration * 0.15));
+        let newBreakdown = currentDay.audio_breakdown_mins ?? Math.max(12, Math.round(periodDuration * 0.40));
+        let newDialogues = currentDay.audio_dialogues_mins ?? Math.max(10, Math.round(periodDuration * 0.30));
+        let newCheck = currentDay.audio_check_mins ?? Math.max(5, Math.max(0, periodDuration - newStream - newBreakdown - newDialogues));
+        let stageName = '';
+
+        if (lower.includes('stream') || lower.includes('tuning') || lower.includes('stage 1')) {
+          newStream = explicitMins || Math.min(20, newStream + 3);
+          stageName = 'Audio Stream';
+        } else if (lower.includes('breakdown') || lower.includes('decoding') || lower.includes('stage 2')) {
+          newBreakdown = explicitMins || Math.min(30, newBreakdown + 5);
+          stageName = 'Audio Breakdown';
+        } else if (lower.includes('dialogue') || lower.includes('speaking') || lower.includes('stage 3')) {
+          newDialogues = explicitMins || Math.min(25, newDialogues + 5);
+          stageName = 'Audio Dialogues';
+        } else if (lower.includes('check') || lower.includes('exit') || lower.includes('stage 4')) {
+          newCheck = explicitMins || Math.min(15, newCheck + 3);
+          stageName = 'Audio Check';
+        } else {
+          newBreakdown = Math.min(25, newBreakdown + 4);
+          newDialogues = Math.min(20, newDialogues + 3);
+          stageName = 'Immersion Flow';
+        }
+
+        const flowPatch: Record<string, any> = {
+          audio_stream_mins: newStream,
+          audio_breakdown_mins: newBreakdown,
+          audio_dialogues_mins: newDialogues,
+          audio_check_mins: newCheck
+        };
+
+        if (lower.includes('business') || lower.includes('meeting')) {
+          flowPatch.audio_dialogues_desc = 'Business situational dialogues and communicative turns';
+        } else if (lower.includes('pronunciation') || lower.includes('phonetic')) {
+          flowPatch.audio_breakdown_desc = 'Phonological decoding, liaison rules, stress & intonation patterns';
+        }
+
+        updateDayInPlanner(dayNum, flowPatch);
+        replyMessage = `Adjusted ${stageName} timings: Stream ${newStream}m, Breakdown ${newBreakdown}m, Dialogues ${newDialogues}m, Check ${newCheck}m.`;
+      }
+
+      // ─────────────────────────────────────────────────────────────
+      // 4. SPECIFIC READING TASK MODIFICATION
+      // ─────────────────────────────────────────────────────────────
+      else if (lower.includes('reading') || lower.includes('read') || lower.includes('passage') || lower.includes('syntax')) {
         const cleanInstruction = prompt
           .replace(/^(please|can you|change|set|add|make|focus on|teach|la change panu|change panu|content ah|content)s*/gi, '')
           .replace(/(la change panu|change panu|content ah|panu|da)/gi, '')
           .trim();
         const readingTheme = cleanInstruction.length > 2 ? cleanInstruction : currentCleanTopic;
-        const newReadingTask = `[R - Reading & Comprehension] Analyze passage on "${readingTheme}": synthesize syntactic agreements and answer 3 textual comprehension queries in ${lang} (${lvl}).`;
-        
-        // Replace exercise #1 if it's reading, or prepend/replace
-        if (currentExercises.length > 0 && currentExercises[0].includes('[R -')) {
+        const newReadingTask = `📖 [Reading & Syntax] Analyze authentic paragraph on "${readingTheme}": synthesize syntactic agreements and answer 3 textual comprehension queries in ${lang} (${lvl}).`;
+
+        if (currentExercises.length >= 3 && currentExercises[2].includes('[Reading')) {
+          currentExercises[2] = newReadingTask;
+        } else if (currentExercises.length > 0) {
           currentExercises[0] = newReadingTask;
         } else {
-          currentExercises = [newReadingTask, ...currentExercises.slice(1)];
+          currentExercises.push(newReadingTask);
         }
         updateDayInPlanner(dayNum, 'in_class_exercises', currentExercises);
-        replyMessage = `Updated Reading & Syntax module to focus strictly on "${readingTheme}".`;
+        replyMessage = `Updated Reading & Syntax task to focus on "${readingTheme}".`;
       }
 
-      // B. Specific Speaking / Audio Task Modification (e.g. "speaking la change panu", "audio conversation add panu")
-      else if (lower.includes('speaking') || lower.includes('spoken') || lower.includes('audio') || lower.includes('dialogue') || lower.includes('oral')) {
+      // ─────────────────────────────────────────────────────────────
+      // 5. SPECIFIC SPEAKING / AUDIO TASK MODIFICATION
+      // ─────────────────────────────────────────────────────────────
+      else if (lower.includes('speaking') || lower.includes('spoken') || lower.includes('oral') || lower.includes('dialogue')) {
         const cleanInstruction = prompt
           .replace(/^(please|can you|change|set|add|make|focus on|oral|audio|speaking|dialogue|la change panu|panu|da)s*/gi, '')
           .replace(/(la change panu|change panu|content ah|panu|da)/gi, '')
           .trim();
         const spokenTheme = cleanInstruction.length > 2 ? cleanInstruction : currentCleanTopic;
-        const newSpeakingTask = `[S - Spoken Audio Dialogue] Live 2-person situational roleplay on "${spokenTheme}": execute spontaneous oral exchange with native intonation in ${lang}.`;
-        
-        if (currentExercises.length > 1 && currentExercises[1].includes('[S -')) {
+        const newSpeakingTask = `🗣️ [Speaking & Oral Production] Deliver spontaneous oral response on "${spokenTheme}" adhering to CEFR ${lvl} fluency and native stress patterns in ${lang}.`;
+
+        if (currentExercises.length >= 2 && currentExercises[1].includes('[Speaking')) {
           currentExercises[1] = newSpeakingTask;
+        } else if (currentExercises.length > 0) {
+          currentExercises[0] = newSpeakingTask;
         } else {
-          currentExercises[1] = newSpeakingTask;
+          currentExercises.push(newSpeakingTask);
         }
         updateDayInPlanner(dayNum, 'in_class_exercises', currentExercises);
-        replyMessage = `Configured conversational audio speaking roleplay for ${unitName} ${dayNum}.`;
+        replyMessage = `Configured conversational oral speaking task for ${unitName} ${dayNum}.`;
       }
 
-      // C. Specific Writing Task Modification (e.g. "writing task change panu", "essay / paragraph")
+      // ─────────────────────────────────────────────────────────────
+      // 6. SPECIFIC WRITING TASK MODIFICATION
+      // ─────────────────────────────────────────────────────────────
       else if (lower.includes('writing') || lower.includes('write') || lower.includes('essay') || lower.includes('sentence')) {
         const cleanInstruction = prompt
           .replace(/^(please|can you|change|set|add|make|focus on|writing|write|la change panu|panu|da)s*/gi, '')
           .replace(/(la change panu|change panu|content ah|panu|da)/gi, '')
           .trim();
         const writeTheme = cleanInstruction.length > 2 ? cleanInstruction : currentCleanTopic;
-        const newWritingTask = `[W - Analytical Writing] Draft a cohesive 5-sentence structured communicative response on "${writeTheme}" adhering to CEFR ${lvl} syntax in ${lang}.`;
-        
+        const newWritingTask = `✍️ [Contextual Writing] Compose 3 structured sentences on "${writeTheme}" applying target vocabulary and correct morphological agreement in ${lang}.`;
+
         if (currentExercises.length >= 4) {
           currentExercises[3] = newWritingTask;
         } else {
@@ -152,60 +291,102 @@ export function PlannerBlueprintSection({
         replyMessage = `Updated contextual writing task for ${unitName} ${dayNum}.`;
       }
 
-      // D. Numbered Questions Request (e.g. "10 questions venum", "5 drills", "20 assessment tasks")
-      else if (lower.includes('question') || lower.includes('ques') || lower.includes('drill') || lower.includes('test') || lower.includes('assessment')) {
-        const matchNum = lower.match(/\d+/);
-        const count = matchNum ? Math.min(20, Math.max(1, parseInt(matchNum[0]))) : 5;
-        const newQuestions: string[] = [];
-        const taskTypes = [
-          '[R - Reading Analysis]',
-          '[S - Spoken Dialogue]',
-          '[L - Auditory Check]',
-          '[W - Sentence Production]',
-          '[G - Grammar & Agreement]'
+      // ─────────────────────────────────────────────────────────────
+      // 7. SPECIFIC TOPIC, GRAMMAR, OR VERB RULE CHANGE
+      // ─────────────────────────────────────────────────────────────
+      else if (lower.includes('verb') || lower.includes('tense') || lower.includes('past') || lower.includes('greeting') || lower.includes('food') || lower.includes('travel') || lower.includes('topic') || lower.includes('vocab') || lower.includes('teach') || lower.includes('solli')) {
+        const cleanPrompt = prompt
+          .replace(/^(please|can you|change|set|add|make|focus on|teach|solli kodu|solli|kodu|topic ah|topic)\s*/gi, '')
+          .replace(/(venum|topic|la change panu|change panu|panu|da)/gi, '')
+          .trim();
+        const cleanTopicTitle = cleanPrompt.length > 2
+          ? (cleanPrompt.charAt(0).toUpperCase() + cleanPrompt.slice(1))
+          : 'Target Pedagogical Progression';
+
+        // Synthesize authentic vocab
+        let newVocab = [
+          { word: "Vocabulaire clé", meaning: "Target lexical item" },
+          { word: "Expression", meaning: "Idiomatic phrase" },
+          { word: "Structure", meaning: "Morphological anchor" }
         ];
-        for (let q = 1; q <= count; q++) {
-          const prefix = taskTypes[(q - 1) % taskTypes.length];
-          newQuestions.push(`${prefix} Task #${q}: Practical linguistic application for ${currentCleanTopic} (${lang} ${lvl})`);
+
+        const tLower = cleanPrompt.toLowerCase();
+        if (tLower.includes('past') || tLower.includes('verb') || tLower.includes('tense')) {
+          if (lang.toLowerCase().includes('french')) {
+            newVocab = [
+              { word: "Hier", meaning: "Yesterday (temporal anchor)" },
+              { word: "Passé composé", meaning: "Past narrative tense" },
+              { word: "Avoir / Être", meaning: "Auxiliary verb agreement" },
+              { word: "Participe passé", meaning: "Past participle form" }
+            ];
+          } else if (lang.toLowerCase().includes('spanish')) {
+            newVocab = [
+              { word: "Ayer", meaning: "Yesterday (temporal anchor)" },
+              { word: "Pretérito", meaning: "Simple past narrative" },
+              { word: "Haber / Fue", meaning: "Auxiliary & irregular past forms" },
+              { word: "Participio", meaning: "Past participle agreement" }
+            ];
+          } else {
+            newVocab = [
+              { word: "Yesterday", meaning: "Past temporal anchor" },
+              { word: "Walked / Did", meaning: "Past regular / irregular action" },
+              { word: "Completed", meaning: "Finished aspectual marker" },
+              { word: "Ago", meaning: "Temporal interval marker" }
+            ];
+          }
+        } else if (tLower.includes('food') || tLower.includes('restaurant') || tLower.includes('dining')) {
+          newVocab = [
+            { word: "Order / Commander", meaning: "To place a food order" },
+            { word: "Menu", meaning: "Culinary bill of fare" },
+            { word: "The Bill / L'addition", meaning: "Dining payment receipt" },
+            { word: "Delicious", meaning: "Pleasing culinary taste" }
+          ];
+        } else if (tLower.includes('travel') || tLower.includes('airport') || tLower.includes('hotel')) {
+          newVocab = [
+            { word: "Ticket / Billet", meaning: "Transit document" },
+            { word: "Departure", meaning: "Scheduled departure time" },
+            { word: "Terminal / Station", meaning: "Transit arrival platform" },
+            { word: "Luggage", meaning: "Travel bags and baggage" }
+          ];
         }
-        updateDayInPlanner(dayNum, 'in_class_exercises', newQuestions);
-        replyMessage = `Successfully configured ${count} customized exercises for ${unitName} ${dayNum}.`;
+
+        const newPWord = newVocab[0].word;
+        const newSWord = newVocab[1].word;
+        const updatedGrammar = `Core focus on ${cleanPrompt}. Pedagogical Goal: Real-world communication with active drills and targeted vocabulary in ${lang} (${lvl}).`;
+
+        const refreshedTasks = [
+          `🎧 [Listening] Listen to the audio for "${cleanTopicTitle}". How is "${newPWord}" applied in the sentence?`,
+          `🗣️ [Speaking] Deliver a clear spoken sentence incorporating "${newPWord}" to express a fact or action.`,
+          `📖 [Reading & Syntax] Analyze the clause pattern around "${newSWord}" within ${cleanTopicTitle}.`,
+          `✍️ [Writing] Compose two communicative sentences applying both "${newPWord}" and "${newSWord}".`
+        ];
+
+        updateDayInPlanner(dayNum, {
+          day_topic: `${unitName} ${dayNum}: ${cleanTopicTitle}`,
+          grammar_rules_detail: updatedGrammar,
+          vocabulary_bank: newVocab,
+          audio_breakdown_desc: `Sentence decoding, stress & intonation patterns for ${cleanTopicTitle}`,
+          audio_dialogues_desc: `Interactive conversational dialogue turns practicing ${cleanTopicTitle}`,
+          in_class_exercises: refreshedTasks
+        });
+
+        replyMessage = `Re-anchored ${unitName} ${dayNum} to "${cleanTopicTitle}" with updated vocabulary, audio flow, and 4 contextual tasks.`;
       }
 
-      // E. Specific Topic, Grammar, or Verb Rule Change
-      else if (lower.includes('verb') || lower.includes('tense') || lower.includes('greeting') || lower.includes('food') || lower.includes('travel') || lower.includes('topic') || lower.includes('vocab')) {
-        const cleanPrompt = prompt
-          .replace(/^(please|can you|change|set|add|make|focus on|teach)\s*/gi, '')
-          .replace(/(venum|topic|la change panu|panu|da)/gi, '')
-          .trim();
-        const cleanTopicTitle = cleanPrompt.charAt(0).toUpperCase() + cleanPrompt.slice(1);
-        const updatedTopic = `${unitName} ${dayNum}: ${cleanTopicTitle}`;
-        const updatedGrammar = `Core focus on ${cleanPrompt}. Pedagogical Goal: Real-world communication with active drills and targeted vocabulary in ${lang} (${lvl}).`;
-        
-        const refreshedTasks = [
-          `[R - Reading & Syntax] Read dialogue demonstrating ${cleanPrompt} in everyday ${lang} usage`,
-          `[S - Spoken Interaction] Pair drill practicing oral questions and answers with ${cleanPrompt}`,
-          `[L - Auditory Discrimination] Listen and verify inflection accuracy of ${cleanPrompt}`,
-          `[W - Contextual Writing] Compose 3 sentences applying ${cleanPrompt} in situational context`
-        ];
-        
-        updateDayInPlanner(dayNum, 'day_topic', updatedTopic);
-        updateDayInPlanner(dayNum, 'grammar_rules_detail', updatedGrammar);
-        updateDayInPlanner(dayNum, 'in_class_exercises', refreshedTasks);
-        replyMessage = `Re-anchored ${unitName} ${dayNum} topic to "${cleanTopicTitle}" with updated exercises.`;
-      } else {
-        // General enhancement directive
+      // ─────────────────────────────────────────────────────────────
+      // 8. GENERAL ENHANCEMENT DIRECTIVE
+      // ─────────────────────────────────────────────────────────────
+      else {
         const cleanPrompt = prompt.replace(/(venum|change panu|panu|da)/gi, '').trim();
         const updatedGrammar = `${currentDay.grammar_rules_detail || ''} • Custom Focus: ${cleanPrompt}`;
-        const refreshedTasks = [
-          `[R - Reading] Read focused text integrating: ${cleanPrompt}`,
-          `[S - Spoken] Interactive dialogue applying: ${cleanPrompt}`,
-          `[L - Listening] Comprehension listening check on: ${cleanPrompt}`,
-          `[W - Writing] Guided writing exercise on: ${cleanPrompt}`
-        ];
-        updateDayInPlanner(dayNum, 'grammar_rules_detail', updatedGrammar);
-        updateDayInPlanner(dayNum, 'in_class_exercises', refreshedTasks);
-        replyMessage = `Applied custom directive "${cleanPrompt}" to ${unitName} ${dayNum}.`;
+        const extra = generateDrills(2, currentExercises.length, currentCleanTopic, primaryWord, secondaryWord, tertiaryWord);
+        const refreshed = [...currentExercises, ...extra];
+
+        updateDayInPlanner(dayNum, {
+          grammar_rules_detail: updatedGrammar,
+          in_class_exercises: refreshed
+        });
+        replyMessage = `Applied custom directive "${cleanPrompt}" to ${unitName} ${dayNum} (${refreshed.length} Tasks total).`;
       }
 
       setPeriodAiReplies(prev => ({
@@ -215,7 +396,7 @@ export function PlannerBlueprintSection({
 
       setPeriodPrompts(prev => ({ ...prev, [dayNum]: '' }));
       setPeriodChatLoading(null);
-    }, 400);
+    }, 350);
   };
 
   const handleGlobalPromptSubmit = async (e: React.FormEvent) => {
@@ -229,672 +410,324 @@ export function PlannerBlueprintSection({
 
   return (
     <div className="space-y-4 bg-white p-3 sm:p-5 border-t border-slate-200">
-      
-      {/* ── TOP SECTION: Attached Source Materials Accordion / Drawer ── */}
-      <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 transition-all">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-          <div className="space-y-0.5">
-            <div className="flex items-center gap-2">
-              <span className="w-2 h-2 rounded-full bg-blue-600 animate-pulse" />
-              <span className="text-xs font-bold text-slate-800 uppercase tracking-wider">
-                Grounded Knowledge Sources
-              </span>
-              <span className="text-[11px] font-semibold bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full">
-                {filesList.length} Files • {urlsList.length} Links
-              </span>
-            </div>
-            <p className="text-xs text-slate-500">
-              This session planner was structured directly from your uploaded syllabus files and reference video links with zero hallucination.
-            </p>
-          </div>
 
-          <button
-            type="button"
-            onClick={() => setShowSourceMaterials(!showSourceMaterials)}
-            className="px-3.5 py-1.5 text-xs font-bold text-blue-700 bg-white hover:bg-blue-50 border border-blue-200 rounded-xl transition-all shadow-2xs self-start sm:self-auto cursor-pointer"
-          >
-            {showSourceMaterials ? 'Hide Sources ✕' : 'View Connected Sources ↗'}
-          </button>
-        </div>
-
-        {/* ── Knowledge Intelligence Engine Insights ── */}
-        {proposedPlanner.knowledge_intelligence && (
-          <div className="mt-3 pt-3 border-t border-slate-200 space-y-2.5">
-            <div className="flex flex-wrap items-center justify-between gap-2 bg-white p-2.5 rounded-xl border border-blue-100 text-xs">
-              <div className="flex items-center gap-2">
-                <span className="font-bold text-blue-900">⚡ Knowledge Intelligence:</span>
-                <span className="text-slate-700">{proposedPlanner.knowledge_intelligence.intent_summary}</span>
-              </div>
-              <div className="flex items-center gap-1.5 font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200 text-[11px]">
-                <span>✓ Faithfulness: {(proposedPlanner.knowledge_intelligence.faithfulness_score * 100).toFixed(0)}% (RRF pgvector)</span>
-              </div>
-            </div>
-
-            {/* Cross-Source Contradictions Warning */}
-            {proposedPlanner.knowledge_intelligence.identified_contradictions?.length > 0 && (
-              <div className="p-3 rounded-xl bg-amber-50 border border-amber-200 text-xs text-amber-900 space-y-1">
-                <div className="flex items-center gap-1.5 font-bold text-amber-800">
-                  <span>⚠️ Cross-Source Contradictions Detected ({proposedPlanner.knowledge_intelligence.identified_contradictions.length})</span>
-                </div>
-                <ul className="list-disc list-inside space-y-0.5 text-amber-800">
-                  {proposedPlanner.knowledge_intelligence.identified_contradictions.map((c: string, ci: number) => (
-                    <li key={ci}>{c}</li>
-                  ))}
-                </ul>
-                <p className="text-[10px] text-amber-600 italic">Both perspectives are preserved in the knowledge base without destructive overwrite.</p>
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* Expandable Source Materials Viewer */}
-        {showSourceMaterials && (
-          <div className="mt-4 pt-3.5 border-t border-slate-200 grid grid-cols-1 md:grid-cols-2 gap-3 animate-in fade-in duration-200">
-            {/* Uploaded Files Box */}
-            <div className="bg-white border border-slate-200 rounded-xl p-3 space-y-2">
-              <div className="flex items-center justify-between text-xs font-bold text-slate-700 border-b border-slate-100 pb-1.5">
-                <span>Uploaded Documents & Audio/Video</span>
-                <span className="text-slate-400">{filesList.length} items</span>
-              </div>
-              {filesList.length > 0 ? (
-                <div className="space-y-1.5 max-h-40 overflow-y-auto pr-1">
-                  {filesList.map((file: any, fi: number) => (
-                    <div key={fi} className="flex items-center justify-between text-xs p-2 bg-slate-50 hover:bg-slate-100 rounded-lg border border-slate-100">
-                      <span className="font-semibold text-slate-800 truncate max-w-[200px] sm:max-w-[240px]">
-                        {file.name}
-                      </span>
-                      {file.size && (
-                        <span className="text-[10px] text-slate-400 shrink-0">
-                          {(file.size / 1024).toFixed(0)} KB
-                        </span>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <p className="text-xs text-slate-400 italic py-2">No local files were uploaded for this generation.</p>
-              )}
-            </div>
-
-            {/* Video & Web Links Box */}
-            <div className="bg-white border border-slate-200 rounded-xl p-3 space-y-2">
-              <div className="flex items-center justify-between text-xs font-bold text-slate-700 border-b border-slate-100 pb-1.5">
-                <span>Connected Video Transcripts & Web Links</span>
-                <span className="text-slate-400">{urlsList.length} links</span>
-              </div>
-              {urlsList.length > 0 ? (
-                <div className="space-y-1.5 max-h-40 overflow-y-auto pr-1">
-                  {urlsList.map((url: string, ui: number) => (
-                    <div key={ui} className="flex items-center justify-between text-xs p-2 bg-slate-50 hover:bg-slate-100 rounded-lg border border-slate-100">
-                      <span className="font-semibold text-slate-800 truncate max-w-[200px] sm:max-w-[240px]">
-                        {url}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <p className="text-xs text-slate-400 italic py-2">No external video or web links provided.</p>
-              )}
-            </div>
-
-            {/* Grounded Knowledge Citations Box */}
-            {proposedPlanner.knowledge_intelligence?.citations?.length > 0 && (
-              <div className="md:col-span-2 bg-white border border-slate-200 rounded-xl p-3 space-y-2">
-                <div className="flex items-center justify-between text-xs font-bold text-slate-700 border-b border-slate-100 pb-1.5">
-                  <span>Grounded Knowledge Propositions & Citations</span>
-                  <span className="text-blue-600 font-semibold text-[11px] bg-blue-50 px-2 py-0.5 rounded">
-                    {proposedPlanner.knowledge_intelligence.citations.length} Verified Evidence Points
-                  </span>
-                </div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-48 overflow-y-auto pr-1">
-                  {proposedPlanner.knowledge_intelligence.citations.map((c: any, ci: number) => (
-                    <div key={ci} className="p-2.5 rounded-lg bg-slate-50 border border-slate-100 text-xs space-y-1">
-                      <div className="flex items-center justify-between font-bold text-slate-800">
-                        <span className="truncate max-w-[200px]">{c.source_title}</span>
-                        <span className="text-[10px] text-blue-700 font-mono">
-                          {c.page_number ? `Page ${c.page_number}` : ''}
-                          {c.time_offset_sec ? ` ${c.time_offset_sec}s` : ''}
-                        </span>
-                      </div>
-                      <p className="text-[11px] text-slate-600 italic line-clamp-2">
-                        &quot;{c.supporting_excerpt}&quot;
-                      </p>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
-        )}
-      </div>
-
-      {/* ── VIEW SWITCHER HEADER BAR ── */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-200">
+      {/* ── SECTION HEADER ── */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-100">
         <div>
-          <h4 className="text-sm font-bold text-slate-900">
-            {unitName} Timetable & Pedagogical Structure
-          </h4>
+          <h3 className="text-base font-bold text-slate-900 tracking-tight flex items-center gap-2">
+            <span>{unitName} Schedule & Lesson Plan</span>
+            <span className="text-[10px] font-mono font-bold bg-blue-50 text-blue-700 px-2.5 py-0.5 rounded-full border border-blue-200">
+              {allDays.length} {allDays.length === 1 ? unitName : `${unitName}s`}
+            </span>
+          </h3>
           <p className="text-xs text-slate-500 mt-0.5">
-            Use the AI chatbox on each period to request specific topics, question counts, or grammar rules directly.
+            Review lessons, class schedule, vocabulary, and practice exercises.
           </p>
         </div>
-
-        {/* View Switcher Tabs */}
-        <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-xl text-xs font-semibold shrink-0 border border-slate-200">
-          <button
-            type="button"
-            onClick={() => setPlannerViewMode('cards')}
-            className={`px-3 py-1.5 rounded-lg font-bold transition-all cursor-pointer ${
-              plannerViewMode === 'cards'
-                ? 'bg-white text-blue-700 shadow-xs'
-                : 'text-slate-600 hover:text-slate-900'
-            }`}
-          >
-            Period Cards & Chatbot
-          </button>
-          <button
-            type="button"
-            onClick={() => setPlannerViewMode('timetable')}
-            className={`px-3 py-1.5 rounded-lg font-bold transition-all cursor-pointer ${
-              plannerViewMode === 'timetable'
-                ? 'bg-white text-blue-700 shadow-xs'
-                : 'text-slate-600 hover:text-slate-900'
-            }`}
-          >
-            Bell Schedule View
-          </button>
-          <button
-            type="button"
-            onClick={() => setPlannerViewMode('calendar')}
-            className={`px-3 py-1.5 rounded-lg font-bold transition-all cursor-pointer ${
-              plannerViewMode === 'calendar'
-                ? 'bg-white text-blue-700 shadow-xs'
-                : 'text-slate-600 hover:text-slate-900'
-            }`}
-          >
-            Calendar Grid
-          </button>
-          <button
-            type="button"
-            onClick={() => setPlannerViewMode('table')}
-            className={`px-3 py-1.5 rounded-lg font-bold transition-all cursor-pointer ${
-              plannerViewMode === 'table'
-                ? 'bg-white text-blue-700 shadow-xs'
-                : 'text-slate-600 hover:text-slate-900'
-            }`}
-          >
-            Matrix Table
-          </button>
-        </div>
       </div>
 
-      {/* ---------------- 1. PROFESSIONAL PERIOD CARDS VIEW WITH PHASE BREAKDOWN & CO-PILOT ---------------- */}
-      {plannerViewMode === 'cards' && (
-        <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
-          {allDays.map((d: any) => {
-            const cleanTopic = (d.day_topic || '').replace(/^(Period|Session)\s*\d+:\s*/i, '');
-            const isMilestone = d.day_number % 10 === 0;
-            const currentPrompt = periodPrompts[d.day_number] || '';
-            const isLoadingThisPeriod = periodChatLoading === d.day_number;
-            const aiReply = periodAiReplies[d.day_number];
+      {/* ── PERIOD CARDS GRID ── */}
+      <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
+        {allDays.map((d: any) => {
+          const cleanTopic = (d.day_topic || '').replace(/^(Period|Session)\s*\d+:\s*/i, '');
+          const isMilestone = d.day_number % 10 === 0;
+          const currentPrompt = periodPrompts[d.day_number] || '';
+          const isLoadingThisPeriod = periodChatLoading === d.day_number;
+          const aiReply = periodAiReplies[d.day_number];
 
-            // Calculate precise phase timings
-            const warmupMins = Math.max(5, Math.round(periodDuration * 0.15));
-            const lectureMins = Math.max(12, Math.round(periodDuration * 0.40));
-            const practiceMins = Math.max(10, Math.round(periodDuration * 0.30));
-            const exitMins = Math.max(5, periodDuration - warmupMins - lectureMins - practiceMins);
+          // Calculate precise phase timings (reading dynamic overrides from d or defaulting)
+          const streamMins = d.audio_stream_mins ?? Math.max(5, Math.round(periodDuration * 0.15));
+          const breakdownMins = d.audio_breakdown_mins ?? Math.max(12, Math.round(periodDuration * 0.40));
+          const dialoguesMins = d.audio_dialogues_mins ?? Math.max(10, Math.round(periodDuration * 0.30));
+          const checkMins = d.audio_check_mins ?? Math.max(5, Math.max(0, periodDuration - streamMins - breakdownMins - dialoguesMins));
+          const totalFlowMins = streamMins + breakdownMins + dialoguesMins + checkMins;
 
-            const vWords = (d.vocabulary_bank && d.vocabulary_bank.length > 0)
-              ? d.vocabulary_bank
-              : [
-                  { word: "Vocabulaire clé", meaning: "Target lexical item" },
-                  { word: "Expression", meaning: "Idiomatic phrase" },
-                  { word: "Structure", meaning: "Morphological anchor" }
-                ];
+          const streamDesc = d.audio_stream_desc || 'Listen to native speaker audio and pronunciation';
+          const breakdownDesc = d.audio_breakdown_desc || 'Sentence practice, word stress, and pronunciation';
+          const dialoguesDesc = d.audio_dialogues_desc || 'Conversation practice and dialogues';
+          const checkDesc = d.audio_check_desc || 'Quick check and review of what was learned';
 
-            return (
-              <div
-                key={d.day_number}
-                className="bg-white border-2 border-slate-200/90 rounded-2xl p-5 space-y-4 hover:border-blue-500 hover:shadow-md transition-all shadow-xs flex flex-col justify-between"
-              >
-                <div className="space-y-4">
-                  {/* Top Period Header Bar */}
-                  <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-                    <div className="flex items-center gap-2.5">
-                      <span className="w-9 h-9 rounded-xl bg-blue-600 text-white font-black text-sm flex items-center justify-center shadow-xs">
-                        {d.day_number}
-                      </span>
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <span className="text-sm font-black text-slate-900 tracking-tight">
-                            {unitName} {d.day_number}
-                          </span>
-                          <span className="text-[10px] font-bold bg-blue-50 text-blue-700 px-2 py-0.5 rounded-full border border-blue-200">
-                            {periodDuration} Mins
-                          </span>
-                          <span className="text-[10px] font-semibold text-slate-700 bg-slate-100 px-2.5 py-0.5 rounded-full border border-slate-200">
-                            {proposedPlanner.language}
-                          </span>
-                        </div>
-                        <span className="text-[11px] text-blue-700 font-semibold">
-                          Source-Grounded Course Delivery Plan
+          const vWords = (d.vocabulary_bank && d.vocabulary_bank.length > 0)
+            ? d.vocabulary_bank
+            : [
+              { word: "Alphabet", meaning: "Ordered set of letters used in a language" },
+              { word: "Vowel", meaning: "Speech sound produced without constriction in the vocal tract" },
+              { word: "Pronounce", meaning: "To make the correct sound of a word or letter" }
+            ];
+          const primaryWord = typeof vWords[0] === 'string' ? vWords[0] : (vWords[0]?.word || 'Alphabet');
+          const secondaryWord = typeof vWords[1] === 'string' ? vWords[1] : (vWords[1]?.word || 'Vowel');
+
+          const defaultExercises = [
+            `🎧 [Listening] Listen to the audio for "${cleanTopic}". How is "${primaryWord}" used in the sentence?`,
+            `🗣️ [Speaking] Speak a clear sentence using "${primaryWord}" to express a simple thought.`,
+            `📖 [Reading] Read the sample sentence with "${secondaryWord}" and explain its meaning.`,
+            `✍️ [Writing] Write two simple sentences using both "${primaryWord}" and "${secondaryWord}".`
+          ];
+
+          const currentTasks = (d.in_class_exercises && d.in_class_exercises.length > 0)
+            ? d.in_class_exercises
+            : defaultExercises;
+
+          return (
+            <div
+              key={d.day_number}
+              className="bg-white border-2 border-slate-200/90 rounded-2xl p-4 sm:p-5 space-y-4 hover:border-blue-500 hover:shadow-md transition-all shadow-xs flex flex-col justify-between"
+            >
+              <div className="space-y-4">
+                {/* Top Period Header Bar */}
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 border-b border-slate-100 pb-3">
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <span className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl bg-blue-600 text-white font-black text-xs sm:text-sm flex items-center justify-center shadow-xs shrink-0">
+                      {d.day_number}
+                    </span>
+                    <div className="min-w-0">
+                      <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
+                        <span className="text-xs sm:text-sm font-black text-slate-900 tracking-tight whitespace-nowrap">
+                          {unitName} {d.day_number}
+                        </span>
+                        <span className="text-[10px] font-bold bg-blue-50 text-blue-700 px-2 py-0.5 rounded-full border border-blue-200 whitespace-nowrap">
+                          {periodDuration} Mins
+                        </span>
+                        <span className="text-[10px] font-semibold text-slate-700 bg-slate-100 px-2.5 py-0.5 rounded-full border border-slate-200 whitespace-nowrap">
+                          {proposedPlanner.language}
                         </span>
                       </div>
-                    </div>
-
-                    {isMilestone ? (
-                      <span className="text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-300 px-2.5 py-1 rounded-full shadow-2xs">
-                        Milestone Assessment
+                      <span className="text-[10px] sm:text-[11px] text-blue-700 font-semibold truncate block">
+                        Lesson Plan
                       </span>
-                    ) : (
-                      <span className="text-[10px] font-semibold text-slate-400">
-                        Module {(Math.ceil(d.day_number / 10))}
-                      </span>
-                    )}
-                  </div>
-
-                  {/* ── PRIORITY 1: CONTENT BLUEPRINT & PEDAGOGICAL ANCHOR ── */}
-                  <div className="bg-slate-50/80 border border-slate-200 rounded-xl p-3.5 space-y-3 shadow-2xs">
-                    <div className="flex items-center justify-between border-b border-slate-200/80 pb-2">
-                      <span className="text-[11px] font-extrabold text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
-                        <span className="w-2 h-2 rounded-full bg-blue-600" />
-                        1. Content Blueprint & Core Knowledge Anchor
-                      </span>
-                      <span className="text-[9px] text-blue-600 font-semibold bg-blue-50 px-2 py-0.5 rounded-md border border-blue-100">
-                        Primary Focus
-                      </span>
-                    </div>
-
-                    {/* Lesson Topic & Theme */}
-                    <div className="space-y-1">
-                      <label className="text-[10px] font-bold uppercase text-slate-500 tracking-wider flex items-center justify-between">
-                        <span>Lesson Topic & Subject Module</span>
-                        <span className="text-[9px] text-blue-600 font-normal">Click to edit</span>
-                      </label>
-                      <input
-                        type="text"
-                        value={cleanTopic}
-                        onChange={(e) =>
-                          updateDayInPlanner(d.day_number, 'day_topic', `${unitName} ${d.day_number}: ${e.target.value}`)
-                        }
-                        className="w-full text-xs font-bold text-slate-900 px-3 py-2 bg-white border border-slate-200 focus:border-blue-500 rounded-xl focus:outline-none transition-all shadow-2xs"
-                      />
-                    </div>
-
-                    {/* Core Pedagogical Concept & Directive */}
-                    <div className="space-y-1">
-                      <label className="text-[10px] font-bold uppercase text-slate-500 tracking-wider flex items-center justify-between">
-                        <span>Core Concept & Learning Milestone</span>
-                        <span className="text-[9px] text-blue-600 font-normal">Click to edit</span>
-                      </label>
-                      <textarea
-                        rows={2}
-                        value={d.grammar_rules_detail || ''}
-                        onChange={(e) =>
-                          updateDayInPlanner(d.day_number, 'grammar_rules_detail', e.target.value)
-                        }
-                        className="w-full text-xs text-slate-700 px-3 py-2 bg-white border border-slate-200 focus:border-blue-500 rounded-xl focus:outline-none transition-all leading-relaxed shadow-2xs"
-                      />
-                    </div>
-
-                    {/* Key Concept Terms */}
-                    <div className="space-y-1 pt-1">
-                      <label className="text-[10px] font-bold uppercase text-slate-500 tracking-wider block">
-                        Core Subject Terms & Target Context:
-                      </label>
-                      <div className="flex flex-wrap gap-1.5">
-                        {vWords.slice(0, 4).map((v: any, vi: number) => (
-                          <div key={vi} className="text-[10px] font-medium bg-white text-slate-800 px-2.5 py-1 rounded-lg border border-slate-200 shadow-2xs flex items-center gap-1.5">
-                            <strong className="text-blue-900 font-bold">{v.word}</strong>
-                            {v.meaning && (
-                              <>
-                                <span className="text-slate-300 font-normal">•</span>
-                                <span className="text-slate-500 text-[9px] max-w-[140px] truncate">{v.meaning}</span>
-                              </>
-                            )}
-                          </div>
-                        ))}
-                      </div>
                     </div>
                   </div>
 
-                  {/* ── PRIORITY 2: NATIVE LISTENING & AUDITORY IMMERSION FLOW ── */}
-                  <div className="bg-gradient-to-r from-blue-50/50 via-indigo-50/30 to-sky-50/50 border border-blue-200/70 rounded-xl p-3.5 space-y-3 shadow-2xs">
-                    <div className="flex items-center justify-between border-b border-blue-100 pb-2">
-                      <span className="text-[11px] font-extrabold text-blue-950 uppercase tracking-wider flex items-center gap-1.5">
-                        <span className="w-2 h-2 rounded-full bg-indigo-600" />
-                        2. Native Listening & Auditory Immersion Flow
-                      </span>
-                      <span className="text-[10px] font-mono font-bold text-indigo-700 bg-indigo-100 px-2 py-0.5 rounded-full">
-                        {periodDuration} Mins Flow
+                  {d.is_assessment_day ? (
+                    <div className="self-start sm:self-center shrink-0">
+                      <span className="text-[10px] font-bold bg-amber-100 text-amber-900 border border-amber-400 px-2.5 py-1 rounded-full shadow-2xs inline-flex items-center gap-1.5 whitespace-nowrap">
+                        <span className="w-1.5 h-1.5 rounded-full bg-amber-600 animate-pulse shrink-0" />
+                        <span className="whitespace-nowrap">{d.assessment_benchmark_code || 'EXAM'}</span>
                       </span>
                     </div>
-
-                    {/* 4-Stage In-Class Bell Schedule / Flow */}
-                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                      <div className="p-2.5 bg-white border border-blue-200/80 rounded-xl space-y-0.5 shadow-2xs">
-                        <div className="flex items-center justify-between text-[10px] font-bold text-blue-900">
-                          <span>1. Audio Stream</span>
-                          <span className="font-mono text-blue-600">{warmupMins}m</span>
-                        </div>
-                        <p className="text-[10px] text-slate-600 leading-tight">
-                          Ear tuning: Native audio stream & sound discrimination
-                        </p>
-                      </div>
-
-                      <div className="p-2.5 bg-white border border-indigo-200/80 rounded-xl space-y-0.5 shadow-2xs">
-                        <div className="flex items-center justify-between text-[10px] font-bold text-indigo-900">
-                          <span>2. Audio Breakdown</span>
-                          <span className="font-mono text-indigo-600">{lectureMins}m</span>
-                        </div>
-                        <p className="text-[10px] text-slate-600 leading-tight line-clamp-2" title={d.grammar_rules_detail}>
-                          Sentence decoding, stress & intonation patterns
-                        </p>
-                      </div>
-
-                      <div className="p-2.5 bg-white border border-sky-200/80 rounded-xl space-y-0.5 shadow-2xs">
-                        <div className="flex items-center justify-between text-[10px] font-bold text-sky-900">
-                          <span>3. Audio Dialogues</span>
-                          <span className="font-mono text-sky-600">{practiceMins}m</span>
-                        </div>
-                        <p className="text-[10px] text-slate-600 leading-tight">
-                          Listening comprehension & interactive dialogue turns
-                        </p>
-                      </div>
-
-                      <div className="p-2.5 bg-white border border-slate-200 rounded-xl space-y-0.5 shadow-2xs">
-                        <div className="flex items-center justify-between text-[10px] font-bold text-slate-800">
-                          <span>4. Audio Check</span>
-                          <span className="font-mono text-slate-600">{exitMins}m</span>
-                        </div>
-                        <p className="text-[10px] text-slate-600 leading-tight">
-                          Comprehension verification & exit listening check
-                        </p>
-                      </div>
+                  ) : isMilestone ? (
+                    <div className="self-start sm:self-center shrink-0">
+                      <span className="text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-300 px-2.5 py-1 rounded-full shadow-2xs whitespace-nowrap">
+                        Review Test
+                      </span>
                     </div>
-
-                    {/* Auditory Immersion Drills Checklist */}
-                    <div className="space-y-1.5 pt-1">
-                      <div className="flex items-center justify-between text-[11px] font-bold text-slate-800">
-                        <span className="flex items-center gap-1.5 text-blue-900">
-                          🎧 Auditory Decoding & Context Tasks:
-                        </span>
-                        <span className="text-[10px] text-blue-700 bg-white border border-blue-200 px-2 py-0.5 rounded-full font-mono font-bold">
-                          {(d.in_class_exercises || []).length || 4} Tasks
-                        </span>
-                      </div>
-
-                      <div className="space-y-1.5 max-h-40 overflow-y-auto pr-1">
-                        {((d.in_class_exercises && d.in_class_exercises.length > 0)
-                          ? d.in_class_exercises
-                          : [
-                              `🎧 [Audio Track 1: Ear Tuning] Listen to audio scenario on ${cleanTopic}`,
-                              `🎧 [Auditory Discrimination] Identify stress & tone patterns in ${proposedPlanner.language}`,
-                              `💬 [Dialogue Comprehension] Listening check on target concept terms`,
-                              `🎯 [Comprehension Check] Answer auditory verification questions`
-                            ]
-                        ).map((ex: any, ei: number) => {
-                          const exText = typeof ex === 'string' ? ex : (ex.question || ex.title || 'Exercise');
-                          return (
-                            <div key={ei} className="text-[11px] text-slate-700 bg-white border border-blue-100 rounded-lg p-2.5 flex items-start gap-2 shadow-2xs">
-                              <span className="text-blue-600 font-black shrink-0 text-[10px]">#{ei + 1}</span>
-                              <span className="leading-snug flex-1">{exText}</span>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* AI Status Feedback Message */}
-                  {aiReply && (
-                    <div className="p-2.5 bg-blue-50 border border-blue-200 rounded-xl text-xs font-semibold text-blue-900 animate-in fade-in flex items-center gap-2">
-                      <span className="w-2 h-2 rounded-full bg-blue-600 animate-pulse" />
-                      <span>{aiReply}</span>
-                    </div>
+                  ) : (
+                    <span className="text-[10px] font-semibold text-slate-400 shrink-0 self-start sm:self-center">
+                      Module {(Math.ceil(d.day_number / 10))}
+                    </span>
                   )}
                 </div>
 
-                {/* ── EMBEDDED AI CHATBOT BOX FOR THIS SPECIFIC PERIOD ── */}
-                <div className="pt-3 border-t border-slate-100">
-                  <div className="bg-slate-50 border border-slate-200 rounded-xl p-2.5 space-y-2">
-                    <div className="flex items-center justify-between text-[11px]">
-                      <span className="font-bold text-blue-700 flex items-center gap-1">
-                        <span className="w-1.5 h-1.5 rounded-full bg-blue-600 animate-pulse" />
-                        AI Period Co-Pilot:
+                {/* Assessment Milestone Banner */}
+                {d.is_assessment_day && (
+                  <div className="bg-amber-50/90 border border-amber-300 rounded-xl p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 text-xs shadow-2xs">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <span className="bg-amber-600 text-white font-mono text-[10px] font-black px-2 py-0.5 rounded shadow-2xs shrink-0 whitespace-nowrap">
+                        {d.assessment_benchmark_code || 'TEST'}
                       </span>
-                      <span className="text-[10px] text-slate-400">Ask to change topic, add questions, audio, etc.</span>
+                      <div className="text-amber-950 font-bold truncate">
+                        {d.assessment_benchmark_title || 'Progress Test'}
+                      </div>
                     </div>
-
-                    <form
-                      onSubmit={(e) => handlePeriodAiCustomization(d.day_number, e)}
-                      className="flex items-center gap-1.5"
-                    >
-                      <input
-                        type="text"
-                        value={currentPrompt}
-                        onChange={(e) => {
-                          const val = e.target.value;
-                          setPeriodPrompts(prev => ({ ...prev, [d.day_number]: val }));
-                        }}
-                        placeholder={`e.g. '10 questions venum', 'teach past tense verbs', 'reading la change panu'...`}
-                        className="flex-1 px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-blue-500 font-medium"
-                      />
-                      <button
-                        type="submit"
-                        disabled={!currentPrompt.trim() || isLoadingThisPeriod}
-                        className="px-3.5 py-1.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-40 text-white font-bold text-xs rounded-lg transition-all cursor-pointer shrink-0 shadow-2xs"
-                      >
-                        {isLoadingThisPeriod ? 'Updating...' : 'Ask AI'}
-                      </button>
-                    </form>
-                  </div>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      )}
-
-      {/* ---------------- 2. TIMETABLE VIEW (Period by Period Bell Schedule with Direct Edit) ---------------- */}
-      {plannerViewMode === 'timetable' && (
-        <div className="space-y-4">
-          {/* Quick Period Tabs (Day 1, Day 2, etc.) */}
-          <div className="flex items-center gap-1.5 overflow-x-auto pb-2 border-b border-slate-100">
-            <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mr-1 shrink-0">
-              Select {unitName}:
-            </span>
-            {allDays.map((d: any) => (
-              <button
-                key={d.day_number}
-                type="button"
-                onClick={() => setActiveTimetableDay(d.day_number)}
-                className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all shrink-0 cursor-pointer ${
-                  activeTimetableDay === d.day_number
-                    ? 'bg-blue-600 text-white shadow-xs'
-                    : 'bg-slate-50 hover:bg-slate-100 text-slate-700 border border-slate-200'
-                }`}
-              >
-                {unitName} {d.day_number}
-              </button>
-            ))}
-          </div>
-
-          {/* Timetable Detailed Breakdown for the Active Period */}
-          {(() => {
-            const currentDay =
-              allDays.find((d: any) => d.day_number === activeTimetableDay) ||
-              allDays[0];
-            if (!currentDay) return null;
-
-            const cleanTopic = (currentDay.day_topic || '').replace(/^(Period|Session)\s*\d+:\s*/i, '');
-            const warmupMins = Math.max(5, Math.round(periodDuration * 0.15));
-            const lectureMins = Math.max(10, Math.round(periodDuration * 0.4));
-            const practiceMins = Math.max(10, Math.round(periodDuration * 0.3));
-            const wrapupMins = Math.max(5, periodDuration - warmupMins - lectureMins - practiceMins);
-
-            return (
-              <div className="border border-slate-200 rounded-2xl p-4 sm:p-5 space-y-4 bg-slate-50/40">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-slate-200">
-                  <div className="flex-1">
-                    <span className="text-[10px] font-bold uppercase text-blue-700 tracking-wider block">
-                      {unitName} {currentDay.day_number} Bell Schedule & Time Breakdown
-                    </span>
-                    <h5 className="text-sm sm:text-base font-bold text-slate-900 mt-0.5">
-                      {cleanTopic}
-                    </h5>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs font-bold text-slate-700 bg-white border border-slate-200 px-3 py-1 rounded-xl">
-                      {periodDuration} Mins
-                    </span>
-                    <span className="text-xs font-bold text-blue-700 bg-blue-50 border border-blue-200 px-3 py-1 rounded-xl">
-                      {proposedPlanner.language} ({proposedPlanner.level})
+                    <span className="text-[10px] bg-amber-200/80 text-amber-900 font-extrabold px-2 py-0.5 rounded uppercase tracking-wider shrink-0 self-start sm:self-center whitespace-nowrap">
+                      50 Marks • 45 Mins
                     </span>
                   </div>
-                </div>
+                )}
 
-                {/* 4-Stage Timetable Schedule Matrix with Clean Typography */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-                  {/* Phase 1 */}
-                  <div className="bg-white border-l-4 border-blue-500 border border-slate-200 rounded-xl p-3.5 space-y-1 shadow-2xs">
-                    <div className="flex items-center justify-between text-xs font-bold text-slate-500">
-                      <span>Phase 1 (Warmup)</span>
-                      <span className="font-mono text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded">{warmupMins} Mins</span>
-                    </div>
-                    <h6 className="text-xs font-bold text-slate-900">Pronunciation & Recall</h6>
-                    <p className="text-[11px] text-slate-600 leading-relaxed">
-                      Phonetic drills, previous class review, and communicative greeting.
-                    </p>
-                  </div>
-
-                  {/* Phase 2 */}
-                  <div className="bg-white border-l-4 border-indigo-500 border border-slate-200 rounded-xl p-3.5 space-y-1 shadow-2xs">
-                    <div className="flex items-center justify-between text-xs font-bold text-slate-500">
-                      <span>Phase 2 (Core Teach)</span>
-                      <span className="font-mono text-indigo-600 bg-indigo-50 px-1.5 py-0.5 rounded">{lectureMins} Mins</span>
-                    </div>
-                    <h6 className="text-xs font-bold text-slate-900">Grammar & Structure</h6>
-                    <p className="text-[11px] text-slate-600 leading-relaxed">
-                      {currentDay.grammar_rules_detail || 'Core morpho-syntactic rule, sentence patterns, and direct teaching.'}
-                    </p>
-                  </div>
-
-                  {/* Phase 3 */}
-                  <div className="bg-white border-l-4 border-sky-500 border border-slate-200 rounded-xl p-3.5 space-y-1 shadow-2xs">
-                    <div className="flex items-center justify-between text-xs font-bold text-slate-500">
-                      <span>Phase 3 (Practice)</span>
-                      <span className="font-mono text-sky-600 bg-sky-50 px-1.5 py-0.5 rounded">{practiceMins} Mins</span>
-                    </div>
-                    <h6 className="text-xs font-bold text-slate-900">Guided LSRW Drills</h6>
-                    <p className="text-[11px] text-slate-600 leading-relaxed">
-                      Pair dialogue practice, listening audio comprehension, and worksheet activity.
-                    </p>
-                  </div>
-
-                  {/* Phase 4 */}
-                  <div className="bg-white border-l-4 border-slate-600 border border-slate-200 rounded-xl p-3.5 space-y-1 shadow-2xs">
-                    <div className="flex items-center justify-between text-xs font-bold text-slate-500">
-                      <span>Phase 4 (Exit & Task)</span>
-                      <span className="font-mono text-slate-700 bg-slate-100 px-1.5 py-0.5 rounded">{wrapupMins} Mins</span>
-                    </div>
-                    <h6 className="text-xs font-bold text-slate-900">Wrap-up & Homework</h6>
-                    <p className="text-[11px] text-slate-600 leading-relaxed">
-                      Quick exit quiz question, lesson synthesis, and self-study assignment.
-                    </p>
-                  </div>
-                </div>
-
-                {/* Vocabulary Bank Preview */}
-                {currentDay.vocabulary_bank && currentDay.vocabulary_bank.length > 0 && (
-                  <div className="pt-2 border-t border-slate-200">
-                    <span className="text-[10px] font-bold uppercase text-slate-500 tracking-wider block mb-2">
-                      Key Concept Terms & Context Focus:
+                {/* ── PRIORITY 1: CONTENT BLUEPRINT & PEDAGOGICAL ANCHOR ── */}
+                <div className="bg-slate-50/80 border border-slate-200 rounded-xl p-3.5 space-y-3 shadow-2xs">
+                  <div className="flex items-center justify-between border-b border-slate-200/80 pb-2">
+                    <span className="text-[11px] font-extrabold text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
+                      <span className="w-2 h-2 rounded-full bg-blue-600" />
+                      1. Lesson Topic & Learning Goals
                     </span>
-                    <div className="flex flex-wrap gap-2">
-                      {currentDay.vocabulary_bank.slice(0, 8).map((v: any, vi: number) => (
-                        <div key={vi} className="bg-white border border-slate-200 rounded-lg px-2.5 py-1 text-xs flex items-center gap-1.5 shadow-2xs">
+                    <span className="text-[9px] text-blue-600 font-semibold bg-blue-50 px-2 py-0.5 rounded-md border border-blue-100">
+                      Main Focus
+                    </span>
+                  </div>
+
+                  {/* Lesson Topic & Theme */}
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold uppercase text-slate-500 tracking-wider flex items-center justify-between">
+                      <span>Lesson Topic</span>
+                      <span className="text-[9px] text-blue-600 font-normal">Click to edit</span>
+                    </label>
+                    <input
+                      type="text"
+                      value={cleanTopic}
+                      onChange={(e) =>
+                        updateDayInPlanner(d.day_number, 'day_topic', `${unitName} ${d.day_number}: ${e.target.value}`)
+                      }
+                      className="w-full text-xs font-bold text-slate-900 px-3 py-2 bg-white border border-slate-200 focus:border-blue-500 rounded-xl focus:outline-none transition-all shadow-2xs"
+                    />
+                  </div>
+
+                  {/* Core Pedagogical Concept & Directive */}
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold uppercase text-slate-500 tracking-wider flex items-center justify-between">
+                      <span>Learning Goals & Grammar Focus</span>
+                      <span className="text-[9px] text-blue-600 font-normal">Click to edit</span>
+                    </label>
+                    <textarea
+                      rows={2}
+                      value={d.grammar_rules_detail || ''}
+                      onChange={(e) =>
+                        updateDayInPlanner(d.day_number, 'grammar_rules_detail', e.target.value)
+                      }
+                      className="w-full text-xs text-slate-700 px-3 py-2 bg-white border border-slate-200 focus:border-blue-500 rounded-xl focus:outline-none transition-all leading-relaxed shadow-2xs"
+                    />
+                  </div>
+
+                  {/* Key Concept Terms */}
+                  <div className="space-y-1 pt-1">
+                    <label className="text-[10px] font-bold uppercase text-slate-500 tracking-wider block">
+                      Key Words & Vocabulary:
+                    </label>
+                    <div className="flex flex-wrap gap-1.5">
+                      {vWords.slice(0, 4).map((v: any, vi: number) => (
+                        <div key={vi} className="text-[10px] font-medium bg-white text-slate-800 px-2.5 py-1 rounded-lg border border-slate-200 shadow-2xs flex items-center gap-1.5">
                           <strong className="text-blue-900 font-bold">{v.word}</strong>
-                          <span className="text-slate-400 font-normal">→</span>
-                          <span className="text-slate-600">{v.meaning}</span>
+                          {v.meaning && (
+                            <>
+                              <span className="text-slate-300 font-normal">•</span>
+                              <span className="text-slate-500 text-[9px] max-w-[140px] truncate">{v.meaning}</span>
+                            </>
+                          )}
                         </div>
                       ))}
                     </div>
                   </div>
+                </div>
+
+                {/* ── PRIORITY 2: NATIVE LISTENING & AUDITORY IMMERSION FLOW ── */}
+                <div className="bg-gradient-to-r from-blue-50/50 via-indigo-50/30 to-sky-50/50 border border-blue-200/70 rounded-xl p-3.5 space-y-3 shadow-2xs">
+                  <div className="flex items-center justify-between border-b border-blue-100 pb-2">
+                    <span className="text-[11px] font-extrabold text-blue-950 uppercase tracking-wider flex items-center gap-1.5">
+                      <span className="w-2 h-2 rounded-full bg-indigo-600" />
+                      2. Class Schedule & Audio Flow
+                    </span>
+                    <span className="text-[10px] font-mono font-bold text-indigo-700 bg-indigo-100 px-2 py-0.5 rounded-full">
+                      {totalFlowMins} Mins
+                    </span>
+                  </div>
+
+                  {/* 4-Stage In-Class Bell Schedule / Flow */}
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                    <div className="p-2.5 bg-white border border-blue-200/80 rounded-xl space-y-0.5 shadow-2xs">
+                      <div className="flex items-center justify-between text-[10px] font-bold text-blue-900">
+                        <span>1. Listen</span>
+                        <span className="font-mono text-blue-600">{streamMins}m</span>
+                      </div>
+                      <p className="text-[10px] text-slate-600 leading-tight">
+                        {streamDesc}
+                      </p>
+                    </div>
+
+                    <div className="p-2.5 bg-white border border-indigo-200/80 rounded-xl space-y-0.5 shadow-2xs">
+                      <div className="flex items-center justify-between text-[10px] font-bold text-indigo-900">
+                        <span>2. Breakdown</span>
+                        <span className="font-mono text-indigo-600">{breakdownMins}m</span>
+                      </div>
+                      <p className="text-[10px] text-slate-600 leading-tight line-clamp-2" title={breakdownDesc}>
+                        {breakdownDesc}
+                      </p>
+                    </div>
+
+                    <div className="p-2.5 bg-white border border-sky-200/80 rounded-xl space-y-0.5 shadow-2xs">
+                      <div className="flex items-center justify-between text-[10px] font-bold text-sky-900">
+                        <span>3. Dialogue</span>
+                        <span className="font-mono text-sky-600">{dialoguesMins}m</span>
+                      </div>
+                      <p className="text-[10px] text-slate-600 leading-tight line-clamp-2" title={dialoguesDesc}>
+                        {dialoguesDesc}
+                      </p>
+                    </div>
+
+                    <div className="p-2.5 bg-white border border-slate-200 rounded-xl space-y-0.5 shadow-2xs">
+                      <div className="flex items-center justify-between text-[10px] font-bold text-slate-800">
+                        <span>4. Review</span>
+                        <span className="font-mono text-slate-600">{checkMins}m</span>
+                      </div>
+                      <p className="text-[10px] text-slate-600 leading-tight">
+                        {checkDesc}
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Practice Drills Checklist */}
+                  <div className="space-y-1.5 pt-1">
+                    <div className="flex items-center justify-between text-[11px] font-bold text-slate-800">
+                      <span className="flex items-center gap-1.5 text-blue-900">
+                        Practice Tasks & Questions:
+                      </span>
+                      <span className="text-[10px] text-blue-700 bg-white border border-blue-200 px-2 py-0.5 rounded-full font-mono font-bold">
+                        {currentTasks.length} Tasks
+                      </span>
+                    </div>
+
+                    <div className="space-y-1.5 max-h-56 overflow-y-auto pr-1">
+                      {currentTasks.map((ex: any, ei: number) => {
+                        const exText = typeof ex === 'string' ? ex : (ex.question || ex.title || 'Exercise');
+                        return (
+                          <div key={ei} className="text-[11px] text-slate-700 bg-white border border-blue-100 rounded-lg p-2.5 flex items-start gap-2 shadow-2xs hover:border-blue-300 transition-colors">
+                            <span className="text-blue-600 font-black shrink-0 text-[10px]">#{ei + 1}</span>
+                            <span className="leading-snug flex-1">{exText}</span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </div>
+
+                {/* AI Status Feedback Message */}
+                {aiReply && (
+                  <div className="p-2.5 bg-blue-50 border border-blue-200 rounded-xl text-xs font-semibold text-blue-900 animate-in fade-in flex items-center gap-2">
+                    <span className="w-2 h-2 rounded-full bg-blue-600 animate-pulse" />
+                    <span>{aiReply}</span>
+                  </div>
                 )}
               </div>
-            );
-          })()}
-        </div>
-      )}
 
-      {/* ---------------- 3. CALENDAR GRID VIEW ---------------- */}
-      {plannerViewMode === 'calendar' && (
-        <div className="space-y-4">
-          <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-7 gap-2.5">
-            {allDays.map((d: any) => {
-              const cleanTopic = (d.day_topic || '').replace(/^(Period|Session)\s*\d+:\s*/i, '');
-              const isMilestone = d.day_number % 10 === 0;
-
-              return (
-                <div
-                  key={d.day_number}
-                  className={`p-3 rounded-xl border transition-all ${
-                    isMilestone
-                      ? 'bg-amber-50/50 border-amber-300'
-                      : 'bg-white border-slate-200 hover:border-blue-400 shadow-2xs'
-                  }`}
-                >
-                  <div className="flex items-center justify-between text-[11px] mb-1">
-                    <span className="font-bold text-slate-700">{unitName} {d.day_number}</span>
-                    {isMilestone && <span className="text-[9px] text-amber-700 font-bold">Quiz</span>}
+              {/* ── EMBEDDED AI CHATBOT BOX FOR THIS SPECIFIC PERIOD ── */}
+              <div className="pt-3 border-t border-slate-100">
+                <div className="bg-slate-50 border border-slate-200 rounded-xl p-2.5 space-y-2">
+                  <div className="flex items-center justify-between text-[11px]">
+                    <span className="font-bold text-blue-700 flex items-center gap-1">
+                      <span className="w-1.5 h-1.5 rounded-full bg-blue-600 animate-pulse" />
+                      Ask AI to customize this lesson:
+                    </span>
+                    <span className="text-[10px] text-slate-400">Change topic, add questions, audio, etc.</span>
                   </div>
-                  <p className="text-[11px] font-semibold text-slate-900 line-clamp-2 leading-tight">
-                    {cleanTopic}
-                  </p>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      )}
 
-      {/* ---------------- 4. MATRIX TABLE VIEW ---------------- */}
-      {plannerViewMode === 'table' && (
-        <div className="overflow-x-auto border border-slate-200 rounded-2xl bg-white shadow-2xs">
-          <table className="w-full text-left text-xs">
-            <thead className="bg-slate-50 border-b border-slate-200 text-slate-700 font-bold uppercase tracking-wider text-[10px]">
-              <tr>
-                <th className="py-2.5 px-3">Unit</th>
-                <th className="py-2.5 px-3">Lesson Topic</th>
-                <th className="py-2.5 px-3">Grammar Anchor</th>
-                <th className="py-2.5 px-3">Vocabulary Focus</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100 font-medium text-slate-700">
-              {allDays.map((d: any) => {
-                const cleanTopic = (d.day_topic || '').replace(/^(Period|Session)\s*\d+:\s*/i, '');
-                return (
-                  <tr key={d.day_number} className="hover:bg-slate-50/80 transition-colors">
-                    <td className="py-2.5 px-3 font-bold text-blue-700">
-                      {unitName} {d.day_number}
-                    </td>
-                    <td className="py-2.5 px-3 font-semibold text-slate-900">
-                      {cleanTopic}
-                    </td>
-                    <td className="py-2.5 px-3 text-slate-600 max-w-xs truncate">
-                      {d.grammar_rules_detail}
-                    </td>
-                    <td className="py-2.5 px-3 text-slate-500">
-                      {(d.vocabulary_bank || []).slice(0, 3).map((v: any) => v.word).join(', ')}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      )}
+                  <form
+                    onSubmit={(e) => handlePeriodAiCustomization(d.day_number, e)}
+                    className="flex items-center gap-1.5"
+                  >
+                    <input
+                      type="text"
+                      value={currentPrompt}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setPeriodPrompts(prev => ({ ...prev, [d.day_number]: val }));
+                      }}
+                      placeholder={`e.g. '10 questions venum', 'teach past tense verbs', 'reading la change panu'...`}
+                      className="flex-1 px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-blue-500 font-medium"
+                    />
+                    <button
+                      type="submit"
+                      disabled={!currentPrompt.trim() || isLoadingThisPeriod}
+                      className="px-3.5 py-1.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-40 text-white font-bold text-xs rounded-lg transition-all cursor-pointer shrink-0 shadow-2xs"
+                    >
+                      {isLoadingThisPeriod ? 'Updating...' : 'Ask AI'}
+                    </button>
+                  </form>
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }

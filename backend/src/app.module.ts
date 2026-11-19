@@ -13,6 +13,11 @@ import { ResourcesModule } from './modules/resources/resources.module';
 import { AiModule } from './modules/ai/ai.module';
 import { FilesModule } from './modules/files/files.module';
 import { SessionsModule } from './modules/sessions/sessions.module';
+import { CurriculumModule } from './modules/curriculum/curriculum.module';
+import { DeliverablesModule } from './modules/deliverables/deliverables.module';
+import { AgentEcosystemModule } from './modules/agents/agent-ecosystem.module';
+import { LmsPublishingModule } from './modules/lms/lms-publishing.module';
+import { HealthModule } from './modules/health/health.module';
 
 @Module({
   imports: [
@@ -32,6 +37,11 @@ import { SessionsModule } from './modules/sessions/sessions.module';
     AiModule,
     FilesModule,
     SessionsModule,
+    CurriculumModule,
+    DeliverablesModule,
+    AgentEcosystemModule,
+    LmsPublishingModule,
+    HealthModule,
   ],
 })
 export class AppModule {}

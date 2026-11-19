@@ -140,3 +140,4 @@ class FullSessionPackageResult(BaseModel):
     content_lineage: Optional[ContentLineageMetadata] = None
     raw_source_context: Optional[str] = None
     knowledge_intelligence: Optional[Dict[str, Any]] = None
+    master_pillar_priority: Optional[str] = "COMPREHENSIVE"

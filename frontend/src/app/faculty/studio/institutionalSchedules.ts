@@ -215,10 +215,74 @@ export const SCHOOL_LEVEL_SCHEDULES: SchoolLevelSchedule[] = [
   }
 ];
 
+export const KOREAN_SCHOOL_LEVEL_SCHEDULES: SchoolLevelSchedule[] = [
+  {
+    level: 'L1',
+    courseDurationHours: 60,
+    assessmentsCount: 4,
+    humanPracticeMinutesPer2Weeks: 10,
+    aiPracticePerDay: 2,
+    categoryPeriods: {
+      CAT_1: { periodsPerWeek: 3, totalPeriods: 103 },
+      CAT_2: { periodsPerWeek: 3, totalPeriods: 90 },
+      CAT_3: { periodsPerWeek: 3, totalPeriods: 80 },
+      CAT_4: { periodsPerWeek: 3, totalPeriods: 72 },
+      CAT_5: { periodsPerWeek: 2, totalPeriods: 70 },
+      CAT_6: { periodsPerWeek: 2, totalPeriods: 70 },
+    }
+  },
+  {
+    level: 'L2',
+    courseDurationHours: 80,
+    assessmentsCount: 5,
+    humanPracticeMinutesPer2Weeks: 15,
+    aiPracticePerDay: 3,
+    categoryPeriods: {
+      CAT_1: { periodsPerWeek: 4, totalPeriods: 138 },
+      CAT_2: { periodsPerWeek: 4, totalPeriods: 120 },
+      CAT_3: { periodsPerWeek: 3, totalPeriods: 107 },
+      CAT_4: { periodsPerWeek: 3, totalPeriods: 96 },
+      CAT_5: { periodsPerWeek: 3, totalPeriods: 105 },
+      CAT_6: { periodsPerWeek: 3, totalPeriods: 105 },
+    }
+  },
+  {
+    level: 'L3',
+    courseDurationHours: 100,
+    assessmentsCount: 6,
+    humanPracticeMinutesPer2Weeks: 20,
+    aiPracticePerDay: 4,
+    categoryPeriods: {
+      CAT_1: { periodsPerWeek: 5, totalPeriods: 172 },
+      CAT_2: { periodsPerWeek: 4, totalPeriods: 150 },
+      CAT_3: { periodsPerWeek: 4, totalPeriods: 134 },
+      CAT_4: { periodsPerWeek: 4, totalPeriods: 120 },
+      CAT_5: { periodsPerWeek: 4, totalPeriods: 140 },
+      CAT_6: { periodsPerWeek: 3, totalPeriods: 105 },
+    }
+  },
+  {
+    level: 'L4',
+    courseDurationHours: 120,
+    assessmentsCount: 6,
+    humanPracticeMinutesPer2Weeks: 25,
+    aiPracticePerDay: 4,
+    categoryPeriods: {
+      CAT_1: { periodsPerWeek: 5, totalPeriods: 172 },
+      CAT_2: { periodsPerWeek: 4, totalPeriods: 150 },
+      CAT_3: { periodsPerWeek: 4, totalPeriods: 134 },
+      CAT_4: { periodsPerWeek: 4, totalPeriods: 120 },
+      CAT_5: { periodsPerWeek: 4, totalPeriods: 140 },
+      CAT_6: { periodsPerWeek: 3, totalPeriods: 105 },
+    }
+  }
+];
+
 // Helper to lookup School schedule
 export function getSchoolSchedule(level: string, category: SchoolCategoryKey | 'CUSTOM' | string) {
   const safeCategory: SchoolCategoryKey = (category === 'CUSTOM' || !category) ? 'CAT_1' : (category as SchoolCategoryKey);
-  const match = SCHOOL_LEVEL_SCHEDULES.find(s => s.level.toLowerCase() === level.toLowerCase()) || SCHOOL_LEVEL_SCHEDULES[0];
+  const allSchedules = [...SCHOOL_LEVEL_SCHEDULES, ...KOREAN_SCHOOL_LEVEL_SCHEDULES];
+  const match = allSchedules.find(s => s.level.toLowerCase() === level.toLowerCase()) || allSchedules[0];
   const cat = match.categoryPeriods[safeCategory] || match.categoryPeriods.CAT_1;
   const catMeta = SCHOOL_CATEGORIES[safeCategory] || SCHOOL_CATEGORIES.CAT_1;
 
@@ -292,10 +356,10 @@ export interface CollegeLevelSchedule {
 }
 
 export const COLLEGE_LEVEL_SCHEDULES: CollegeLevelSchedule[] = [
-  // European, Korean & English (French / German / Spanish / Korean / English)
+  // European & English (French / German / Spanish / English)
   {
-    languages: ['French', 'German', 'Spanish', 'Korean', 'English'],
-    level: 'A1 / L1',
+    languages: ['French', 'German', 'Spanish', 'English'],
+    level: 'A1',
     courseDurationHours: 80,
     assessmentsCount: 4,
     humanPracticeMinutesPerWeek: 10,
@@ -307,8 +371,8 @@ export const COLLEGE_LEVEL_SCHEDULES: CollegeLevelSchedule[] = [
     }
   },
   {
-    languages: ['French', 'German', 'Spanish', 'Korean', 'English'],
-    level: 'A2 / L2',
+    languages: ['French', 'German', 'Spanish', 'English'],
+    level: 'A2',
     courseDurationHours: 100,
     assessmentsCount: 4,
     humanPracticeMinutesPerWeek: 20,
@@ -320,8 +384,8 @@ export const COLLEGE_LEVEL_SCHEDULES: CollegeLevelSchedule[] = [
     }
   },
   {
-    languages: ['French', 'German', 'Spanish', 'Korean', 'English'],
-    level: 'B1 / L3',
+    languages: ['French', 'German', 'Spanish', 'English'],
+    level: 'B1',
     courseDurationHours: 140,
     assessmentsCount: 5,
     humanPracticeMinutesPerWeek: 30,
@@ -333,8 +397,62 @@ export const COLLEGE_LEVEL_SCHEDULES: CollegeLevelSchedule[] = [
     }
   },
   {
-    languages: ['French', 'German', 'Spanish', 'Korean', 'English'],
-    level: 'B2 / L4',
+    languages: ['French', 'German', 'Spanish', 'English'],
+    level: 'B2',
+    courseDurationHours: 180,
+    assessmentsCount: 5,
+    humanPracticeMinutesPerWeek: 40,
+    aiPracticePerDay: 10,
+    tracks: {
+      STANDARD: { sessionMinutes: 60, sessionsRequired: 180, sessionsPerWeek: 5, monthsRequired: 9 },
+      INTENSIVE: { sessionMinutes: 90, sessionsRequired: 120, sessionsPerWeek: 5, monthsRequired: 6 },
+      SUPER_INTENSIVE: { sessionMinutes: 120, sessionsRequired: 90, sessionsPerWeek: 5, monthsRequired: 5 },
+    }
+  },
+
+  // Korean Standard (L1 -> L4)
+  {
+    languages: ['Korean'],
+    level: 'L1',
+    courseDurationHours: 80,
+    assessmentsCount: 4,
+    humanPracticeMinutesPerWeek: 10,
+    aiPracticePerDay: 3,
+    tracks: {
+      STANDARD: { sessionMinutes: 60, sessionsRequired: 80, sessionsPerWeek: 2, monthsRequired: 11 },
+      INTENSIVE: { sessionMinutes: 90, sessionsRequired: 54, sessionsPerWeek: 2, monthsRequired: 7 },
+      SUPER_INTENSIVE: { sessionMinutes: 120, sessionsRequired: 40, sessionsPerWeek: 3, monthsRequired: 4 },
+    }
+  },
+  {
+    languages: ['Korean'],
+    level: 'L2',
+    courseDurationHours: 100,
+    assessmentsCount: 4,
+    humanPracticeMinutesPerWeek: 20,
+    aiPracticePerDay: 5,
+    tracks: {
+      STANDARD: { sessionMinutes: 60, sessionsRequired: 100, sessionsPerWeek: 3, monthsRequired: 8 },
+      INTENSIVE: { sessionMinutes: 90, sessionsRequired: 67, sessionsPerWeek: 3, monthsRequired: 6 },
+      SUPER_INTENSIVE: { sessionMinutes: 120, sessionsRequired: 50, sessionsPerWeek: 3, monthsRequired: 4 },
+    }
+  },
+  {
+    languages: ['Korean'],
+    level: 'L3',
+    courseDurationHours: 140,
+    assessmentsCount: 5,
+    humanPracticeMinutesPerWeek: 30,
+    aiPracticePerDay: 7,
+    tracks: {
+      STANDARD: { sessionMinutes: 60, sessionsRequired: 140, sessionsPerWeek: 4, monthsRequired: 8 },
+      INTENSIVE: { sessionMinutes: 90, sessionsRequired: 94, sessionsPerWeek: 4, monthsRequired: 6 },
+      SUPER_INTENSIVE: { sessionMinutes: 120, sessionsRequired: 70, sessionsPerWeek: 4, monthsRequired: 4 },
+    }
+  },
+  {
+    languages: ['Korean'],
+    level: 'L4',
     courseDurationHours: 180,
     assessmentsCount: 5,
     humanPracticeMinutesPerWeek: 40,
@@ -405,15 +523,16 @@ export const COLLEGE_LEVEL_SCHEDULES: CollegeLevelSchedule[] = [
 export function getCollegeSchedule(language: string, level: string, track: CollegeTrackKey | 'CUSTOM' | string) {
   const safeTrack: CollegeTrackKey = (track === 'CUSTOM' || !track) ? 'STANDARD' : (track as CollegeTrackKey);
   const isJapanese = language.toLowerCase() === 'japanese';
+  const isKorean = language.toLowerCase() === 'korean';
   const filtered = COLLEGE_LEVEL_SCHEDULES.filter(s =>
-    isJapanese ? s.languages.includes('Japanese') : s.languages.includes('French')
+    isJapanese ? s.languages.includes('Japanese') : (isKorean ? s.languages.includes('Korean') : s.languages.includes('French'))
   );
 
   // Normalize match
   const match = filtered.find(s => {
     const cleanLvl = level.toUpperCase().replace(/\s+/g, '');
     const candidateLvl = s.level.toUpperCase().replace(/\s+/g, '');
-    return candidateLvl.includes(cleanLvl) || cleanLvl.includes(candidateLvl.split('/')[0]);
+    return candidateLvl === cleanLvl || candidateLvl.includes(cleanLvl) || cleanLvl.includes(candidateLvl.split('/')[0]);
   }) || filtered[0];
 
   const trackData = match.tracks[safeTrack] || match.tracks.STANDARD;

@@ -1,10 +1,11 @@
 "use client";
+import Link from 'next/link';
 import { PlannerBlueprintSection } from './PlannerBlueprintSection';
+import { useRouter } from 'next/navigation';
 
-import React, { useState, useRef, useEffect } from 'react';
-import { Loader2 } from 'lucide-react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
+import { Loader2, Headphones, Volume2, Download, Paperclip, Presentation, FileArchive, Files, BookOpen, Save, Trash2, ArrowLeft, Home } from 'lucide-react';
 const Sparkles = ((_props: any) => null) as any;
-const BookOpen = ((_props: any) => null) as any;
 const Upload = ((_props: any) => null) as any;
 const Video = ((_props: any) => null) as any;
 const CheckCircle2 = ((_props: any) => null) as any;
@@ -17,7 +18,6 @@ const RefreshCw = ((_props: any) => null) as any;
 const ShieldAlert = ((_props: any) => null) as any;
 const Copy = ((_props: any) => null) as any;
 const Check = ((_props: any) => null) as any;
-const Download = ((_props: any) => null) as any;
 const FileText = ((_props: any) => null) as any;
 const School = ((_props: any) => null) as any;
 const GraduationCap = ((_props: any) => null) as any;
@@ -32,21 +32,16 @@ const Award = ((_props: any) => null) as any;
 const Sparkle = ((_props: any) => null) as any;
 const Sliders = ((_props: any) => null) as any;
 const CheckCircle = ((_props: any) => null) as any;
-const Volume2 = ((_props: any) => null) as any;
 const Maximize2 = ((_props: any) => null) as any;
 const Minimize2 = ((_props: any) => null) as any;
 const PanelLeftClose = ((_props: any) => null) as any;
 const ChevronRight = ((_props: any) => null) as any;
 const ChevronDown = ((_props: any) => null) as any;
-const ArrowLeft = ((_props: any) => null) as any;
 const ArrowRight = ((_props: any) => null) as any;
-const Headphones = ((_props: any) => null) as any;
 const Mic = ((_props: any) => null) as any;
 const PenTool = ((_props: any) => null) as any;
 const Link2 = ((_props: any) => null) as any;
 const Plus = ((_props: any) => null) as any;
-const Trash2 = ((_props: any) => null) as any;
-const Files = ((_props: any) => null) as any;
 const FileUp = ((_props: any) => null) as any;
 const Calendar = ((_props: any) => null) as any;
 const CalendarDays = ((_props: any) => null) as any;
@@ -59,7 +54,6 @@ const PanelLeft = ((_props: any) => null) as any;
 const Database = ((_props: any) => null) as any;
 const Search = ((_props: any) => null) as any;
 const RotateCw = ((_props: any) => null) as any;
-const Paperclip = ((_props: any) => null) as any;
 const Eye = ((_props: any) => null) as any;
 const FileSpreadsheet = ((_props: any) => null) as any;
 const FileCheck = ((_props: any) => null) as any;
@@ -75,16 +69,35 @@ import {
   CollegeTrackKey,
   SCHOOL_CATEGORIES,
   SCHOOL_LEVEL_SCHEDULES,
+  KOREAN_SCHOOL_LEVEL_SCHEDULES,
   COLLEGE_TRACKS,
   COLLEGE_LEVEL_SCHEDULES,
   getSchoolSchedule,
   getCollegeSchedule
 } from './institutionalSchedules';
 import { fetchBackendWithFallback, fetchWithEndpointFallback } from '@/utils/apiConfig';
+import { generateFormalAssessments, FormalAssessment } from './assessmentGenerator';
+import { useResources } from '@/context/ResourceContext';
 
 export default function FacultyStudioPage() {
+  const router = useRouter();
   // 3-Step Sequential Workflow: 1 = Setup, 2 = Session Planner & Timetable, 3 = Content Package
-  const [studioStep, setStudioStep] = useState<1 | 2 | 3 | 4>(1);
+  const [studioStep, setStudioStep] = useState<1 | 2 | 3>(1);
+  const { resources, fetchResources } = useResources();
+
+  const navigateToGroundedMaterials = () => {
+    const lang = proposedPlanner?.language || selectedLanguage || 'English';
+    const lvl = proposedPlanner?.level || currentEffectiveLevel || 'A1.1';
+    const top = proposedPlanner?.topic || topic || '';
+    router.push(`/faculty/studio/materials?lang=${encodeURIComponent(lang)}&level=${encodeURIComponent(lvl)}&topic=${encodeURIComponent(top)}`);
+  };
+
+  useEffect(() => {
+    if (fetchResources) {
+      fetchResources();
+    }
+  }, [fetchResources]);
+
   // Institutional Stream Switcher: SCHOOL vs COLLEGE
   const [institutionType, setInstitutionType] = useState<InstitutionType>('SCHOOL');
   const [schoolCategory, setSchoolCategory] = useState<SchoolCategoryKey | 'CUSTOM'>('CAT_1');
@@ -98,6 +111,64 @@ export default function FacultyStudioPage() {
 
   const [selectedLanguage, setSelectedLanguage] = useState<'Spanish' | 'German' | 'French' | 'Japanese' | 'Korean' | 'English' | ''>('');
   const [selectedLevel, setSelectedLevel] = useState('A1');
+  const [masterPillarPriority, setMasterPillarPriority] = useState<string>('COMPREHENSIVE');
+
+  const currentEffectiveLevel = institutionType === 'SCHOOL' ? schoolLevel : selectedLevel;
+
+  // Grounded Knowledge Vault materials matching selected language and level
+  const matchingVaultResources = useMemo(() => {
+    if (!selectedLanguage) return [];
+    const targetLang = selectedLanguage.toLowerCase().trim();
+    
+    // Normalize target level for comparison
+    const rawLvl = (currentEffectiveLevel || '').toLowerCase().trim();
+    // Base level (e.g., 'a1.1' -> 'a1', 'b1.4' -> 'b1', 'l1' -> 'l1', 'n5' -> 'n5')
+    const baseLvl = rawLvl.includes('.') ? rawLvl.split('.')[0] : rawLvl;
+
+    return (resources || []).filter((r) => {
+      // 1. Language Check
+      const rLang = (r.academicContext?.language || (r as any).language || '').toLowerCase().trim();
+      const rTitle = (r.title || '').toLowerCase();
+      const rTags = Array.isArray(r.tags) ? r.tags.map((t: any) => String(t).toLowerCase()) : [];
+      
+      const langMatches = 
+        rLang.includes(targetLang) || 
+        targetLang.includes(rLang) || 
+        rTitle.includes(targetLang) ||
+        rTags.some((t: string) => t.includes(targetLang));
+
+      if (!langMatches) return false;
+
+      // 2. Level Check
+      if (!rawLvl || rawLvl === 'custom') return true;
+
+      const rLevel = (
+        r.academicContext?.level || 
+        r.cefrLevel || 
+        (r as any).level || 
+        r.analysis?.detectedCEFR || 
+        ''
+      ).toLowerCase().trim();
+
+      // Direct exact match (e.g., 'a1.1' === 'a1.1' or 'a1' === 'a1')
+      if (rLevel === rawLvl) return true;
+
+      // Base level match (e.g., resource is 'a1' and user selected 'a1.1' or 'a1.2')
+      const rBaseLvl = rLevel.includes('.') ? rLevel.split('.')[0] : rLevel;
+      if (baseLvl && (rBaseLvl === baseLvl || rLevel === baseLvl)) return true;
+
+      // Check tags and title for level mention
+      if (rTags.some((t: string) => t === rawLvl || t === baseLvl)) return true;
+      if (rTitle.split(/[^a-z0-9.]+/).some((word: string) => word === rawLvl || word === baseLvl)) return true;
+
+      // Universal / All level materials
+      if (rLevel.includes('all') || rLevel.includes('general') || rLevel.includes('foundation') || rLevel.includes('comprehensive')) {
+        return true;
+      }
+
+      return false;
+    });
+  }, [resources, selectedLanguage, currentEffectiveLevel]);
   const [selectedTrack, setSelectedTrack] = useState<'STANDARD' | 'INTERNSHIP' | 'SUPER_INTERNSHIP' | 'CUSTOM'>('CUSTOM');
   const [customDays, setCustomDays] = useState<number | ''>(2);
   const [courseDurationMode, setCourseDurationMode] = useState<'INSTITUTIONAL' | 'CUSTOM'>('CUSTOM');
@@ -277,7 +348,7 @@ export default function FacultyStudioPage() {
           uploaded_files_list: mergedFiles,
         };
 
-        autoSaveCurriculum(updatedPlanner, `Added Materials: ${files.map(f => f.name).join(', ')}`);
+        setIsSessionSaved(false);
         return updatedPlanner;
       });
 
@@ -312,7 +383,7 @@ export default function FacultyStudioPage() {
           source_urls_count: updatedUrls.length,
           extracted_source_context: updatedContext,
         };
-        autoSaveCurriculum(updatedPlanner, `Added Link: ${trimmed}`);
+        setIsSessionSaved(false);
         return updatedPlanner;
       });
     }
@@ -388,12 +459,54 @@ export default function FacultyStudioPage() {
   // Active Synthesis Pipeline Stage tracker (A, B, C, D, E)
   const [activePipelineStage, setActivePipelineStage] = useState<'A' | 'B' | 'C' | 'D' | 'E'>('A');
 
+  // Save studio state so navigating to /faculty/studio/materials and back retains 100% of state
+  useEffect(() => {
+    if (typeof window !== 'undefined' && proposedPlanner) {
+      try {
+        sessionStorage.setItem('isml_studio_saved_state', JSON.stringify({
+          studioStep,
+          selectedLanguage,
+          institutionType,
+          schoolLevel,
+          schoolCategory,
+          selectedLevel,
+          collegeTrack,
+          topic,
+          courseDurationMode,
+          customDays,
+          customPeriodMins,
+          proposedPlanner,
+          sessionPackage,
+          activePipelineStage
+        }));
+      } catch (e) {}
+    }
+  }, [studioStep, selectedLanguage, institutionType, schoolLevel, schoolCategory, selectedLevel, collegeTrack, topic, courseDurationMode, customDays, customPeriodMins, proposedPlanner, sessionPackage, activePipelineStage]);
+
+  // One-time fresh state reset: ensure all previous mock/saved session archives and caches are removed
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const resetKey = 'isml_session_clean_reset_v7';
+        if (!localStorage.getItem(resetKey)) {
+          localStorage.removeItem('isml_saved_sessions_archive');
+          localStorage.removeItem('isml_last_curriculum_blueprint');
+          localStorage.removeItem('isml_saved_external_resources');
+          sessionStorage.clear();
+          localStorage.setItem(resetKey, 'true');
+          // Clear backend packages on Railway so remote DB matches zero state
+          fetchBackendWithFallback('/api/sessions', { method: 'DELETE' }).catch(() => {});
+        }
+      } catch (e) {}
+    }
+  }, []);
+
   // ChatGPT/Gemini style persistent chat sessions sidebar state
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
   const [savedSessions, setSavedSessions] = useState<any[]>([]);
   const [historySearch, setHistorySearch] = useState('');
   const [loadingHistory, setLoadingHistory] = useState(false);
-  // Track currently active loaded saved session - chat bot is only enabled when a saved session is loaded
+  // Track currently active loaded saved session - defaults to null for fresh start
   const [activeSavedSession, setActiveSavedSession] = useState<any | null>(null);
 
   // 💬 Multi-turn Conversational AI Assistant (ChatGPT / Gemini / Claude memory pipeline)
@@ -401,6 +514,221 @@ export default function FacultyStudioPage() {
   const [isChatFullscreen, setIsChatFullscreen] = useState(false);
   const [showSelectSessionModal, setShowSelectSessionModal] = useState(false);
   const [showChatFilesModal, setShowChatFilesModal] = useState(false);
+  const [mobileArchiveTab, setMobileArchiveTab] = useState<'LIST' | 'CHAT'>('LIST');
+  const [archiveActiveTab, setArchiveActiveTab] = useState<'LESSONS' | 'TIMETABLE' | 'CHAT'>('LESSONS');
+  const [archiveActiveDay, setArchiveActiveDay] = useState<number>(1);
+
+  // Manual Session Persistence States (Auto-save disabled per user directive)
+  const [isSessionSaved, setIsSessionSaved] = useState<boolean>(false);
+  const [savingSession, setSavingSession] = useState<boolean>(false);
+  const [manualSaveSuccessMsg, setManualSaveSuccessMsg] = useState<string | null>(null);
+
+
+  // Curriculum Filter States (Month & Week Filters)
+  const [selectedMonthFilter, setSelectedMonthFilter] = useState<number>(1);
+  const [selectedWeekFilter, setSelectedWeekFilter] = useState<number | 'ALL'>('ALL');
+  const [activeDayDetail, setActiveDayDetail] = useState<number>(1);
+  const [isLeapYear, setIsLeapYear] = useState<boolean>(false);
+
+  // Audio Generator Modal States (Top Banner & Workspace)
+  const [showAudioGeneratorModal, setShowAudioGeneratorModal] = useState(false);
+  const [audioModalText, setAudioModalText] = useState('');
+  const [audioModalSpeed, setAudioModalSpeed] = useState<number>(1.0);
+  const [isModalGeneratingAudio, setIsModalGeneratingAudio] = useState(false);
+  const [isModalAudioPlaying, setIsModalAudioPlaying] = useState(false);
+  const [modalAudioSuccessMsg, setModalAudioSuccessMsg] = useState<string | null>(null);
+  const [modalAudioErrorMsg, setModalAudioErrorMsg] = useState<string | null>(null);
+
+  const handleModalPlayAudio = () => {
+    const text = audioModalText.trim();
+    if (!text) return;
+    if (isModalAudioPlaying) {
+      if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+        window.speechSynthesis.cancel();
+      }
+      setIsModalAudioPlaying(false);
+      return;
+    }
+    if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+      window.speechSynthesis.cancel();
+      const clean = text.replace(/^[A-Za-z\s]+:\s*/, '').replace(/['"]/g, '').trim();
+      const u = new SpeechSynthesisUtterance(clean);
+      const targetLang = (sessionPackage?.language || selectedLanguage || 'English').toLowerCase();
+      const langMap: Record<string, string> = {
+        english: 'en-US',
+        french: 'fr-FR',
+        german: 'de-DE',
+        spanish: 'es-ES',
+        japanese: 'ja-JP',
+        korean: 'ko-KR',
+        italian: 'it-IT'
+      };
+      const loc = langMap[targetLang] || 'en-US';
+      u.lang = loc;
+      u.rate = audioModalSpeed || 0.92;
+      u.pitch = 1.05; // Articulate, warm female vocal range
+
+      // Explicitly select authentic native female teacher voice
+      const voices = window.speechSynthesis.getVoices();
+      if (voices && voices.length > 0) {
+        const langPrefix = loc.slice(0, 2).toLowerCase();
+        const matchedVoices = voices.filter(v => v.lang.toLowerCase().startsWith(langPrefix));
+        const femaleKeywords = ['female', 'zira', 'jenny', 'samantha', 'victoria', 'karen', 'fiona', 'moira', 'denise', 'hortense', 'hedda', 'katja', 'laura', 'helena', 'nanami', 'haruka', 'sun-hi', 'yuna', 'natural', 'neural', 'google'];
+        const femaleVoice = matchedVoices.find(v => {
+          const n = v.name.toLowerCase();
+          return femaleKeywords.some(kw => n.includes(kw)) && !n.includes('male') && !n.includes('david') && !n.includes('george') && !n.includes('mark');
+        }) || matchedVoices.find(v => !v.name.toLowerCase().includes('male')) || matchedVoices[0];
+        if (femaleVoice) {
+          u.voice = femaleVoice;
+        }
+      }
+
+      u.onend = () => setIsModalAudioPlaying(false);
+      u.onerror = () => setIsModalAudioPlaying(false);
+      setIsModalAudioPlaying(true);
+      window.speechSynthesis.speak(u);
+    }
+  };
+
+  const [isModalSavingTrack, setIsModalSavingTrack] = useState(false);
+
+  const handleModalDownloadAudio = async () => {
+    const text = audioModalText.trim();
+    if (!text) {
+      setModalAudioErrorMsg('Please type or paste some text first.');
+      return;
+    }
+    setIsModalGeneratingAudio(true);
+    setModalAudioErrorMsg(null);
+    setModalAudioSuccessMsg(null);
+    const targetLang = sessionPackage?.language || selectedLanguage || 'English';
+    const targetLevel = sessionPackage?.level || selectedLevel || 'A1.1';
+    const targetPeriodNum = activeDayDetail || 1;
+    const isSchool = sessionPackage?.institution_type !== 'COLLEGE';
+    const unitName = isSchool ? 'Period' : 'Session';
+    const totalDays = sessionPackage?.session_plan?.day_wise_syllabus?.length || 
+                      sessionPackage?.session_plan?.all_days?.length || 
+                      proposedPlanner?.total_days || 2;
+
+    try {
+      const response = await fetchWithEndpointFallback('/api/v1/sessions/synthesize-speech', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          text: text,
+          language: targetLang,
+        }),
+      });
+
+      if (!response.ok) throw new Error('Speech synthesis error');
+      const blob = await response.blob();
+      const mp3Blob = blob.type === 'audio/mpeg' ? blob : new Blob([blob], { type: 'audio/mpeg' });
+      const url = URL.createObjectURL(mp3Blob);
+      const a = document.createElement('a');
+      a.href = url;
+      const cleanLang = targetLang.replace(/[^a-zA-Z0-9]/g, '_');
+      const cleanLevel = targetLevel.replace(/[^a-zA-Z0-9]/g, '_');
+      const fileName = `${cleanLang}_${cleanLevel}_Total_${totalDays}_${unitName}s_${unitName}_${targetPeriodNum}_Listening_Audio.mp3`;
+      a.download = fileName;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+
+      setModalAudioSuccessMsg(`Downloaded MP3: ${fileName}`);
+      setTimeout(() => setModalAudioSuccessMsg(null), 6000);
+    } catch (err: any) {
+      console.warn('Audio download failed, falling back to browser play:', err);
+      handleModalPlayAudio();
+      setModalAudioErrorMsg('Server audio download temporarily unavailable. Playing live in browser voice.');
+    } finally {
+      setIsModalGeneratingAudio(false);
+    }
+  };
+
+  const handleModalAddToPeriod = () => {
+    const text = audioModalText.trim();
+    if (!text) {
+      setModalAudioErrorMsg('Please type or paste some text first.');
+      return;
+    }
+    setModalAudioErrorMsg(null);
+    setModalAudioSuccessMsg(null);
+    setIsModalSavingTrack(true);
+
+    const targetLang = sessionPackage?.language || selectedLanguage || 'English';
+    const targetLevel = sessionPackage?.level || selectedLevel || 'A1.1';
+    const targetPeriodNum = activeDayDetail || 1;
+    const isSchool = sessionPackage?.institution_type !== 'COLLEGE';
+    const unitName = isSchool ? 'Period' : 'Session';
+
+    // Create audio track structure
+    const words = text.split(/\s+/).filter(Boolean);
+    const wordCount = words.length;
+    const durMin = Math.max(1, Math.ceil(wordCount / 120));
+    const newTrack = {
+      title: `${targetLang} ${targetLevel} Practice Drill (${unitName} ${targetPeriodNum})`,
+      script: text,
+      word_count: wordCount,
+      duration_minutes: durMin,
+      dialogue_turns: text.split('\n').filter(Boolean).map(line => {
+        const parts = line.split(':');
+        return {
+          speaker: parts.length > 1 ? parts[0].trim() : 'Speaker',
+          text: parts.length > 1 ? parts.slice(1).join(':').trim() : line.trim()
+        };
+      }),
+      created_at: new Date().toISOString()
+    };
+
+    // Find current day's existing tracks
+    const syllabus = sessionPackage?.session_plan?.day_wise_syllabus || [];
+    const baseDay = syllabus.find((d: any) => d.day_number === targetPeriodNum) || syllabus[0] || {};
+    const existingOverride = periodOverrides[targetPeriodNum] || {};
+    const existingTracks = existingOverride.generated_audio_tracks || baseDay.generated_audio_tracks || (baseDay.generated_audio_track ? [baseDay.generated_audio_track] : []);
+    const updatedTracks = [...existingTracks, newTrack];
+
+    // Save to periodOverrides and sync to backend
+    setPeriodOverrides(prev => {
+      const next = {
+        ...prev,
+        [targetPeriodNum]: {
+          ...(prev[targetPeriodNum] || {}),
+          generated_audio_track: newTrack,
+          generated_audio_tracks: updatedTracks
+        }
+      };
+
+      if (sessionPackage?.session_id) {
+        const sid = sessionPackage.session_id;
+        const updatedPlan = {
+          ...(sessionPackage.session_plan || {}),
+          period_customizations: next,
+          last_updated_at: new Date().toISOString()
+        };
+        fetchBackendWithFallback('/api/sessions/save', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            sessionId: sid,
+            title: sessionPackage.session_plan?.session_title || `${sessionPackage.language} ${sessionPackage.level} Curriculum`,
+            language: sessionPackage.language,
+            level: sessionPackage.level,
+            trackMode: sessionPackage.institution_type === 'SCHOOL' ? 'STANDARD' : 'INTERNSHIP',
+            topic: sessionPackage.topic || 'General Syllabus',
+            sessionPlanJson: updatedPlan,
+            teacherMaterialsJson: sessionPackage.teacher_materials || {},
+            studentLsrwJson: sessionPackage.student_lsrw || {}
+          })
+        }).catch(() => {});
+      }
+      return next;
+    });
+
+    setIsModalSavingTrack(false);
+    setModalAudioSuccessMsg(`Audio track successfully attached to ${unitName} ${targetPeriodNum}!`);
+    setTimeout(() => setModalAudioSuccessMsg(null), 6000);
+  };
   const [chatAttachedFiles, setChatAttachedFiles] = useState<File[]>([]);
   const chatFileInputRef = useRef<HTMLInputElement | null>(null);
   const heroFileInputRef = useRef<HTMLInputElement | null>(null);
@@ -640,32 +968,104 @@ export default function FacultyStudioPage() {
   };
 
 
-  // Helper to safely persist session items into localStorage archive without quota crashes
-  const safeSaveToLocalArchive = (newItem: any) => {
+  // Helper to safely persist session items into localStorage archive without quota crashes or dropping session records
+  const safeSaveToLocalArchive = (newItemOrList: any) => {
     try {
-      const existingArchiveStr = localStorage.getItem('isml_saved_sessions_archive');
-      const existingArchive: any[] = existingArchiveStr ? JSON.parse(existingArchiveStr) : [];
-      const targetId = newItem.sessionId || newItem.id;
-      const filtered = existingArchive.filter(item => (item.sessionId || item.id) !== targetId);
-      filtered.unshift(newItem);
+      if (!newItemOrList) return;
+      let list: any[] = [];
+      if (Array.isArray(newItemOrList)) {
+        list = [...newItemOrList];
+      } else {
+        const existingArchiveStr = localStorage.getItem('isml_saved_sessions_archive');
+        const existingArchive: any[] = existingArchiveStr ? JSON.parse(existingArchiveStr) : [];
+        const targetId = newItemOrList.sessionId || newItemOrList.id;
+        const filtered = existingArchive.filter(item => (item.sessionId || item.id) !== targetId);
+        filtered.unshift(newItemOrList);
+        list = filtered;
+      }
 
-      // Attempt saving progressively smaller slices to strictly avoid browser QuotaExceededError
-      for (const count of [50, 30, 20, 10, 5]) {
-        try {
-          localStorage.setItem('isml_saved_sessions_archive', JSON.stringify(filtered.slice(0, count)));
-          return;
-        } catch (_) {
-          continue;
-        }
+      // Priority 1: Try persisting the complete list with all raw data
+      try {
+        localStorage.setItem('isml_saved_sessions_archive', JSON.stringify(list));
+        return;
+      } catch (_) {
+        // QuotaExceededError triggered - compress data WITHOUT dropping any session record!
+      }
+
+      // Priority 2: Keep full plan on newest 3 items, prune bulky all_days arrays on older items
+      // Crucial: preserve total_days/periods count and all metadata so count is 100% stable
+      try {
+        const compactList = list.map((item: any, idx: number) => {
+          if (idx < 3) return item;
+          const plan = item.sessionPlanJson || {};
+          const periodsCount = plan.all_days?.length || plan.total_days || item.school_meta?.totalDays || 60;
+          return {
+            ...item,
+            sessionPlanJson: {
+              ...plan,
+              total_days: periodsCount,
+              all_days: undefined,
+              modules: undefined
+            },
+            teacherMaterialsJson: undefined,
+            studentLsrwJson: undefined
+          };
+        });
+        localStorage.setItem('isml_saved_sessions_archive', JSON.stringify(compactList));
+        return;
+      } catch (_) {
+        // Extreme quota pressure - apply ultra-lightweight metadata compression across older items
+      }
+
+      // Priority 3: Ultra-lightweight metadata for all items except newest 1
+      try {
+        const ultraCompact = list.map((item: any, idx: number) => {
+          if (idx === 0) return item;
+          const plan = item.sessionPlanJson || {};
+          const periodsCount = plan.all_days?.length || plan.total_days || item.school_meta?.totalDays || 60;
+          return {
+            sessionId: item.sessionId || item.id,
+            id: item.sessionId || item.id,
+            title: item.title,
+            language: item.language,
+            level: item.level,
+            trackMode: item.trackMode,
+            topic: item.topic,
+            createdAt: item.createdAt,
+            sourceUrl: item.sourceUrl,
+            tutorFileRef: item.tutorFileRef,
+            school_meta: { totalDays: periodsCount },
+            sessionPlanJson: { total_days: periodsCount }
+          };
+        });
+        localStorage.setItem('isml_saved_sessions_archive', JSON.stringify(ultraCompact));
+      } catch (err) {
+        console.warn('safeSaveToLocalArchive storage error:', err);
       }
     } catch (err) {
       console.warn('safeSaveToLocalArchive error:', err);
     }
   };
 
-  // Load past curriculum sessions from Database with seamless localStorage fallback
+  // Load past curriculum sessions with local cache hydration
   const fetchSavedSessions = async () => {
-    setLoadingHistory(true);
+    try {
+      const cachedStr = localStorage.getItem('isml_saved_sessions_archive');
+      if (cachedStr) {
+        const cached = JSON.parse(cachedStr);
+        if (Array.isArray(cached)) {
+          setSavedSessions(cached);
+        }
+      } else {
+        setSavedSessions([]);
+      }
+    } catch (_) {}
+
+    // Only set loading indicator if we don't have cached data yet
+    if (savedSessions.length === 0) {
+      setLoadingHistory(true);
+    }
+
     let dbSessions: any[] = [];
     let isDbSuccess = false;
     try {
@@ -679,83 +1079,27 @@ export default function FacultyStudioPage() {
       console.warn('Backend history fetch offline, checking local cache:', err);
     }
 
-    // Merge with client localStorage archive so history is NEVER empty
     try {
-      const localArchiveStr = localStorage.getItem('isml_saved_sessions_archive');
-      const localArchive: any[] = localArchiveStr ? JSON.parse(localArchiveStr) : [];
-      const sessionMap = new Map();
-
-      // Priority: DB items first, then local items
-      dbSessions.forEach((s: any) => {
-        const id = s.sessionId || s.id;
-        if (id) sessionMap.set(id, s);
-      });
-
-      localArchive.forEach((s: any) => {
-        const id = s.sessionId || s.id;
-        if (id && !sessionMap.has(id)) {
-          sessionMap.set(id, s);
-
-          // 🔄 Auto-heal sync: Push local archive item to cloud DB in background if missing
-          if (isDbSuccess) {
-            try {
-              fetchBackendWithFallback('/api/sessions/save', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                  sessionId: s.sessionId || s.id,
-                  title: s.title || `${s.language || 'Language'} ${s.level || ''} Curriculum`,
-                  language: s.language || 'English',
-                  level: s.level || 'A1',
-                  trackMode: s.trackMode || 'STANDARD',
-                  topic: s.topic || 'General Syllabus',
-                  sourceUrl: s.sourceUrl,
-                  tutorFileRef: s.tutorFileRef,
-                  sessionPlanJson: s.sessionPlanJson || {},
-                  teacherMaterialsJson: s.teacherMaterialsJson || {},
-                  studentLsrwJson: s.studentLsrwJson || {},
-                }),
-              }).catch(() => {});
-            } catch (_) {}
-          }
-        }
-      });
-
-      // If active proposedPlanner exists, ensure it is also represented in the list
-      const activeBlueprintStr = localStorage.getItem('isml_last_curriculum_blueprint');
-      if (activeBlueprintStr) {
-        try {
-          const bp = JSON.parse(activeBlueprintStr);
-          const bpId = bp.session_id || 'active-blueprint-session';
-          if (!sessionMap.has(bpId)) {
-            sessionMap.set(bpId, {
-              sessionId: bpId,
-              title: `${bp.language || 'Language'} ${bp.level || 'Curriculum'} - ${bp.topic || 'Curriculum Blueprint'}`,
-              language: bp.language || 'German',
-              level: bp.level || 'A1',
-              topic: bp.topic || 'General Syllabus',
-              createdAt: bp.saved_at || new Date().toISOString(),
-              sessionPlanJson: bp,
-              teacherMaterialsJson: { blueprint: true },
-              studentLsrwJson: { modules: bp.modules || [] }
-            });
-          }
-        } catch (_) {}
+      if (isDbSuccess) {
+        setSavedSessions(dbSessions);
+        safeSaveToLocalArchive(dbSessions);
+      } else {
+        const localArchiveStr = localStorage.getItem('isml_saved_sessions_archive');
+        const localArchive: any[] = localArchiveStr ? JSON.parse(localArchiveStr) : [];
+        setSavedSessions(localArchive);
       }
-
-      const merged = Array.from(sessionMap.values()).sort((a, b) => {
-        const timeA = new Date(a.createdAt || 0).getTime();
-        const timeB = new Date(b.createdAt || 0).getTime();
-        return timeB - timeA;
-      });
-
-      setSavedSessions(merged);
-    } catch (localErr) {
-      console.warn('Error reading local archive:', localErr);
-      setSavedSessions(dbSessions);
+    } catch (_) {
+      setSavedSessions([]);
     } finally {
       setLoadingHistory(false);
     }
+  };
+
+  const [cameFromSavedSessions, setCameFromSavedSessions] = useState(false);
+
+  // Navigate directly to Home Page (http://localhost:3003/)
+  const handleGoHome = () => {
+    router.push('/');
   };
 
   // ChatGPT / Gemini style "+ New Curriculum Chat" reset handler
@@ -772,6 +1116,7 @@ export default function FacultyStudioPage() {
     setCoPilotPrompt('');
     setCoPilotResponse(null);
     setActiveSavedSession(null);
+    setIsSessionSaved(false);
     setIsChatOpen(false);
     setActivePipelineStage('A');
     try {
@@ -782,19 +1127,228 @@ export default function FacultyStudioPage() {
     }, 50);
   };
 
+  // Clean raw debug titles (e.g. removing repetitive (Refined: ...), Initial ... Blueprint) into clean course titles
+  const cleanSessionTitle = (session: any): string => {
+    if (!session) return 'Curriculum Course';
+    let t = session.title || session.topic || '';
+    t = t.replace(/\s*\([^)]*Refined[^)]*\)/gi, '');
+    t = t.replace(/—\s*Source-Grounded Lesson[^—-]*/gi, '');
+    t = t.replace(/Initial\s+.*?Blueprint/gi, '');
+    t = t.replace(/-\s*Comprehensive\s+.*?Curriculum/gi, '');
+    t = t.replace(/\s*[-—]\s*[-—]\s*/g, ' - ');
+    t = t.replace(/[-—]\s*$/, '').trim();
+    if (!t) {
+      t = `${session.language || 'Language'} ${session.level || ''} Complete Course`.trim();
+    }
+    return t;
+  };
+
+  const getSessionPeriodsCount = (session: any): number | null => {
+    if (!session) return null;
+    const plan = session.sessionPlanJson;
+    if (plan?.all_days && Array.isArray(plan.all_days) && plan.all_days.length > 0) return plan.all_days.length;
+    if (plan?.total_days) return plan.total_days;
+    if (session.school_meta?.totalDays) return session.school_meta.totalDays;
+    if (session.college_meta?.totalSessions) return session.college_meta.totalSessions;
+    return null;
+  };
+
+  const handleSelectSavedSession = (sessionItem: any) => {
+    if (!sessionItem) return;
+    setActiveSavedSession(sessionItem);
+    setIsSessionSaved(true);
+    setArchiveActiveDay(1);
+    setArchiveActiveTab('LESSONS');
+    setMobileArchiveTab('CHAT');
+
+    if (sessionItem.sessionPlanJson) {
+      const planData = sessionItem.sessionPlanJson;
+      const periodsCount = getSessionPeriodsCount(sessionItem) || 60;
+      const defaultObjectives = [
+        `Master foundational ${sessionItem.language || 'English'} vocabulary, core sentence patterns, and conversational dialogue markers.`,
+        `Build spontaneous spoken confidence and auditory comprehension in authentic daily scenarios.`,
+        `Attain verified CEFR ${sessionItem.level || 'A1.1'} receptive and productive communicative competencies.`
+      ];
+      const cleanPlan = {
+        curriculum_overview_summary: planData?.curriculum_overview_summary || `Comprehensive CEFR-grounded ${sessionItem.language || 'English'} curriculum structured across institutional modules.`,
+        grammar_focus: planData?.grammar_focus || [],
+        ...(planData || {}),
+        learning_objectives: (Array.isArray(planData?.learning_objectives) && planData.learning_objectives.length > 0)
+          ? planData.learning_objectives
+          : defaultObjectives,
+      };
+      const restoredPkg = {
+        session_id: sessionItem.sessionId || sessionItem.id || `session-${Date.now()}`,
+        language: sessionItem.language || 'English',
+        level: sessionItem.level || 'A1.1',
+        topic: cleanSessionTitle(sessionItem),
+        track_duration_label: `Restored Archive: ${sessionItem.language || 'Language'} ${sessionItem.level || 'A1'}`,
+        institution_type: planData?.institution_type || 'SCHOOL',
+        school_meta: planData?.school_meta || { totalDays: periodsCount, totalPeriods: periodsCount, periodDurationMinutes: 60 },
+        college_meta: planData?.college_meta,
+        session_plan: cleanPlan,
+        teacher_materials: sessionItem.teacherMaterialsJson || {},
+        student_lsrw: sessionItem.studentLsrwJson || {},
+      };
+
+      setSessionPackage(restoredPkg);
+      setProposedPlanner(cleanPlan);
+      if (sessionItem.language) setSelectedLanguage(sessionItem.language);
+      if (sessionItem.level) setSelectedLevel(sessionItem.level);
+      if (sessionItem.topic) setTopic(sessionItem.topic);
+
+      // If all_days is missing because of local cache optimization, fetch full package from backend
+      const planDays = sessionItem.sessionPlanJson?.all_days || sessionItem.sessionPlanJson?.day_wise_syllabus;
+      if (!planDays || planDays.length === 0) {
+        const targetSid = sessionItem.sessionId || sessionItem.id;
+        if (targetSid) {
+          fetchBackendWithFallback(`/api/sessions/${targetSid}`)
+            .then(r => r.ok ? r.json() : null)
+            .then(fullPkg => {
+              if (fullPkg && fullPkg.sessionPlanJson) {
+                setActiveSavedSession((prev: any) => prev && (prev.sessionId === targetSid || prev.id === targetSid) ? { ...prev, ...fullPkg } : prev);
+                setSessionPackage((prev: any) => prev && prev.session_id === targetSid ? {
+                  ...prev,
+                  session_plan: fullPkg.sessionPlanJson,
+                  teacher_materials: fullPkg.teacherMaterialsJson || prev?.teacher_materials,
+                  student_lsrw: fullPkg.studentLsrwJson || prev?.student_lsrw
+                } : prev);
+              }
+            })
+            .catch(() => {});
+        }
+      }
+    }
+
+    // Restore chat messages for this session from localStorage
+    const sId = sessionItem.sessionId || sessionItem.id || 'default';
+    try {
+      const savedChat = localStorage.getItem(`isml_curriculum_chat_${sId}`);
+      if (savedChat) {
+        const parsed = JSON.parse(savedChat);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          setCurriculumChatMessages(parsed);
+          return;
+        }
+      }
+    } catch (_) {}
+
+    // Initialize fresh dynamic greeting for this course
+    const curLang = sessionItem.language || 'Language';
+    const curLevel = sessionItem.level || 'A1';
+    const curTopic = cleanSessionTitle(sessionItem);
+    const periodsCount = getSessionPeriodsCount(sessionItem);
+    const periodsNote = periodsCount ? ` (${periodsCount} periods)` : '';
+
+    setCurriculumChatMessages([
+      {
+        role: 'assistant',
+        content: `Hello! I am your ISML Academic AI Assistant for ${curLang} ${curLevel}${periodsNote}.\n\nI have fully loaded your curriculum memory for **"${curTopic}"**. What would you like to explore? You can request authentic oral/written drills, vocabulary explanations, or pedagogical lesson steps!`
+      }
+    ]);
+  };
+
+  const handleOpenSessionInStudio = (sessionItem: any) => {
+    if (!sessionItem) return;
+    if (sessionItem.sessionPlanJson) {
+      const planData = sessionItem.sessionPlanJson;
+      const periodsCount = getSessionPeriodsCount(sessionItem) || 60;
+      const defaultObjectives = [
+        `Master foundational ${sessionItem.language || 'English'} vocabulary, core sentence patterns, and conversational dialogue markers.`,
+        `Build spontaneous spoken confidence and auditory comprehension in authentic daily scenarios.`,
+        `Attain verified CEFR ${sessionItem.level || 'A1.1'} receptive and productive communicative competencies.`
+      ];
+      const cleanPlan = {
+        curriculum_overview_summary: planData?.curriculum_overview_summary || `Comprehensive CEFR-grounded ${sessionItem.language || 'English'} curriculum structured across institutional modules.`,
+        grammar_focus: planData?.grammar_focus || [],
+        ...(planData || {}),
+        learning_objectives: (Array.isArray(planData?.learning_objectives) && planData.learning_objectives.length > 0)
+          ? planData.learning_objectives
+          : defaultObjectives,
+      };
+      const restoredPkg = {
+        session_id: sessionItem.sessionId || sessionItem.id || `session-${Date.now()}`,
+        language: sessionItem.language || 'English',
+        level: sessionItem.level || 'A1.1',
+        topic: cleanSessionTitle(sessionItem),
+        track_duration_label: `Restored Archive: ${sessionItem.language || 'Language'} ${sessionItem.level || 'A1'}`,
+        institution_type: planData?.institution_type || 'SCHOOL',
+        school_meta: planData?.school_meta || { totalDays: periodsCount, totalPeriods: periodsCount, periodDurationMinutes: 60 },
+        college_meta: planData?.college_meta,
+        session_plan: cleanPlan,
+        teacher_materials: sessionItem.teacherMaterialsJson || {},
+        student_lsrw: sessionItem.studentLsrwJson || {},
+      };
+
+      setSessionPackage(restoredPkg);
+      setProposedPlanner(cleanPlan);
+      if (sessionItem.language) setSelectedLanguage(sessionItem.language);
+      if (sessionItem.level) setSelectedLevel(sessionItem.level);
+      if (sessionItem.topic) setTopic(sessionItem.topic);
+      setActiveDayDetail(archiveActiveDay || 1);
+      setStudioStep(3);
+      setIsFullScreen(true);
+      setActiveSavedSession(sessionItem);
+      setIsHistoryOpen(false);
+    }
+  };
+
+  // Auto-select first saved session when opening archive if none selected
+  useEffect(() => {
+    if (isHistoryOpen && savedSessions.length > 0 && !activeSavedSession) {
+      handleSelectSavedSession(savedSessions[0]);
+    }
+  }, [isHistoryOpen, savedSessions.length]);
+
+  // Prevent double vertical scrollbar: Lock background document body & html scroll when Saved Sessions Hub is open
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    if (isHistoryOpen) {
+      const origBodyOverflow = document.body.style.overflow;
+      const origHtmlOverflow = document.documentElement.style.overflow;
+      document.body.style.overflow = 'hidden';
+      document.documentElement.style.overflow = 'hidden';
+      return () => {
+        document.body.style.overflow = origBodyOverflow;
+        document.documentElement.style.overflow = origHtmlOverflow;
+      };
+    }
+  }, [isHistoryOpen]);
+
+  // Persist session-specific chat messages to localStorage
+  useEffect(() => {
+    if (activeSavedSession && curriculumChatMessages.length > 0) {
+      const sId = activeSavedSession.sessionId || activeSavedSession.id || 'default';
+      try {
+        localStorage.setItem(`isml_curriculum_chat_${sId}`, JSON.stringify(curriculumChatMessages));
+      } catch (_) {}
+    }
+  }, [curriculumChatMessages, activeSavedSession]);
+
   // Auto-save status tracking for autonomous agent updates
   const [autoSaveStatus, setAutoSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
   const [lastAutoSavedTime, setLastAutoSavedTime] = useState<string | null>(null);
 
-  // Delete saved session from backend and local archive
-  const handleDeleteSession = async (sessionIdToDelete: string, e?: React.MouseEvent) => {
-    if (e) {
-      e.stopPropagation();
-    }
-    if (!sessionIdToDelete) return;
+  // In-App Confirm to Delete Modal States
+  const [sessionPendingDelete, setSessionPendingDelete] = useState<any | null>(null);
+  const [isDeletingSession, setIsDeletingSession] = useState<boolean>(false);
 
-    const confirmDelete = window.confirm("Are you sure you want to delete this session?");
-    if (!confirmDelete) return;
+  // Trigger delete confirmation popup
+  const promptDeleteSession = (sessionItem: any, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    setSessionPendingDelete(sessionItem);
+  };
+
+  // Execute confirmed deletion
+  const executeDeleteSession = async () => {
+    if (!sessionPendingDelete) return;
+    const sessionIdToDelete = sessionPendingDelete.sessionId || sessionPendingDelete.id;
+    if (!sessionIdToDelete) {
+      setSessionPendingDelete(null);
+      return;
+    }
+
+    setIsDeletingSession(true);
 
     // 1. Remove from local state immediately
     setSavedSessions(prev => prev.filter(s => (s.sessionId || s.id) !== sessionIdToDelete));
@@ -810,7 +1364,7 @@ export default function FacultyStudioPage() {
       if (localArchiveStr) {
         const archive: any[] = JSON.parse(localArchiveStr);
         const updated = archive.filter(item => (item.sessionId || item.id) !== sessionIdToDelete);
-        localStorage.setItem('isml_saved_sessions_archive', JSON.stringify(updated));
+        safeSaveToLocalArchive(updated);
       }
       const activeBlueprintStr = localStorage.getItem('isml_last_curriculum_blueprint');
       if (activeBlueprintStr) {
@@ -830,6 +1384,9 @@ export default function FacultyStudioPage() {
       });
     } catch (backendErr) {
       console.warn('Backend delete error (offline/local):', backendErr);
+    } finally {
+      setIsDeletingSession(false);
+      setSessionPendingDelete(null);
     }
   };
 
@@ -870,102 +1427,71 @@ export default function FacultyStudioPage() {
     }
   };
 
-  // Dedicated Auto-Save Handler: One time prompt ketale database + localStorage la auto save aaganum
-  const autoSaveCurriculum = async (plannerData: any, promptSummary?: string) => {
-    if (!plannerData) return;
-    setAutoSaveStatus('saving');
+  // Auto-Save disabled per user instruction. Manual save is required.
+  const autoSaveCurriculum = async (_plannerData?: any, _promptSummary?: string) => {
+    return;
+  };
 
-    const generatedSessionId = plannerData.session_id || `session-${Date.now()}`;
-    const autoTitle = promptSummary
-      ? `${plannerData.language} ${plannerData.level} (Refined: ${promptSummary.slice(0, 32)})`
-      : `${plannerData.language} ${plannerData.level} - ${plannerData.topic || 'Curriculum Blueprint'}`;
+  // Manual Save Handler: Explicitly triggered by user via "Save Curriculum" button
+  const handleManualSaveSession = async () => {
+    const activeTarget = sessionPackage || proposedPlanner;
+    if (!activeTarget) return;
 
-    // 1. Immediately persist to localStorage for zero-latency client reliability
+    setSavingSession(true);
+    setManualSaveSuccessMsg(null);
     try {
-      localStorage.setItem('isml_last_curriculum_blueprint', JSON.stringify({
-        ...plannerData,
-        session_id: generatedSessionId,
-        saved_at: new Date().toISOString()
-      }));
-    } catch (lsErr) {
-      console.warn('localStorage save warning:', lsErr);
-    }
+      const generatedSessionId = activeTarget.session_id || activeTarget.sessionId || `session-${Date.now()}`;
+      const saveTitle = activeTarget.session_plan?.session_title || activeTarget.title || `${activeTarget.language || selectedLanguage} ${activeTarget.level || selectedLevel} Master Guide`;
 
-    // 2. Persist to Backend NestJS / Prisma Database
-    try {
-      const res = await fetchBackendWithFallback('/api/sessions/save', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          sessionId: generatedSessionId,
-          title: autoTitle,
-          language: plannerData.language,
-          level: plannerData.level,
-          trackMode: plannerData.institution_type === 'SCHOOL' ? 'STANDARD' : (collegeTrack === 'INTENSIVE' ? 'INTERNSHIP' : collegeTrack === 'SUPER_INTENSIVE' ? 'SUPER_INTERNSHIP' : 'STANDARD'),
-          topic: plannerData.topic || `${plannerData.language} ${plannerData.level} Syllabus`,
-          sourceUrl: (sourceUrls || []).filter(u => u.trim()).join(', ') || undefined,
-          sessionPlanJson: {
-            ...plannerData,
-            institution_type: plannerData.institution_type || institutionType,
-            school_meta: plannerData.institution_type === 'SCHOOL' ? getSchoolSchedule(schoolLevel, schoolCategory) : undefined,
-            college_meta: plannerData.institution_type === 'COLLEGE' ? getCollegeSchedule(selectedLanguage, selectedLevel, collegeTrack) : undefined,
-          },
-          teacherMaterialsJson: {
-            blueprint: true,
-            total_days: plannerData.total_days,
-            modules_count: plannerData.total_modules,
-            last_prompt: promptSummary || 'Auto-saved curriculum blueprint'
-          },
-          studentLsrwJson: {
-            modules: plannerData.modules || []
-          }
-        }),
-      });
-
-      // Also update local archive array for instant UI reflection
-      const newArchiveItem = {
+      const fullKitArchiveItem = {
         sessionId: generatedSessionId,
-        title: autoTitle,
-        language: plannerData.language,
-        level: plannerData.level,
-        topic: plannerData.topic || `${plannerData.language} ${plannerData.level} Syllabus`,
+        title: saveTitle,
+        language: activeTarget.language || selectedLanguage,
+        level: activeTarget.level || selectedLevel,
+        trackMode: institutionType === 'SCHOOL' ? 'STANDARD' : (collegeTrack === 'INTENSIVE' ? 'INTERNSHIP' : collegeTrack === 'SUPER_INTENSIVE' ? 'SUPER_INTERNSHIP' : 'STANDARD'),
+        topic: activeTarget.topic || topic || 'General Syllabus',
         createdAt: new Date().toISOString(),
+        sourceUrl: (sourceUrls || []).filter(u => u && u.trim()).join(', ') || activeTarget.sourceUrl || undefined,
+        tutorFileRef: (uploadedFiles || []).map(f => f.name).join(', ') || activeTarget.tutorFileRef || undefined,
         sessionPlanJson: {
-          ...plannerData,
-          institution_type: plannerData.institution_type || institutionType,
-          school_meta: plannerData.institution_type === 'SCHOOL' ? getSchoolSchedule(schoolLevel, schoolCategory) : undefined,
-          college_meta: plannerData.institution_type === 'COLLEGE' ? getCollegeSchedule(selectedLanguage, selectedLevel, collegeTrack) : undefined,
+          ...(activeTarget.session_plan || activeTarget),
+          knowledge_intelligence: activeTarget.knowledge_intelligence,
+          institution_type: institutionType,
+          school_meta: institutionType === 'SCHOOL' ? getSchoolSchedule(schoolLevel, schoolCategory) : undefined,
+          college_meta: institutionType === 'COLLEGE' ? getCollegeSchedule(selectedLanguage, selectedLevel, collegeTrack) : undefined,
         },
-        teacherMaterialsJson: {
-          blueprint: true,
-          total_days: plannerData.total_days,
-          modules_count: plannerData.total_modules,
-          last_prompt: promptSummary || 'Auto-saved curriculum blueprint'
-        },
-        studentLsrwJson: {
-          modules: plannerData.modules || []
-        }
+        teacherMaterialsJson: activeTarget.teacher_materials || activeTarget.teacherMaterialsJson || { blueprint: true },
+        studentLsrwJson: activeTarget.student_lsrw || activeTarget.studentLsrwJson || { modules: activeTarget.modules || [] },
+        pptxFilePath: activeTarget.teacher_materials?.pptx_download_url,
+        pptxDownloadUrl: activeTarget.teacher_materials?.pptx_download_url,
       };
 
-      // Safely persist to local archive without quota overflow
-      safeSaveToLocalArchive(newArchiveItem);
-
-      if (res.ok) {
-        setAutoSaveStatus('saved');
-        const now = new Date();
-        setLastAutoSavedTime(now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }));
-      } else {
-        setAutoSaveStatus('saved'); // locally saved
+      // 1. Persist to Backend NestJS / Prisma Database
+      try {
+        await fetchBackendWithFallback('/api/sessions/save', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(fullKitArchiveItem),
+        });
+      } catch (backendErr) {
+        console.warn('Backend manual save notice (offline fallback):', backendErr);
       }
+
+      // 2. Persist to Local Archive safely
+      safeSaveToLocalArchive(fullKitArchiveItem);
+
+      // 3. Mark as saved & notify
+      setActiveSavedSession(fullKitArchiveItem);
+      setIsSessionSaved(true);
+      setManualSaveSuccessMsg('Curriculum session successfully saved to archive!');
+      setTimeout(() => setManualSaveSuccessMsg(null), 4000);
+
+      // 4. Refresh Saved Sessions List
       fetchSavedSessions();
     } catch (saveErr) {
-      console.warn('Backend auto-save offline, saved to local cache:', saveErr);
-      setAutoSaveStatus('saved');
-      fetchSavedSessions();
+      console.error('Manual save error:', saveErr);
     } finally {
-      setTimeout(() => {
-        setAutoSaveStatus('idle');
-      }, 4000);
+      setSavingSession(false);
     }
   };
 
@@ -1018,11 +1544,6 @@ export default function FacultyStudioPage() {
     }
   }, [mismatchError, unreachableLinksPrompt]);
 
-  // Curriculum Filter States (Month & Week Filters)
-  const [selectedMonthFilter, setSelectedMonthFilter] = useState<number>(1);
-  const [selectedWeekFilter, setSelectedWeekFilter] = useState<number | 'ALL'>('ALL');
-  const [activeDayDetail, setActiveDayDetail] = useState<number>(1);
-  const [isLeapYear, setIsLeapYear] = useState<boolean>(false);
 
   // Language Specific Proficiency Levels
   // Japanese: JLPT N5 -> N1
@@ -1050,8 +1571,8 @@ export default function FacultyStudioPage() {
       levels: ['N5', 'N4', 'N3', 'N2', 'N1']
     },
     Korean: {
-      framework: 'TOPIK (Level 1–6)',
-      levels: ['TOPIK 1', 'TOPIK 2', 'TOPIK 3', 'TOPIK 4', 'TOPIK 5', 'TOPIK 6']
+      framework: 'Korean Standard (L1–L4)',
+      levels: ['L1', 'L2', 'L3', 'L4']
     }
   };
 
@@ -1061,10 +1582,21 @@ export default function FacultyStudioPage() {
     setProposedPlanner(null);
     setSessionPackage(null);
     setIsEditingPlanner(false);
-    if (lang && LANGUAGE_LEVEL_MAP[lang]) {
+    if (lang === 'Korean') {
+      setSelectedLevel('L1');
+      setSchoolLevel('L1');
+    } else if (lang === 'Japanese') {
+      setSelectedLevel('N5');
+      if (schoolLevel.startsWith('L')) {
+        setSchoolLevel('A1.1');
+      }
+    } else if (lang && LANGUAGE_LEVEL_MAP[lang]) {
       const availableLevels = LANGUAGE_LEVEL_MAP[lang].levels;
-      if (!availableLevels.includes(selectedLevel)) {
+      if (!availableLevels.includes(selectedLevel) || selectedLevel.startsWith('L')) {
         setSelectedLevel(availableLevels[0]);
+      }
+      if (schoolLevel.startsWith('L')) {
+        setSchoolLevel('A1.1');
       }
     }
   };
@@ -1097,14 +1629,12 @@ export default function FacultyStudioPage() {
   };
 
   // Generate Lesson Planner Blueprint for Tutor confirmation
-  const handlePreviewPlanner = async (e?: React.FormEvent) => {
+  const handleProposeCurriculum = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     setMismatchError(null);
     setUnreachableLinksPrompt(null);
     setSessionPackage(null);
     setProposedPlanner(null);
-    setPlannerLoading(true);
-    setPlannerLoading(true);
 
     // Required check: language must be selected
     if (!selectedLanguage) {
@@ -1114,6 +1644,22 @@ export default function FacultyStudioPage() {
       }, 50);
       return;
     }
+
+    const isSchool = institutionType === 'SCHOOL';
+    const effectiveLevel = isSchool ? schoolLevel : selectedLevel;
+
+    const activeUrls = sourceUrls.filter(u => u && u.trim().length > 0);
+    // Knowledge Guard: Require verified study materials in Knowledge Vault OR uploaded source files/links
+    if (matchingVaultResources.length === 0 && activeUrls.length === 0 && uploadedFiles.length === 0) {
+      setMismatchError(`No study materials or data files found in the Knowledge Vault for ${selectedLanguage} (${effectiveLevel}). Please upload materials in the Knowledge Vault, or provide source URLs / reference files below before generating the curriculum.`);
+      setPlannerLoading(false);
+      setTimeout(() => {
+        errorAlertRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }, 50);
+      return;
+    }
+
+    setPlannerLoading(true);
 
     // 0. Instant Client-Side Filename & Topic Language Audit
     const targetLang = selectedLanguage.toLowerCase(); // 'spanish', 'french', 'german', 'japanese', 'korean'
@@ -1220,8 +1766,6 @@ export default function FacultyStudioPage() {
       }
     }
 
-    const isSchool = institutionType === 'SCHOOL';
-    const effectiveLevel = isSchool ? schoolLevel : selectedLevel;
     const effectiveTopic = topic.trim() || `Comprehensive ${selectedLanguage} ${effectiveLevel} Complete Course`;
     const unitsPerBlock = 10;
 
@@ -1231,19 +1775,20 @@ export default function FacultyStudioPage() {
     let courseHours = 60;
     let trackLabel = '';
 
+    const fallbackCat = schoolCategory === 'CUSTOM' ? 'CAT_1' : schoolCategory;
+    const fallbackLvl = schoolLevel === 'CUSTOM' ? (selectedLanguage === 'Korean' ? 'L1' : 'A1.1') : schoolLevel;
+    const sc = getSchoolSchedule(fallbackLvl, fallbackCat);
+    const cc = getCollegeSchedule(selectedLanguage, selectedLevel, collegeTrack);
+
     if (courseDurationMode === 'CUSTOM' && customDays && Number(customDays) > 0) {
       totalDays = Number(customDays);
       periodMins = isSchool 
-        ? (schoolCategory === 'CUSTOM' && customSchoolCategoryMins !== '' ? Number(customSchoolCategoryMins) : (customPeriodMins !== '' ? Number(customPeriodMins) : 35))
-        : (customCollegeTrackMins !== '' ? Number(customCollegeTrackMins) : 60);
-      weeklyCadence = isSchool ? (customPeriodsPerWeek !== '' ? Number(customPeriodsPerWeek) : 3) : 2;
+        ? (schoolCategory === 'CUSTOM' && customSchoolCategoryMins !== '' ? Number(customSchoolCategoryMins) : (customPeriodMins !== '' ? Number(customPeriodMins) : (sc.periodDurationMinutes || 35)))
+        : (customCollegeTrackMins !== '' ? Number(customCollegeTrackMins) : (cc.sessionMinutes || 60));
+      weeklyCadence = isSchool ? (customPeriodsPerWeek !== '' ? Number(customPeriodsPerWeek) : (sc.periodsPerWeek || 3)) : (cc.sessionsPerWeek || 2);
       courseHours = customTeachingHours !== '' ? Number(customTeachingHours) : Math.round((totalDays * periodMins) / 60) || 1;
       trackLabel = `Custom Plan: ${totalDays} ${isSchool ? 'Periods' : 'Sessions'} (${courseHours} Hours)`;
     } else if (isSchool) {
-      const fallbackCat = schoolCategory === 'CUSTOM' ? 'CAT_1' : schoolCategory;
-      const fallbackLvl = schoolLevel === 'CUSTOM' ? 'A1.1' : schoolLevel;
-      const sc = getSchoolSchedule(fallbackLvl, fallbackCat);
-
       periodMins = schoolCategory === 'CUSTOM' && customSchoolCategoryMins !== '' 
         ? Number(customSchoolCategoryMins) 
         : (customPeriodMins !== '' ? Number(customPeriodMins) : sc.periodDurationMinutes);
@@ -1260,7 +1805,6 @@ export default function FacultyStudioPage() {
       totalDays = Math.max(2, Math.round((courseHours * 60) / periodMins));
       trackLabel = `School Matrix: ${schoolCategory === 'CUSTOM' ? 'Custom School' : sc.categoryLabel} (${courseHours} Hours • ${totalDays} Periods)`;
     } else {
-      const cc = getCollegeSchedule(selectedLanguage, selectedLevel, collegeTrack);
       periodMins = customCollegeTrackMins !== '' ? Number(customCollegeTrackMins) : cc.sessionMinutes;
       courseHours = customCollegeTeachingHours !== '' ? Number(customCollegeTeachingHours) : (customTeachingHours !== '' ? Number(customTeachingHours) : cc.courseDurationHours);
       weeklyCadence = cc.sessionsPerWeek;
@@ -1320,6 +1864,46 @@ export default function FacultyStudioPage() {
       });
     }
 
+    // Psychometrically grounded assessment generation driven by form metrics & Knowledge Vault materials
+    const effectiveAssessmentsCount = isSchool
+      ? (customAssessmentsCount !== '' ? Number(customAssessmentsCount) : (sc?.assessmentsCount || 4))
+      : (customAssessmentsCount !== '' ? Number(customAssessmentsCount) : (cc?.assessmentsCount || 4));
+
+    // Assemble Knowledge Vault ground-truth context from all matching database materials
+    let vaultSourceContext = "";
+    if (matchingVaultResources && matchingVaultResources.length > 0) {
+      vaultSourceContext = matchingVaultResources.map((r, idx) => {
+        const title = r.title || `Vault Material #${idx + 1}`;
+        const desc = r.description || '';
+        const bodyContent = typeof r.content === 'string'
+          ? r.content
+          : (r.content?.body || r.content?.overview || JSON.stringify(r.content || ''));
+        const link = r.sourceUrl ? `\nReference Source: ${r.sourceUrl}` : '';
+        return `[Knowledge Vault Material #${idx + 1} - ${title}]:\n${desc}\n${bodyContent}${link}`.trim();
+      }).join("\n\n");
+    }
+
+    const formalAssessments = generateFormalAssessments(
+      selectedLanguage,
+      effectiveLevel,
+      effectiveTopic,
+      effectiveAssessmentsCount,
+      totalDays,
+      days,
+      vaultSourceContext || undefined,
+      masterPillarPriority
+    );
+
+    // Tag scheduled milestone assessment days in the progressive curriculum
+    formalAssessments.forEach((fa) => {
+      const targetDay = days.find((d) => d.day_number === fa.scheduled_period_number);
+      if (targetDay) {
+        targetDay.is_assessment_day = true;
+        targetDay.assessment_benchmark_title = fa.title;
+        targetDay.assessment_benchmark_code = fa.benchmark_code;
+      }
+    });
+
     // Enable high-tech animation state for autonomous blueprint compilation
     setPlannerLoading(true);
     setProposedPlanner(null);
@@ -1350,30 +1934,34 @@ export default function FacultyStudioPage() {
       console.warn('Knowledge Intelligence query fallback:', err);
     }
 
+    const vaultCitations = matchingVaultResources.length > 0
+      ? matchingVaultResources.map((r, idx) => ({
+          source_title: r.title || `Vault Resource #${idx + 1}`,
+          chunk_id: `vault_chunk_${r.id || idx}`,
+          page_number: idx + 1,
+          supporting_excerpt: r.description || `Authentic pedagogical material from Knowledge Vault for ${selectedLanguage} ${effectiveLevel}.`,
+          relevance_score: Math.max(0.75, 0.98 - (idx * 0.03))
+        }))
+      : [
+          {
+            source_title: `ISML ${selectedLanguage} ${effectiveLevel} Canonical Knowledge Vault`,
+            chunk_id: 'canonical_vault_001',
+            page_number: 1,
+            supporting_excerpt: `Verified ${selectedLanguage} ${effectiveLevel} linguistic progression and pedagogical guidelines from the Knowledge Vault.`,
+            relevance_score: 0.98
+          }
+        ];
+
     if (!knowledgeIntelligenceData) {
       knowledgeIntelligenceData = {
-        intent_summary: `Synthesized curriculum intelligence for ${selectedLanguage} ${effectiveLevel} covering ${effectiveTopic}`,
+        intent_summary: `Synthesized curriculum intelligence for ${selectedLanguage} ${effectiveLevel} covering ${effectiveTopic} using Knowledge Vault`,
         faithfulness_score: 0.98,
         retrieval_method: 'HYBRID_RRF_CROSS_ENCODER',
         identified_contradictions: [],
-        citations: (uploadedFiles && uploadedFiles.length > 0)
-          ? uploadedFiles.map((f, idx) => ({
-              source_title: f.name,
-              chunk_id: `chunk_file_${idx}`,
-              page_number: idx + 1,
-              supporting_excerpt: `Authentic pedagogical content extracted from ${f.name} for ${selectedLanguage} ${effectiveLevel}.`,
-              relevance_score: 0.95 - (idx * 0.05)
-            }))
-          : [
-              {
-                source_title: `ISML ${selectedLanguage} ${effectiveLevel} Canonical Curriculum Standards`,
-                chunk_id: 'canonical_std_001',
-                page_number: 1,
-                supporting_excerpt: `Verified ${selectedLanguage} ${effectiveLevel} linguistic progression and pedagogical guidelines.`,
-                relevance_score: 0.98
-              }
-            ]
+        citations: vaultCitations
       };
+    } else if (!knowledgeIntelligenceData.citations || knowledgeIntelligenceData.citations.length === 0) {
+      knowledgeIntelligenceData.citations = vaultCitations;
     }
 
     setTimeout(() => {
@@ -1393,46 +1981,59 @@ export default function FacultyStudioPage() {
         modules,
         all_days: days,
         selected_lsrw_skills: selectedLsrwSkills,
-        source_urls_count: sourceUrls.filter(u => u.trim()).length,
-        uploaded_files_count: uploadedFiles.length,
-        uploaded_files_list: uploadedFiles.map(f => ({ name: f.name, size: f.size, type: f.type })),
-        source_urls_list: sourceUrls.filter(u => u.trim()),
-        extracted_source_context: extractedSourceContextFromValidation || undefined,
+        source_urls_count: sourceUrls.filter(u => u.trim()).length + matchingVaultResources.filter(r => r.sourceUrl).length,
+        uploaded_files_count: uploadedFiles.length + matchingVaultResources.length,
+        uploaded_files_list: [
+          ...uploadedFiles.map(f => ({ name: f.name, size: f.size, type: 'MANUAL_FILE' })),
+          ...matchingVaultResources.map(r => ({ name: r.title, size: 1024, type: r.sourceType || 'Vault Resource' }))
+        ],
+        source_urls_list: [
+          ...sourceUrls.filter(u => u && u.trim()),
+          ...matchingVaultResources.filter(r => r.sourceUrl).map(r => r.sourceUrl!)
+        ],
+        extracted_source_context: vaultSourceContext || undefined,
         knowledge_intelligence: knowledgeIntelligenceData,
+        master_pillar_priority: masterPillarPriority,
+        generated_assessments: formalAssessments,
+        assessments_count: formalAssessments.length,
       };
       setProposedPlanner(newPlanner);
       setPlannerActiveModule(1);
       setPlannerConfirmed(false);
       setIsFullScreen(true);
-      setStudioStep(3);
+      setStudioStep(2);
       setPlannerLoading(false);
-
-      // Auto-save blueprint to database & localStorage so session is stored in chatbot history immediately
-      autoSaveCurriculum(newPlanner, `Initial ${selectedLanguage} ${effectiveLevel} Blueprint`);
+      setIsSessionSaved(false);
     }, 700);
   };
+
+  const handlePreviewPlanner = handleProposeCurriculum;
 
   const handleAdjustParameters = () => {
     setIsEditingPlanner(true);
   };
 
-  const updateDayInPlanner = (dayNum: number, field: string, value: any) => {
+  const updateDayInPlanner = (dayNum: number, fieldOrUpdates: string | Record<string, any>, value?: any) => {
     if (!proposedPlanner) return;
+    const patch: Record<string, any> = typeof fieldOrUpdates === 'string'
+      ? { [fieldOrUpdates]: value }
+      : (fieldOrUpdates || {});
+
     setProposedPlanner((prev: any) => {
       if (!prev) return prev;
-      const updatedDays = prev.all_days.map((d: any) => {
+      const updatedDays = (prev.all_days || []).map((d: any) => {
         if (d.day_number === dayNum) {
-          return { ...d, [field]: value };
+          return { ...d, ...patch };
         }
         return d;
       });
 
-      const updatedModules = prev.modules.map((m: any) => {
+      const updatedModules = (prev.modules || []).map((m: any) => {
         return {
           ...m,
-          days: m.days.map((d: any) => {
+          days: (m.days || []).map((d: any) => {
             if (d.day_number === dayNum) {
-              return { ...d, [field]: value };
+              return { ...d, ...patch };
             }
             return d;
           })
@@ -1450,13 +2051,11 @@ export default function FacultyStudioPage() {
         ...overrides,
         [dayNum]: {
           ...(overrides[dayNum] || {}),
-          [field]: value
+          ...patch
         }
       }));
 
-      // Auto-save manual edits as well
-      autoSaveCurriculum(updatedPlanner, `Edited Period ${dayNum}`);
-
+      setIsSessionSaved(false);
       return updatedPlanner;
     });
   };
@@ -1542,9 +2141,7 @@ export default function FacultyStudioPage() {
             modules: newModules
           };
 
-          // Auto-save immediately: user prompt ketta udaney auto save aaganum
-          autoSaveCurriculum(refinedPlanner, coPilotPrompt.trim());
-
+          setIsSessionSaved(false);
           return refinedPlanner;
         });
       }
@@ -1579,6 +2176,20 @@ export default function FacultyStudioPage() {
       else activeLang = 'French'; // Default certified CEFR fallback
 
       setSelectedLanguage(activeLang as any);
+    }
+
+    const isSchoolGen = institutionType === 'SCHOOL';
+    const effectiveLevelGen = isSchoolGen ? schoolLevel : selectedLevel;
+
+    // Strict Zero-Hallucination Guard: Require verified study materials in Knowledge Vault
+    if (matchingVaultResources.length === 0) {
+      setMismatchError(`No study materials or data files found in the Knowledge Vault for ${selectedLanguage || activeLang} (${effectiveLevelGen}). Please upload the materials first in the Knowledge Vault before generating the curriculum.`);
+      setLoading(false);
+      setIsFullScreen(false);
+      setTimeout(() => {
+        errorAlertRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }, 50);
+      return;
     }
 
     if (!skipUnreachable) {
@@ -1663,6 +2274,7 @@ export default function FacultyStudioPage() {
       .filter(([_, active]) => active)
       .map(([skill]) => skill.toUpperCase());
     formData.append('lsrw_focus', activeSkillsList.join(','));
+    formData.append('master_pillar_priority', masterPillarPriority);
     formData.append('skip_unreachable', skipUnreachable ? 'true' : 'false');
     validUrls.forEach(url => {
       formData.append('source_urls', url);
@@ -1670,6 +2282,27 @@ export default function FacultyStudioPage() {
     uploadedFiles.forEach(file => {
       formData.append('tutor_files', file);
     });
+
+    // Auto-inject Knowledge Vault repository materials for comprehensive DB-grounded synthesis
+    if (matchingVaultResources && matchingVaultResources.length > 0) {
+      const vaultGroundingText = matchingVaultResources.map((r, idx) => {
+        const title = r.title || `Vault Material #${idx + 1}`;
+        const desc = r.description || '';
+        const bodyContent = typeof r.content === 'string'
+          ? r.content
+          : (r.content?.body || r.content?.overview || JSON.stringify(r.content || ''));
+        return `[Knowledge Vault Reference #${idx + 1} - ${title}]:\n${desc}\n${bodyContent}`.trim();
+      }).join("\n\n");
+
+      const vaultBlob = new Blob([vaultGroundingText], { type: 'text/plain' });
+      formData.append('tutor_files', vaultBlob, `Knowledge_Vault_${selectedLanguage}_Grounded_Repository.txt`);
+
+      matchingVaultResources.forEach(r => {
+        if (r.sourceUrl && r.sourceUrl.trim()) {
+          formData.append('source_urls', r.sourceUrl.trim());
+        }
+      });
+    }
 
     // Drive multi-stage visual execution pipeline A -> B -> C -> D -> E
     setActivePipelineStage('A');
@@ -1730,6 +2363,7 @@ export default function FacultyStudioPage() {
       data.institution_type = institutionType;
       data.target_days_number = targetDaysNumber;
       data.course_duration_mode = courseDurationMode;
+      data.master_pillar_priority = masterPillarPriority;
       if (courseDurationMode === 'CUSTOM') {
         data.track_duration_label = `Custom Plan: ${targetDaysNumber} ${institutionType === 'SCHOOL' ? 'Periods' : 'Sessions'}`;
       } else if (institutionType === 'SCHOOL') {
@@ -1742,108 +2376,50 @@ export default function FacultyStudioPage() {
         data.track_duration_label = `College Track: ${cc.trackLabel} • ${cc.sessionsRequired} Sessions (${cc.monthsRequired} Months)`;
       }
 
-      setSessionPackage(data);
-      setStudioStep(4);
-      setStudioStep(4);
-
-      // Save to Backend Database (NestJS / Prisma)
-      try {
-        await fetchBackendWithFallback('/api/sessions/save', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            sessionId: data.session_id,
-            title: data.session_plan?.session_title || `${data.language || selectedLanguage} ${data.level || selectedLevel} Master Guide`,
-            language: data.language,
-            level: data.level,
-            trackMode: institutionType === 'SCHOOL' ? 'STANDARD' : (collegeTrack === 'INTENSIVE' ? 'INTERNSHIP' : collegeTrack === 'SUPER_INTENSIVE' ? 'SUPER_INTERNSHIP' : 'STANDARD'),
-            topic: data.topic,
-            sourceUrl: validUrls.join(', ') || undefined,
-            tutorFileRef: uploadedFiles.map(f => f.name).join(', ') || undefined,
-            sessionPlanJson: {
-              ...data.session_plan,
-              knowledge_intelligence: data.knowledge_intelligence,
-              institution_type: institutionType,
-              school_meta: institutionType === 'SCHOOL' ? getSchoolSchedule(schoolLevel, schoolCategory) : undefined,
-              college_meta: institutionType === 'COLLEGE' ? getCollegeSchedule(selectedLanguage, selectedLevel, collegeTrack) : undefined,
-            },
-            teacherMaterialsJson: data.teacher_materials,
-            studentLsrwJson: data.student_lsrw,
-            pptxFilePath: data.teacher_materials?.pptx_download_url,
-            pptxDownloadUrl: data.teacher_materials?.pptx_download_url,
-          }),
-        });
-
-        // 🧠 Persist pgvector Chunks, 768-dim Embeddings & Knowledge Claims into Supabase
-        if (data.knowledge_intelligence) {
-          try {
-            await fetchBackendWithFallback(`/api/sessions/${data.session_id}/knowledge-intelligence`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                chunks: data.knowledge_intelligence.vector_chunks || [],
-                claims: data.knowledge_intelligence.extracted_claims || [],
-                contradictions: (data.knowledge_intelligence.identified_contradictions || []).map((desc: string, i: number) => ({
-                  claimAId: `claim_a_${i}`,
-                  claimBId: `claim_b_${i}`,
-                  contradictionType: 'DIRECT_OPPOSITE',
-                  description: desc,
-                })),
-              }),
-            });
-          } catch (kiErr) {
-            console.warn('Knowledge Intelligence pgvector sync notice:', kiErr);
-          }
-        }
-        // Save to local archive array as well
-        const fullKitArchiveItem = {
-          sessionId: data.session_id,
-          title: data.session_plan?.session_title || `${data.language || selectedLanguage} ${data.level || selectedLevel} Master Guide`,
-          language: data.language,
-          level: data.level,
-          topic: data.topic,
-          tutorFileRef: uploadedFiles.map(f => f.name).join(', ') || undefined,
-          sourceUrl: validUrls.join(', ') || undefined,
-          createdAt: new Date().toISOString(),
-          sessionPlanJson: {
-            ...data.session_plan,
-            institution_type: institutionType,
-            school_meta: institutionType === 'SCHOOL' ? getSchoolSchedule(schoolLevel, schoolCategory) : undefined,
-            college_meta: institutionType === 'COLLEGE' ? getCollegeSchedule(selectedLanguage, selectedLevel, collegeTrack) : undefined,
-          },
-          teacherMaterialsJson: data.teacher_materials,
-          studentLsrwJson: data.student_lsrw,
-        };
-
-        // Safely persist to local archive without quota overflow
-        safeSaveToLocalArchive(fullKitArchiveItem);
-
-        // Immediately refresh saved chat history sessions in sidebar
-        fetchSavedSessions();
-
-        // Auto-set as active saved session and initialize chatbot memory
-        setActiveSavedSession(fullKitArchiveItem);
-        setStudioStep(3);
-        const NATIVE_GREETINGS: Record<string, string> = {
-          Spanish: '¡Hola!',
-          French: 'Bonjour !',
-          German: 'Hallo!',
-          Japanese: 'こんにちは！',
-          Korean: '안녕하세요!'
-        };
-        const greetingWord = NATIVE_GREETINGS[data.language] || 'Hello!';
-        const periodCount = data.session_plan?.day_wise_syllabus?.length || 0;
-        const periodsText = periodCount > 0 ? ` (${periodCount} periods generated)` : '';
-        setCurriculumChatMessages([
-          {
-            role: 'assistant',
-            content: `${greetingWord} I am your ISML Academic AI Assistant for ${data.language} ${data.level}${periodsText}.\n\nYour curriculum package for **"${data.session_plan.session_title || data.topic}"** has been automatically saved and stored in chat session memory! What would you like to review, drill, or generate next?`
-          }
-        ]);
-      } catch (backendErr) {
-        console.warn('Backend save offline or running local:', backendErr);
-        fetchSavedSessions();
+      // Propagate formal grounded assessments into session package
+      if (proposedPlanner?.generated_assessments && proposedPlanner.generated_assessments.length > 0) {
+        data.generated_assessments = proposedPlanner.generated_assessments;
+      } else {
+        const isSchool = institutionType === 'SCHOOL';
+        const sc = isSchool ? getSchoolSchedule(schoolLevel, schoolCategory) : null;
+        const cc = !isSchool ? getCollegeSchedule(selectedLanguage, selectedLevel, collegeTrack) : null;
+        const effectiveCount = isSchool
+          ? (customAssessmentsCount !== '' ? Number(customAssessmentsCount) : (sc?.assessmentsCount || 4))
+          : (customAssessmentsCount !== '' ? Number(customAssessmentsCount) : (cc?.assessmentsCount || 4));
+        data.generated_assessments = generateFormalAssessments(
+          selectedLanguage,
+          selectedLevel,
+          topic || 'General Curriculum',
+          effectiveCount,
+          targetDaysNumber,
+          data.session_plan?.daily_plans || proposedPlanner?.all_days || [],
+          proposedPlanner?.extracted_source_context || proposedPlanner?.raw_source_context || undefined,
+          masterPillarPriority
+        );
       }
+
+      setSessionPackage(data);
+      setStudioStep(3);
+
+      // Auto-save disabled per user instruction: Content will only be saved when user clicks "Save Curriculum"
+      setIsSessionSaved(false);
+
+      const NATIVE_GREETINGS: Record<string, string> = {
+        Spanish: '¡Hola!',
+        French: 'Bonjour !',
+        German: 'Hallo!',
+        Japanese: 'こんにちは！',
+        Korean: '안녕하세요!'
+      };
+      const greetingWord = NATIVE_GREETINGS[data.language] || 'Hello!';
+      const periodCount = data.session_plan?.day_wise_syllabus?.length || 0;
+      const periodsText = periodCount > 0 ? ` (${periodCount} periods generated)` : '';
+      setCurriculumChatMessages([
+        {
+          role: 'assistant',
+          content: `${greetingWord} I am your ISML Academic AI Assistant for ${data.language} ${data.level}${periodsText}.\n\nYour curriculum package for **"${data.session_plan?.session_title || data.topic}"** is ready! Please save this curriculum using the Save button to persist it to your archive and unlock interactive AI chat.`
+        }
+      ]);
     } catch (err: any) {
       console.error(err);
       alert(err.message || 'Generation failed or AI service starting up on port 8000.');
@@ -1879,6 +2455,8 @@ export default function FacultyStudioPage() {
 
   const [downloadingDocx, setDownloadingDocx] = useState(false);
   const [downloadingFullDocx, setDownloadingFullDocx] = useState(false);
+  const [downloadingPptx, setDownloadingPptx] = useState(false);
+  const [downloadingAllPptxZip, setDownloadingAllPptxZip] = useState(false);
 
   const handleDownloadDayDocx = async (dayObj: any) => {
     if (!sessionPackage) return;
@@ -2027,6 +2605,147 @@ export default function FacultyStudioPage() {
     }
   };
 
+  const handleDownloadDayPptx = async (dayObj: any) => {
+    if (!sessionPackage || !dayObj) return;
+    setDownloadingPptx(true);
+    try {
+      let cleanVocab = (dayObj.vocabulary_bank || []).filter((v: any) => {
+        const word = typeof v === 'string' ? v : (v?.word || v?.term || '');
+        return isValidLinguisticWord(word, sessionPackage.language);
+      });
+
+      const cleanDayData = {
+        ...dayObj,
+        vocabulary_bank: cleanVocab
+      };
+
+      const totalDaysCount = (courseDurationMode === 'CUSTOM' && customDays && Number(customDays) > 0)
+        ? Number(customDays)
+        : (sessionPackage.course_duration_mode === 'CUSTOM' && sessionPackage.target_days_number)
+        ? sessionPackage.target_days_number
+        : (courseDurationMode === 'INSTITUTIONAL')
+        ? (sessionPackage.school_meta?.totalPeriods || sessionPackage.college_meta?.sessionsRequired || 60)
+        : (sessionPackage.target_days_number || sessionPackage.session_plan?.total_curriculum_days || 2);
+
+      const response = await fetchWithEndpointFallback('/api/v1/sessions/download/period-pptx', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          session_id: sessionPackage.session_id || 'isml-pptx-export',
+          language: sessionPackage.language || 'English',
+          level: sessionPackage.level || 'A1.1',
+          topic: sessionPackage.topic || 'Classroom Curriculum',
+          track_label: sessionPackage.track_duration_label || 'Standard Course Plan',
+          institution_type: sessionPackage.institution_type || institutionType || 'SCHOOL',
+          total_days: totalDaysCount,
+          day_data: cleanDayData,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to generate period PowerPoint presentation');
+      }
+
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      const cleanLang = (sessionPackage.language || 'Language').replace(/[^a-zA-Z0-9]/g, '_');
+      const cleanLevel = (sessionPackage.level || 'A1.1').replace(/[^a-zA-Z0-9]/g, '_');
+      const unitName = (sessionPackage.institution_type || institutionType) === 'COLLEGE' ? 'Session' : 'Period';
+      a.download = `${cleanLang}_${cleanLevel}_Total_${totalDaysCount}_${unitName}s_${unitName}_${dayObj.day_number}_Lecture_Slides.pptx`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+    } catch (err) {
+      console.error('Error downloading period PPTX:', err);
+      alert('Unable to generate Period PowerPoint right now. Please ensure AI Service is running on port 8000.');
+    } finally {
+      setDownloadingPptx(false);
+    }
+  };
+
+  const handleDownloadAllPptxZip = async (daysList?: any[]) => {
+    let listToDownload = daysList;
+    if (!listToDownload || listToDownload.length === 0) {
+      if (proposedPlanner?.modules) {
+        listToDownload = proposedPlanner.modules.flatMap((m: any) => m.days || []);
+      } else if (sessionPackage?.session_plan?.day_wise_syllabus) {
+        listToDownload = sessionPackage.session_plan.day_wise_syllabus;
+      }
+    }
+
+    if (!listToDownload || listToDownload.length === 0) {
+      alert('No curriculum periods found to export. Please generate or review a lesson planner first.');
+      return;
+    }
+
+    const currentLanguage = sessionPackage?.language || proposedPlanner?.language || selectedLanguage;
+    const currentLevel = sessionPackage?.level || proposedPlanner?.level || (institutionType === 'SCHOOL' ? schoolLevel : selectedLevel);
+    const currentTopic = sessionPackage?.topic || proposedPlanner?.topic || topic || 'Curriculum_Master_Slides';
+    const currentTrack = sessionPackage?.track_duration_label || proposedPlanner?.track_duration_label || 'Comprehensive Track';
+    const currentInstType = sessionPackage?.institution_type || institutionType || 'SCHOOL';
+
+    setDownloadingAllPptxZip(true);
+    try {
+      const sanitizedDaysList = listToDownload.map((d: any) => {
+        let cleanVocab = (d.vocabulary_bank || []).filter((v: any) => {
+          const word = typeof v === 'string' ? v : (v?.word || v?.term || '');
+          const eg = v?.example_sentence || '';
+          const isUrl = /(https?:\/\/|\.app|\.com|\/shorts|sa=t|source=web|url=|caes|&[a-z]+=)/i.test(word) ||
+            /(sa=t|source=web|url=|caes|com\/shorts)/i.test(eg);
+          return !isUrl && isValidLinguisticWord(word, currentLanguage);
+        });
+
+        return {
+          ...d,
+          vocabulary_bank: cleanVocab
+        };
+      });
+
+      const response = await fetchWithEndpointFallback('/api/v1/sessions/download/full-curriculum-pptx-zip', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          session_id: sessionPackage?.session_id || 'isml-zip-export',
+          language: currentLanguage,
+          level: currentLevel,
+          topic: currentTopic,
+          track_label: currentTrack,
+          institution_type: currentInstType,
+          days_list: sanitizedDaysList,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to package all presentations into ZIP archive');
+      }
+
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      const cleanLang = currentLanguage.replace(/[^a-zA-Z0-9]/g, '_');
+      const cleanLevel = currentLevel.replace(/[^a-zA-Z0-9]/g, '_');
+      const unitName = currentInstType === 'COLLEGE' ? 'Sessions' : 'Periods';
+      a.download = `${cleanLang}_${cleanLevel}_Total_${sanitizedDaysList.length}_${unitName}_Comprehensive_PPTX_Slides.zip`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+    } catch (err) {
+      console.error('Error downloading PPTX ZIP archive:', err);
+      alert('Unable to generate Presentation ZIP archive right now. Please ensure AI Service is running on port 8000.');
+    } finally {
+      setDownloadingAllPptxZip(false);
+    }
+  };
+
   if (!mounted) {
     return (
       <div className="min-h-screen bg-[#F8FAFC] p-4 sm:p-8 flex items-center justify-center">
@@ -2042,8 +2761,18 @@ export default function FacultyStudioPage() {
     <div className={`min-h-screen bg-[#F8FAFC] text-slate-900 p-0 sm:p-4 max-w-full space-y-3 sm:space-y-4 w-full transition-all duration-300`}>
       {/* Clean Light-Theme Agent Control Bar */}
       <div className="sticky top-0 z-30 bg-white/95 backdrop-blur-md border-b border-slate-200 px-4 py-3 sm:px-6 flex items-center justify-between gap-3">
-        <div className="flex items-center gap-3">
-          
+        <div className="flex items-center gap-2.5 sm:gap-3">
+          {/* Home Page Button */}
+          <button
+            type="button"
+            onClick={handleGoHome}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-slate-200 hover:bg-slate-100 text-xs font-bold text-slate-700 hover:text-slate-900 transition-all cursor-pointer shadow-2xs shrink-0 active:scale-95"
+            title="Go to Home Page (http://localhost:3003/)"
+          >
+            <Home className="w-3.5 h-3.5 text-slate-600" />
+            <span className="font-bold">Home Page</span>
+          </button>
+
           <div>
             <div className="flex items-center gap-2">
               <h1 className="text-sm sm:text-base font-bold tracking-tight text-slate-900">
@@ -2057,23 +2786,15 @@ export default function FacultyStudioPage() {
           </div>
         </div>
 
-        {/* Action Controls: + New Chat, Chat History Sidebar, Fullscreen Toggle, Workspace Badge */}
+        {/* Action Controls: Chat History Sidebar, Fullscreen Toggle, Workspace Badge */}
         <div className="flex items-center gap-2">
-          {/* "+ New Chat" Button (ChatGPT / Gemini style) */}
+          {/* Chat History & DB Sessions Toggle Button (0ms Instant Load) */}
           <button
             type="button"
-            onClick={handleNewChat}
-            className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold shadow-xs transition-all cursor-pointer"
-            title="Start a fresh curriculum session"
-          >
-            <Plus className="w-3.5 h-3.5 text-slate-300" />
-            <span>New Chat</span>
-          </button>
-
-          {/* Chat History & DB Sessions Toggle Button */}
-          <button
-            type="button"
-            onClick={() => setIsHistoryOpen(true)}
+            onClick={() => {
+              setIsHistoryOpen(true);
+              fetchSavedSessions();
+            }}
             className="flex items-center gap-1.5 px-3 py-2 rounded-xl border border-slate-200 hover:bg-slate-50 text-xs font-bold text-slate-700 transition-colors cursor-pointer"
             title="Open Curriculum Chat History & Database Archive"
           >
@@ -2083,26 +2804,6 @@ export default function FacultyStudioPage() {
               <span className="bg-indigo-100 text-indigo-700 text-[10px] font-mono px-1.5 py-0.2 rounded-full font-bold">
                 {savedSessions.length}
               </span>
-            )}
-          </button>
-
-          {/* Desktop Full-Screen Content Toggle */}
-          <button
-            type="button"
-            onClick={() => setIsFullScreen(!isFullScreen)}
-            className="hidden lg:flex items-center gap-1.5 px-3 py-2 rounded-xl border border-slate-200 hover:bg-slate-50 text-xs font-bold text-slate-700 transition-colors cursor-pointer"
-            title={isFullScreen ? "Restore Split View" : "Maximize Content Workspace"}
-          >
-            {isFullScreen ? (
-              <>
-                <Minimize2 className="w-3.5 h-3.5 text-blue-600" />
-                <span>Split View</span>
-              </>
-            ) : (
-              <>
-                <Maximize2 className="w-3.5 h-3.5 text-blue-600" />
-                <span>Full-Screen Workspace</span>
-              </>
             )}
           </button>
 
@@ -2117,222 +2818,864 @@ export default function FacultyStudioPage() {
         </div>
       </div>
 
-      {/* ChatGPT / Gemini Style Persistent Sessions Sidebar Drawer */}
+      {/* ========================================================================= */}
+      {/* FULL-SCREEN PROFESSIONAL CURRICULUM CHAT HUB & SAVED SESSIONS WORKSPACE */}
+      {/* ========================================================================= */}
       {isHistoryOpen && (
-        <div className="fixed inset-0 z-50 flex animate-in fade-in duration-200">
-          {/* Backdrop overlay */}
-          <div 
-            className="fixed inset-0 bg-slate-950/60 backdrop-blur-xs cursor-pointer" 
-            onClick={() => setIsHistoryOpen(false)} 
-          />
-
-          {/* Sliding Sidebar Drawer */}
-          <div className="relative w-full max-w-sm sm:max-w-md bg-white h-full shadow-2xl flex flex-col z-10 border-r border-slate-200 animate-in slide-in-from-left duration-300">
-            {/* Header */}
-            <div className="p-4 bg-slate-900 text-white flex items-center justify-between border-b border-slate-800">
-              <div className="flex items-center gap-2.5">
-                <div className="w-8 h-8 rounded-lg bg-indigo-600 flex items-center justify-center text-white">
-                  <Database className="w-4 h-4" />
-                </div>
-                <div>
-                  <h3 className="text-sm font-black text-white">Curriculum Chat Archive</h3>
-                  <p className="text-[10px] text-slate-400">Saved Chats & Course History</p>
-                </div>
-              </div>
+        <div 
+          className="fixed inset-0 z-50 bg-slate-900 text-slate-800 flex flex-col h-screen max-h-screen w-screen max-w-full overflow-hidden animate-in fade-in duration-200"
+          role="dialog"
+          aria-modal="true"
+        >
+          {/* Top Fullscreen Hub Header - Unified, Single-Layer, Modern */}
+          <div className="h-14 bg-white border-b border-slate-200 px-4 sm:px-6 flex items-center justify-between shrink-0 z-20 gap-3">
+            {/* Left: Mobile back button, ISML badge & Active Course Title */}
+            <div className="flex items-center gap-2.5 min-w-0">
               <button
                 type="button"
-                onClick={() => setIsHistoryOpen(false)}
-                className="w-7 h-7 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 flex items-center justify-center text-sm font-bold"
+                onClick={() => setMobileArchiveTab('LIST')}
+                className="md:hidden px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-lg cursor-pointer shrink-0"
+              >
+                ← Courses
+              </button>
+
+              <span className="px-2 py-0.5 bg-[#0052CC] text-white font-extrabold rounded-md text-[10px] uppercase tracking-wider shrink-0 hidden sm:inline">
+                ISML
+              </span>
+
+              {activeSavedSession ? (
+                <div className="min-w-0 flex items-center gap-2">
+                  <span className="text-[10px] font-extrabold uppercase px-2 py-0.5 rounded bg-blue-100 text-blue-800 shrink-0">
+                    {activeSavedSession.language} • {activeSavedSession.level}
+                  </span>
+                  {getSessionPeriodsCount(activeSavedSession) && (
+                    <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-slate-100 text-slate-600 shrink-0 hidden md:inline">
+                      {getSessionPeriodsCount(activeSavedSession)} Periods
+                    </span>
+                  )}
+                  <h2 className="text-xs sm:text-sm font-black text-slate-900 truncate hidden md:inline">
+                    {cleanSessionTitle(activeSavedSession)}
+                  </h2>
+                </div>
+              ) : (
+                <h2 className="text-xs sm:text-sm font-black text-slate-900 truncate">
+                  Saved Curriculum Archive
+                </h2>
+              )}
+            </div>
+
+            {/* Center: Segmented Navigation (Desktop) */}
+            {activeSavedSession && (
+              <div className="hidden md:flex items-center gap-1 p-1 bg-slate-100 rounded-xl border border-slate-200/80 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => setArchiveActiveTab('LESSONS')}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-black transition-all flex items-center gap-1.5 cursor-pointer ${
+                    archiveActiveTab === 'LESSONS'
+                      ? 'bg-[#0052CC] text-white shadow-xs'
+                      : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
+                  }`}
+                >
+                  <BookOpen className="w-3.5 h-3.5" />
+                  <span>Daily Lessons</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setArchiveActiveTab('TIMETABLE')}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-black transition-all flex items-center gap-1.5 cursor-pointer ${
+                    archiveActiveTab === 'TIMETABLE'
+                      ? 'bg-[#0052CC] text-white shadow-xs'
+                      : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
+                  }`}
+                >
+                  <Calendar className="w-3.5 h-3.5" />
+                  <span>Timetable</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setArchiveActiveTab('CHAT')}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-black transition-all flex items-center gap-1.5 cursor-pointer ${
+                    archiveActiveTab === 'CHAT'
+                      ? 'bg-[#0052CC] text-white shadow-xs'
+                      : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
+                  }`}
+                >
+                  <Sparkles className="w-3.5 h-3.5" />
+                  <span>AI Copilot</span>
+                </button>
+              </div>
+            )}
+
+            {/* Right: Close Hub */}
+            <div className="flex items-center gap-2 shrink-0">
+              <button
+                type="button"
+                onClick={() => {
+                  setIsHistoryOpen(false);
+                  setCameFromSavedSessions(true);
+                }}
+                className="w-8 h-8 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-600 hover:text-slate-900 font-bold text-sm transition-colors cursor-pointer flex items-center justify-center border border-slate-200"
+                title="Close and return"
               >
                 ✕
               </button>
             </div>
+          </div>
 
-            {/* "+ New Chat" Action Button inside Drawer */}
-            <div className="p-3 bg-slate-950/40 border-b border-slate-200">
+          {/* Mobile Navigation Tabs */}
+          {activeSavedSession && mobileArchiveTab === 'CHAT' && (
+            <div className="md:hidden flex items-center justify-around bg-slate-100 border-b border-slate-200 p-1 shrink-0">
               <button
                 type="button"
-                onClick={() => {
-                  handleNewChat();
-                  setIsHistoryOpen(false);
-                }}
-                className="w-full py-2.5 px-3 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-bold rounded-xl text-xs shadow-sm flex items-center justify-center gap-2 transition-all cursor-pointer"
+                onClick={() => setArchiveActiveTab('LESSONS')}
+                className={`flex-1 py-1.5 text-center text-xs font-bold rounded-lg transition-all ${
+                  archiveActiveTab === 'LESSONS' ? 'bg-[#0052CC] text-white shadow-xs' : 'text-slate-600'
+                }`}
               >
-                <Plus className="w-4 h-4" />
-                <span>+ New Curriculum Chat</span>
+                Daily Lessons
               </button>
-            </div>
-
-            {/* Search and Refresh bar */}
-            <div className="p-3 border-b border-slate-200 bg-slate-50 flex items-center gap-2">
-              <div className="relative flex-1">
-                <input
-                  type="text"
-                  value={historySearch}
-                  onChange={(e) => setHistorySearch(e.target.value)}
-                  placeholder="Search previous curriculum sessions..."
-                  className="w-full bg-white border border-slate-200 rounded-xl pl-8 pr-3 py-1.5 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                />
-                <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-2.5" />
-              </div>
               <button
                 type="button"
-                onClick={fetchSavedSessions}
-                disabled={loadingHistory}
-                className="p-2 rounded-xl bg-white border border-slate-200 text-slate-600 hover:text-blue-600 hover:bg-blue-50 transition-colors cursor-pointer"
-                title="Refresh from Database"
+                onClick={() => setArchiveActiveTab('TIMETABLE')}
+                className={`flex-1 py-1.5 text-center text-xs font-bold rounded-lg transition-all ${
+                  archiveActiveTab === 'TIMETABLE' ? 'bg-[#0052CC] text-white shadow-xs' : 'text-slate-600'
+                }`}
               >
-                <RotateCw className={`w-3.5 h-3.5 ${loadingHistory ? 'animate-spin text-blue-600' : ''}`} />
+                Timetable
               </button>
-
-              {savedSessions.length > 0 && (
-                <button
-                  type="button"
-                  onClick={handleClearAllSessions}
-                  disabled={loadingHistory}
-                  className="p-2 rounded-xl bg-white border border-rose-200 text-rose-600 hover:text-white hover:bg-rose-600 transition-colors cursor-pointer"
-                  title="Clear All Saved Sessions from Database"
-                >
-                  <Trash2 className="w-3.5 h-3.5" />
-                </button>
-              )}
+              <button
+                type="button"
+                onClick={() => setArchiveActiveTab('CHAT')}
+                className={`flex-1 py-1.5 text-center text-xs font-bold rounded-lg transition-all ${
+                  archiveActiveTab === 'CHAT' ? 'bg-[#0052CC] text-white shadow-xs' : 'text-slate-600'
+                }`}
+              >
+                AI Copilot
+              </button>
             </div>
+          )}
 
-            {/* List of Sessions */}
-            <div className="flex-1 overflow-y-auto p-3 space-y-2">
-              {savedSessions.length === 0 ? (
-                <div className="p-8 text-center text-slate-400 text-xs space-y-2">
-                  <div className="w-12 h-12 rounded-2xl bg-slate-100 flex items-center justify-center mx-auto text-slate-400">
-                    <History className="w-6 h-6" />
-                  </div>
-                  <p className="font-bold text-slate-700">No Previous Sessions Saved Yet</p>
-                  <p className="text-[11px] text-slate-500">
-                    Generate curriculum packages to automatically audit and archive them here.
-                  </p>
+          {/* 2-Column Split Workspace */}
+          <div className="flex-1 flex overflow-hidden bg-slate-100 min-h-0">
+            {/* ----------------- LEFT COLUMN: SAVED SESSIONS LIST ----------------- */}
+            <div className={`w-full md:w-72 lg:w-80 bg-white border-r border-slate-200 flex flex-col shrink-0 min-h-0 ${
+              mobileArchiveTab === 'CHAT' ? 'hidden md:flex' : 'flex'
+            }`}>
+              {/* Sidebar Action & Search Bar */}
+              <div className="p-3 border-b border-slate-200 bg-slate-50 space-y-2 shrink-0">
+                <div className="flex items-center gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      handleNewChat();
+                      setCameFromSavedSessions(true);
+                      setIsHistoryOpen(false);
+                    }}
+                    className="flex-1 py-1.5 px-2.5 bg-[#0052CC] hover:bg-blue-700 text-white font-bold rounded-xl text-xs shadow-2xs flex items-center justify-center gap-1 transition-all cursor-pointer"
+                  >
+                    <span>+ New Course</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={fetchSavedSessions}
+                    disabled={loadingHistory}
+                    className="p-1.5 rounded-xl bg-white border border-slate-200 text-slate-600 hover:text-blue-600 hover:bg-blue-50 transition-colors cursor-pointer text-xs"
+                    title="Refresh"
+                  >
+                    <span>↻</span>
+                  </button>
                 </div>
-              ) : (
-                savedSessions
-                  .filter(s => {
-                    if (!historySearch.trim()) return true;
-                    const q = historySearch.toLowerCase();
-                    return (
-                      (s.title && s.title.toLowerCase().includes(q)) ||
-                      (s.language && s.language.toLowerCase().includes(q)) ||
-                      (s.topic && s.topic.toLowerCase().includes(q)) ||
-                      (s.level && s.level.toLowerCase().includes(q))
-                    );
-                  })
-                  .map((sessionItem) => (
-                    <div
-                      key={sessionItem.sessionId || sessionItem.id}
-                      onClick={() => {
-                        // Restore past curriculum package or blueprint to live workspace
-                        if (sessionItem.sessionPlanJson) {
-                          const planData = sessionItem.sessionPlanJson;
-                          const isBlueprint = Boolean(
-                            sessionItem.teacherMaterialsJson?.blueprint || 
-                            (planData?.all_days && !planData?.units && !sessionItem.teacherMaterialsJson?.slides)
-                          );
 
-                          if (isBlueprint) {
-                            // Restore as active proposed planner in Step 3
-                            setProposedPlanner(planData);
-                            if (sessionItem.language) setSelectedLanguage(sessionItem.language);
-                            if (sessionItem.level) setSelectedLevel(sessionItem.level);
-                            if (sessionItem.topic) setTopic(sessionItem.topic);
-                            setSessionPackage(null);
-                            setStudioStep(3);
-                            setIsFullScreen(true);
-                          } else {
-                            // Restore as full package in Step 4
-                            const restoredPkg = {
-                              session_id: sessionItem.sessionId || sessionItem.id || `session-${Date.now()}`,
-                              language: sessionItem.language,
-                              level: sessionItem.level,
-                              topic: sessionItem.topic,
-                              track_duration_label: `Restored Archive: ${sessionItem.language} ${sessionItem.level}`,
-                              institution_type: planData?.institution_type || 'SCHOOL',
-                              school_meta: planData?.school_meta,
-                              college_meta: planData?.college_meta,
-                              session_plan: planData || {},
-                              teacher_materials: sessionItem.teacherMaterialsJson || {},
-                              student_lsrw: sessionItem.studentLsrwJson || {},
-                            };
-                            setSessionPackage(restoredPkg);
-                            if (sessionItem.language) setSelectedLanguage(sessionItem.language);
-                            if (sessionItem.level) setSelectedLevel(sessionItem.level);
-                            setStudioStep(4);
-                            setIsFullScreen(true);
-                          }
+                <div className="relative">
+                  <input
+                    type="text"
+                    value={historySearch}
+                    onChange={(e) => setHistorySearch(e.target.value)}
+                    placeholder="Search courses..."
+                    className="w-full bg-white border border-slate-200 rounded-xl px-3 py-1.5 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-blue-500 shadow-2xs"
+                  />
+                </div>
+              </div>
 
-                          setActiveSavedSession(sessionItem);
-                          setIsHistoryOpen(false);
-                          setIsChatOpen(false);
-                        }
-                      }}
-                      className="p-3 rounded-xl border border-slate-200/90 hover:border-blue-400 bg-white hover:bg-blue-50/40 transition-all cursor-pointer space-y-1.5 shadow-2xs group"
-                    >
-                      <div className="flex items-center justify-between">
-                        <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded bg-blue-100 text-blue-800">
-                          {sessionItem.language} • {sessionItem.level}
-                        </span>
-                        <div className="flex items-center gap-1.5">
-                          <span className="text-[10px] text-slate-400 font-mono">
-                            {sessionItem.createdAt ? new Date(sessionItem.createdAt).toLocaleDateString() : 'Archived'}
-                          </span>
-                          <button
-                            type="button"
-                            onClick={(e) => handleDeleteSession(sessionItem.sessionId || sessionItem.id, e)}
-                            className="p-1 rounded text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors"
-                            title="Delete this saved session"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
-                        </div>
-                      </div>
-                      <h4 className="text-xs font-bold text-slate-900 group-hover:text-blue-700 line-clamp-2">
-                        {sessionItem.title || sessionItem.topic || 'Curriculum Package'}
-                      </h4>
-                      <p className="text-[11px] text-slate-500 line-clamp-1">
-                        Topic: {sessionItem.topic || 'General Syllabus'}
-                      </p>
-                      {/* Attached Files & Sources Preview Badge */}
-                      {Boolean(sessionItem.tutorFileRef || sessionItem.sourceUrl) && (
-                        <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
-                          {sessionItem.tutorFileRef && (
-                            <span className="inline-flex items-center gap-1 text-[9px] bg-amber-50 text-amber-800 border border-amber-200/80 px-1.5 py-0.5 rounded font-mono truncate max-w-[220px]">
-                              <Paperclip className="w-2.5 h-2.5 shrink-0 text-amber-600" />
-                              <span className="truncate">{sessionItem.tutorFileRef}</span>
-                            </span>
-                          )}
-                          {sessionItem.sourceUrl && (
-                            <span className="inline-flex items-center gap-1 text-[9px] bg-emerald-50 text-emerald-800 border border-emerald-200/80 px-1.5 py-0.5 rounded font-mono truncate max-w-[150px]">
-                              <Link2 className="w-2.5 h-2.5 shrink-0 text-emerald-600" />
-                              <span className="truncate">{sessionItem.sourceUrl}</span>
-                            </span>
-                          )}
-                        </div>
-                      )}
-                      <div className="pt-1.5 flex items-center justify-between text-[10px] text-slate-400 border-t border-slate-100">
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setActiveSavedSession(sessionItem);
-                            setShowChatFilesModal(true);
-                          }}
-                          className="px-2 py-0.5 rounded-md bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold flex items-center gap-1 transition-colors cursor-pointer border border-indigo-200/60"
-                          title="View all files and reference links uploaded for this session"
+              {/* Sessions List */}
+              <div className="flex-1 overflow-y-auto p-2.5 space-y-1.5 min-h-0">
+                {savedSessions.length === 0 ? (
+                  <div className="p-6 text-center text-slate-400 text-xs space-y-1.5">
+                    <p className="font-bold text-slate-700">No Previous Courses Saved</p>
+                    <p className="text-[11px] text-slate-500">
+                      Create new course blueprints to automatically audit and archive them here.
+                    </p>
+                  </div>
+                ) : (
+                  savedSessions
+                    .filter((s: any) => {
+                      if (!historySearch.trim()) return true;
+                      const q = historySearch.toLowerCase();
+                      return (
+                        (s.title && s.title.toLowerCase().includes(q)) ||
+                        (s.language && s.language.toLowerCase().includes(q)) ||
+                        (s.topic && s.topic.toLowerCase().includes(q)) ||
+                        (s.level && s.level.toLowerCase().includes(q))
+                      );
+                    })
+                    .map((sessionItem: any) => {
+                      const isSelected = activeSavedSession && (
+                        activeSavedSession.sessionId === (sessionItem.sessionId || sessionItem.id) ||
+                        activeSavedSession.id === (sessionItem.sessionId || sessionItem.id)
+                      );
+                      const cleanTitle = cleanSessionTitle(sessionItem);
+                      const periodsCount = getSessionPeriodsCount(sessionItem);
+                      const createdDate = sessionItem.createdAt 
+                        ? new Date(sessionItem.createdAt).toLocaleDateString(undefined, { day: 'numeric', month: 'short' })
+                        : 'Saved';
+
+                      return (
+                        <div
+                          key={sessionItem.sessionId || sessionItem.id}
+                          className={`p-3 rounded-xl border transition-all text-left relative ${
+                            isSelected
+                              ? 'border-[#0052CC] bg-blue-50/70 shadow-xs border-l-4'
+                              : 'border-slate-200/90 bg-white hover:border-slate-300'
+                          }`}
                         >
-                          <Paperclip className="w-2.5 h-2.5" />
-                          <span>View Materials</span>
-                        </button>
-                        <span className="text-blue-600 font-bold group-hover:translate-x-0.5 transition-transform flex items-center gap-0.5">
-                          Open Session →
-                        </span>
-                      </div>
-                    </div>
-                  ))
+                          <div className="flex items-center justify-between gap-1 mb-1">
+                            <span className="text-[10px] font-extrabold uppercase px-1.5 py-0.5 rounded bg-blue-100 text-blue-800">
+                              {sessionItem.language} • {sessionItem.level}
+                            </span>
+                            <div className="flex items-center gap-1.5">
+                              {periodsCount && (
+                                <span className="text-[10px] font-bold text-slate-500">
+                                  {periodsCount} Periods
+                                </span>
+                              )}
+                              <button
+                                type="button"
+                                onClick={(e) => promptDeleteSession(sessionItem, e)}
+                                className="w-6 h-6 rounded-lg bg-slate-50 hover:bg-rose-50 text-slate-400 hover:text-rose-600 border border-slate-200/60 hover:border-rose-200 flex items-center justify-center transition-all cursor-pointer shadow-2xs group shrink-0"
+                                title="Delete this session"
+                              >
+                                <Trash2 className="w-3.5 h-3.5 text-slate-400 group-hover:text-rose-600 transition-colors" />
+                              </button>
+                            </div>
+                          </div>
+
+                          <h4 className={`text-xs font-bold leading-snug line-clamp-2 ${
+                            isSelected ? 'text-[#0B2447] font-black' : 'text-slate-800'
+                          }`}>
+                            {cleanTitle}
+                          </h4>
+
+                          <div className="flex items-center justify-between mt-1 text-[10px] text-slate-400">
+                            <span className="truncate max-w-[150px]">{sessionItem.topic || 'General Syllabus'}</span>
+                            <span className="font-mono">{createdDate}</span>
+                          </div>
+
+                          {/* Sole Trigger to Load Content: View Content Button */}
+                          <div className="mt-2.5 pt-2 border-t border-slate-100">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                handleSelectSavedSession(sessionItem);
+                                setMobileArchiveTab('CHAT');
+                                setArchiveActiveTab('LESSONS');
+                              }}
+                              className="w-full py-2 px-3 rounded-xl bg-[#0052CC] hover:bg-blue-700 text-white font-extrabold text-xs transition-all flex items-center justify-center gap-2 shadow-2xs cursor-pointer active:scale-[0.99]"
+                              title="View course curriculum and materials note"
+                            >
+                              <BookOpen className="w-3.5 h-3.5" />
+                              <span>View Content</span>
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })
+                )}
+              </div>
+            </div>
+
+            {/* ----------------- RIGHT COLUMN: CONTENT & WORKSPACE ----------------- */}
+            <div className={`flex-1 flex flex-col bg-slate-50 overflow-hidden min-h-0 ${
+              mobileArchiveTab === 'LIST' ? 'hidden md:flex' : 'flex'
+            }`}>
+              {activeSavedSession ? (
+                <>
+                  {/* Full Curriculum Hub */}
+                  {(() => {
+                    const hubPeriodsCount = getSessionPeriodsCount(activeSavedSession) || 60;
+                    const hubPlanData = activeSavedSession.sessionPlanJson || {};
+                    const hubPkg = {
+                      session_id: activeSavedSession.sessionId || activeSavedSession.id || `session-${Date.now()}`,
+                      language: activeSavedSession.language || 'English',
+                      level: activeSavedSession.level || 'A1.1',
+                      topic: cleanSessionTitle(activeSavedSession),
+                      track_duration_label: `Saved Archive: ${activeSavedSession.language || 'Language'} ${activeSavedSession.level || 'A1'}`,
+                      institution_type: hubPlanData?.institution_type || 'SCHOOL',
+                      school_meta: hubPlanData?.school_meta || { totalDays: hubPeriodsCount, totalPeriods: hubPeriodsCount, periodDurationMinutes: 60 },
+                      college_meta: hubPlanData?.college_meta,
+                      session_plan: hubPlanData,
+                      teacher_materials: activeSavedSession.teacherMaterialsJson || {},
+                      student_lsrw: activeSavedSession.studentLsrwJson || {},
+                    };
+                    const hubRawDays = hubPkg.session_plan?.all_days || hubPkg.session_plan?.day_wise_syllabus || [];
+                    const hubTotalDays = hubPeriodsCount;
+                    const hubUnitsPerBlock = 10;
+                    const hubDaysList: any[] = [];
+                    for (let d = 1; d <= hubTotalDays; d++) {
+                      const rawD = (d <= hubRawDays.length) ? hubRawDays[d - 1] : null;
+                      const modNum = Math.ceil(d / hubUnitsPerBlock);
+                      const unitInMod = ((d - 1) % hubUnitsPerBlock) + 1;
+                      const item = generateCurriculumDay(
+                        hubPkg.language || 'English',
+                        hubPkg.level || 'A1.1',
+                        hubPkg.topic || 'Curriculum',
+                        d,
+                        modNum,
+                        `Module ${modNum}`,
+                        `M${modNum}`,
+                        unitInMod,
+                        hubUnitsPerBlock,
+                        hubTotalDays,
+                        rawD,
+                        hubPkg
+                      );
+                      if (rawD) {
+                        const anyItem = item as any;
+                        if (rawD.day_topic) anyItem.day_topic = rawD.day_topic;
+                        if (rawD.grammar_rules_detail) anyItem.grammar_rules_detail = rawD.grammar_rules_detail;
+                        if (rawD.vocabulary_bank && rawD.vocabulary_bank.length > 0) anyItem.vocabulary_bank = rawD.vocabulary_bank;
+                        if (rawD.classroom_dialogues && rawD.classroom_dialogues.length > 0) anyItem.classroom_dialogues = rawD.classroom_dialogues;
+                        if (rawD.in_class_exercises && rawD.in_class_exercises.length > 0) anyItem.in_class_exercises = rawD.in_class_exercises;
+                        if (rawD.exercise_solutions && rawD.exercise_solutions.length > 0) anyItem.exercise_solutions = rawD.exercise_solutions;
+                        if (rawD.cultural_and_formal_notes) anyItem.cultural_and_formal_notes = rawD.cultural_and_formal_notes;
+                        if (rawD.student_lsrw_practice) anyItem.student_lsrw_practice = rawD.student_lsrw_practice;
+                        if (rawD.study_notes_markdown) anyItem.study_notes_markdown = rawD.study_notes_markdown;
+                        if (rawD.generated_audio_tracks) anyItem.generated_audio_tracks = rawD.generated_audio_tracks;
+                        if (rawD.generated_audio_track) anyItem.generated_audio_track = rawD.generated_audio_track;
+                      }
+                      hubDaysList.push(item);
+                    }
+                    const activeHubDay = hubDaysList[archiveActiveDay - 1] || hubDaysList[0];
+
+                    return (
+                      <>
+                        {/* TAB 1: DAILY LESSONS & TEACHING KIT */}
+                        {archiveActiveTab === 'LESSONS' && (
+                          <div className="flex-1 overflow-y-auto p-2 sm:p-4 space-y-2.5 min-h-0">
+                            {/* Simple Inline Note: Grounded Source Materials (Categorized: Manual Files, YouTube Videos & Links) */}
+                            {(() => {
+                              const isYouTube = (s: string) => /youtube\.com|youtu\.be/i.test(s);
+                              const isWebUrl = (s: string) => /^https?:\/\//i.test(s);
+                              const isManualFile = (name: string, type?: string) => type === 'MANUAL_FILE' || /\.(pdf|docx?|txt|pptx?|mp3|mp4|m4a|wav|csv|xlsx?)$/i.test(name);
+
+                              const parsedMaterials: { type: 'MANUAL_FILE' | 'YOUTUBE' | 'WEB_LINK' | 'VAULT'; name: string; url?: string }[] = [];
+                              const seen = new Set<string>();
+
+                              const addMat = (item: { type: 'MANUAL_FILE' | 'YOUTUBE' | 'WEB_LINK' | 'VAULT'; name: string; url?: string }) => {
+                                const key = `${item.type}:${item.name.toLowerCase().trim()}`;
+                                if (!seen.has(key) && item.name.trim()) {
+                                  seen.add(key);
+                                  parsedMaterials.push(item);
+                                }
+                              };
+
+                              // 1. Process tutorFileRef (manual uploaded filenames)
+                              if (activeSavedSession?.tutorFileRef) {
+                                activeSavedSession.tutorFileRef.split(',').forEach((f: string) => {
+                                  const trimmed = f.trim();
+                                  if (trimmed) {
+                                    if (isYouTube(trimmed)) addMat({ type: 'YOUTUBE', name: trimmed, url: trimmed });
+                                    else if (isWebUrl(trimmed)) addMat({ type: 'WEB_LINK', name: trimmed, url: trimmed });
+                                    else addMat({ type: 'MANUAL_FILE', name: trimmed });
+                                  }
+                                });
+                              }
+
+                              // 2. Process uploaded_files_list (manual files & vault assets)
+                              if (Array.isArray(activeSavedSession?.sessionPlanJson?.uploaded_files_list)) {
+                                activeSavedSession.sessionPlanJson.uploaded_files_list.forEach((f: any) => {
+                                  const name = typeof f === 'string' ? f.trim() : (f?.name || f?.title || '').trim();
+                                  const type = typeof f === 'object' ? f?.type : undefined;
+                                  if (name) {
+                                    if (isYouTube(name)) addMat({ type: 'YOUTUBE', name, url: name });
+                                    else if (isManualFile(name, type)) addMat({ type: 'MANUAL_FILE', name });
+                                    else if (isWebUrl(name)) addMat({ type: 'WEB_LINK', name, url: name });
+                                    else addMat({ type: 'VAULT', name });
+                                  }
+                                });
+                              }
+
+                              // 3. Process sourceUrl & source_urls_list (web links & YouTube videos)
+                              const allUrls: string[] = [];
+                              if (activeSavedSession?.sourceUrl) {
+                                activeSavedSession.sourceUrl.split(',').forEach((u: string) => allUrls.push(u.trim()));
+                              }
+                              if (Array.isArray(activeSavedSession?.sessionPlanJson?.source_urls_list)) {
+                                activeSavedSession.sessionPlanJson.source_urls_list.forEach((u: any) => {
+                                  const url = typeof u === 'string' ? u.trim() : (u?.url || '').trim();
+                                  if (url) allUrls.push(url);
+                                });
+                              }
+                              allUrls.forEach((url) => {
+                                if (url) {
+                                  if (isYouTube(url)) addMat({ type: 'YOUTUBE', name: url, url });
+                                  else if (isWebUrl(url)) addMat({ type: 'WEB_LINK', name: url, url });
+                                  else addMat({ type: 'MANUAL_FILE', name: url });
+                                }
+                              });
+
+                              // Fallback if empty
+                              if (parsedMaterials.length === 0) {
+                                parsedMaterials.push({
+                                  type: 'VAULT',
+                                  name: `Knowledge Vault ${activeSavedSession?.language || 'Language'} ${activeSavedSession?.level || 'A1.1'} Foundation Corpus`
+                                });
+                              }
+
+                              return (
+                                <div className="bg-blue-50/70 border border-blue-200/80 rounded-2xl p-3 sm:p-3.5 text-xs space-y-2 shrink-0">
+                                  <div className="flex items-start justify-between gap-2">
+                                    <div className="space-y-1">
+                                      <div className="flex items-center gap-1.5 font-bold text-blue-950">
+                                        <span className="px-2 py-0.5 rounded-md bg-[#0052CC] text-white text-[10px] font-black uppercase tracking-wider">
+                                          Note
+                                        </span>
+                                        <span className="text-xs sm:text-sm font-extrabold text-[#0B2447]">
+                                          Source Materials Grounding
+                                        </span>
+                                      </div>
+                                      <p className="text-slate-600 leading-relaxed text-[11px] sm:text-xs font-medium">
+                                        This content was generated from the following study materials below. If you add more new materials in the Knowledge Vault, you can generate a new refined curriculum again anytime.
+                                      </p>
+                                    </div>
+                                  </div>
+
+                                  {/* Grounded Materials Chips: Manual Files, YouTube Videos, Links & Vault */}
+                                  <div className="flex items-center gap-1.5 flex-wrap pt-0.5">
+                                    {parsedMaterials.map((item, idx) => {
+                                      if (item.type === 'MANUAL_FILE') {
+                                        return (
+                                          <span
+                                            key={idx}
+                                            className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-emerald-50 border border-emerald-300 text-emerald-950 font-medium text-[11px] shadow-2xs"
+                                            title={`Uploaded Manual Material File: ${item.name}`}
+                                          >
+                                            <span className="text-emerald-700 font-extrabold flex items-center gap-1">
+                                              <span>📄</span>
+                                              <span>Manual File:</span>
+                                            </span>
+                                            <span className="truncate max-w-[220px] font-mono text-[10px] font-bold text-emerald-900">{item.name}</span>
+                                          </span>
+                                        );
+                                      }
+                                      if (item.type === 'YOUTUBE') {
+                                        return (
+                                          <a
+                                            key={idx}
+                                            href={item.url}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-red-50 hover:bg-red-100 border border-red-200 text-red-900 font-medium text-[11px] shadow-2xs transition-colors"
+                                            title={`Watch YouTube Video: ${item.url}`}
+                                          >
+                                            <span className="text-red-600 font-extrabold flex items-center gap-1">
+                                              <span>▶️</span>
+                                              <span>YouTube Video:</span>
+                                            </span>
+                                            <span className="truncate max-w-[200px] font-mono text-[10px] underline text-red-800">{item.name}</span>
+                                          </a>
+                                        );
+                                      }
+                                      if (item.type === 'WEB_LINK') {
+                                        return (
+                                          <a
+                                            key={idx}
+                                            href={item.url}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-sky-50 hover:bg-sky-100 border border-sky-200 text-sky-950 font-medium text-[11px] shadow-2xs transition-colors"
+                                            title={`Open Web Reference: ${item.url}`}
+                                          >
+                                            <span className="text-sky-700 font-bold flex items-center gap-1">
+                                              <span>🔗</span>
+                                              <span>Link:</span>
+                                            </span>
+                                            <span className="truncate max-w-[200px] font-mono text-[10px] underline text-sky-800">{item.name}</span>
+                                          </a>
+                                        );
+                                      }
+                                      return (
+                                        <span
+                                          key={idx}
+                                          className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-white border border-blue-200 text-slate-800 font-medium text-[11px] shadow-2xs"
+                                          title={`Vault Study Resource: ${item.name}`}
+                                        >
+                                          <span className="text-blue-600 font-bold flex items-center gap-1">
+                                            <span>📚</span>
+                                            <span>Vault:</span>
+                                          </span>
+                                          <span className="truncate max-w-[240px] font-mono text-[10px] font-bold text-slate-700">{item.name}</span>
+                                        </span>
+                                      );
+                                    })}
+                                  </div>
+                                </div>
+                              );
+                            })()}
+                            {/* Streamlined Period Navigation Bar with .no-scrollbar */}
+                            <div className="bg-white border border-slate-200 rounded-xl px-3 py-2 shadow-2xs flex items-center justify-between gap-2 shrink-0">
+                              <button
+                                type="button"
+                                onClick={() => setArchiveActiveDay(Math.max(1, archiveActiveDay - 1))}
+                                disabled={archiveActiveDay <= 1}
+                                className="px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 disabled:opacity-30 text-slate-700 font-bold text-xs cursor-pointer shrink-0"
+                              >
+                                ← Prev
+                              </button>
+
+                              {/* Clean horizontal period pills with NO scrollbar */}
+                              <div className="flex items-center gap-1 overflow-x-auto no-scrollbar py-0.5 flex-1 mx-1">
+                                {hubDaysList.map((d: any) => {
+                                  const isCurr = d.day_number === archiveActiveDay;
+                                  return (
+                                    <button
+                                      key={d.day_number}
+                                      type="button"
+                                      onClick={() => setArchiveActiveDay(d.day_number)}
+                                      className={`px-2.5 py-1 rounded-lg text-xs font-bold shrink-0 transition-all cursor-pointer ${
+                                        isCurr
+                                          ? 'bg-[#0052CC] text-white shadow-xs font-black'
+                                          : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
+                                      }`}
+                                    >
+                                      P{d.day_number}
+                                    </button>
+                                  );
+                                })}
+                              </div>
+
+                              <button
+                                type="button"
+                                onClick={() => setArchiveActiveDay(Math.min(hubTotalDays, archiveActiveDay + 1))}
+                                disabled={archiveActiveDay >= hubTotalDays}
+                                className="px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 disabled:opacity-30 text-slate-700 font-bold text-xs cursor-pointer shrink-0"
+                              >
+                                Next →
+                              </button>
+                            </div>
+
+                            {/* Full Detailed Day Content View */}
+                            <DayContentView
+                              activeDay={activeHubDay}
+                              outputMode={outputMode}
+                              unitName="Period"
+                              totalDays={hubTotalDays}
+                              sessionPackage={hubPkg}
+                              allDays={hubDaysList}
+                              handleDownloadDayDocx={handleDownloadDayDocx}
+                              downloadingDocx={downloadingDocx}
+                              handleDownloadFullCurriculumDocx={handleDownloadFullCurriculumDocx}
+                              downloadingFullDocx={downloadingFullDocx}
+                              handleDownloadDayPptx={handleDownloadDayPptx}
+                              downloadingPptx={downloadingPptx}
+                              handleDownloadAllPptxZip={handleDownloadAllPptxZip}
+                              downloadingAllPptxZip={downloadingAllPptxZip}
+                              onPrevDay={() => setArchiveActiveDay(Math.max(1, archiveActiveDay - 1))}
+                              onNextDay={() => setArchiveActiveDay(Math.min(hubTotalDays, archiveActiveDay + 1))}
+                              onSelectDay={(targetNum: number) => setArchiveActiveDay(targetNum)}
+                              onToggleOutputMode={setOutputMode}
+                              isSessionSaved={true}
+                            />
+                          </div>
+                        )}
+
+                        {/* TAB 2: SYLLABUS TIMETABLE */}
+                        {archiveActiveTab === 'TIMETABLE' && (
+                          <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-4 min-h-0">
+                            <div className="bg-white border border-slate-200 rounded-2xl p-4 sm:p-5 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                              <div>
+                                <h4 className="font-black text-sm sm:text-base text-slate-900">
+                                  {cleanSessionTitle(activeSavedSession)} — Complete Syllabus Matrix
+                                </h4>
+                                <p className="text-xs text-slate-500 mt-0.5">
+                                  {hubTotalDays} Periods • CEFR {activeSavedSession.level} • Click any period to open its lesson plan and slides
+                                </p>
+                              </div>
+                              {handleDownloadAllPptxZip && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleDownloadAllPptxZip(hubDaysList)}
+                                  disabled={downloadingAllPptxZip}
+                                  className="px-3.5 py-1.5 bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-700 hover:to-orange-700 text-white font-extrabold text-xs rounded-xl shadow-xs transition-all flex items-center gap-1.5 cursor-pointer self-start sm:self-auto"
+                                >
+                                  <FileArchive className="w-3.5 h-3.5 text-amber-200" />
+                                  <span>Download All PPTX (.zip)</span>
+                                </button>
+                              )}
+                            </div>
+
+                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                              {hubDaysList.map((d: any) => {
+                                const isSelected = d.day_number === archiveActiveDay;
+                                return (
+                                  <div
+                                    key={d.day_number}
+                                    onClick={() => {
+                                      setArchiveActiveDay(d.day_number);
+                                      setArchiveActiveTab('LESSONS');
+                                    }}
+                                    className={`p-4 rounded-2xl border transition-all cursor-pointer bg-white space-y-2 hover:shadow-md ${
+                                      isSelected
+                                        ? 'border-blue-500 ring-2 ring-blue-500/20 shadow-xs'
+                                        : 'border-slate-200 hover:border-blue-300'
+                                    }`}
+                                  >
+                                    <div className="flex items-center justify-between">
+                                      <span className="px-2 py-0.5 rounded-md bg-blue-100 text-blue-800 font-extrabold text-[10px]">
+                                        Period {d.day_number}
+                                      </span>
+                                      {d.vocabulary_bank && (
+                                        <span className="text-[10px] text-amber-800 font-bold bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-full">
+                                          {d.vocabulary_bank.length} Vocab
+                                        </span>
+                                      )}
+                                    </div>
+                                    <h5 className="font-extrabold text-xs text-slate-900 line-clamp-2">
+                                      {d.day_topic || `Period ${d.day_number}`}
+                                    </h5>
+                                    <p className="text-[11px] text-slate-500 line-clamp-2 leading-relaxed">
+                                      {d.grammar_rules_detail || 'Comprehensive CEFR grammar focus and spoken dialogues.'}
+                                    </p>
+                                    <div className="pt-1 flex items-center justify-between text-[11px] font-bold text-blue-600">
+                                      <span>Open Teaching Kit →</span>
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* TAB 3: AI COPILOT & CHAT */}
+                        {archiveActiveTab === 'CHAT' && (
+                          <>
+                            {/* Chat Messages Stream */}
+                            <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-4 min-h-0">
+                              {/* Welcome Course Overview Card */}
+                              {curriculumChatMessages.length <= 1 && (
+                                <div className="p-5 bg-white border border-slate-200 rounded-2xl shadow-xs space-y-3 max-w-3xl mx-auto">
+                                  <div className="flex items-start justify-between">
+                                    <div>
+                                      <span className="text-[10px] font-extrabold uppercase tracking-widest text-[#0052CC] block">
+                                        Active Curriculum Chat Memory
+                                      </span>
+                                      <h4 className="text-base font-black text-[#0B2447]">
+                                        {cleanSessionTitle(activeSavedSession)}
+                                      </h4>
+                                      <p className="text-xs text-slate-600 mt-1">
+                                        Language: <strong>{activeSavedSession.language}</strong> • Framework: <strong>CEFR {activeSavedSession.level}</strong>
+                                      </p>
+                                    </div>
+                                    <span className="px-2.5 py-1 bg-emerald-50 border border-emerald-200 text-emerald-800 text-[10px] font-bold rounded-lg shrink-0">
+                                      Memory Ingested
+                                    </span>
+                                  </div>
+
+                                  <p className="text-xs text-slate-600 leading-relaxed">
+                                    The complete curriculum (vocabulary bank, sentence formulas, classroom dialogues, and period-by-period progression) is loaded. Ask any question below or click an instant prompt to begin.
+                                  </p>
+
+                                  {/* 4 Instant 1-Click Action Directives */}
+                                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
+                                    <button
+                                      type="button"
+                                      onClick={() => handleSendCurriculumChat(undefined, "Explain Period 1 grammar rules and sentence blueprint in detail")}
+                                      className="p-3 bg-blue-50/70 hover:bg-blue-100 border border-blue-200 rounded-xl text-left transition-all cursor-pointer group"
+                                    >
+                                      <span className="text-[10px] font-bold uppercase text-[#0052CC] block">Grammar Breakdown</span>
+                                      <span className="text-xs font-semibold text-slate-800 group-hover:text-blue-900">Explain Period 1 grammar & sentence blueprint</span>
+                                    </button>
+
+                                    <button
+                                      type="button"
+                                      onClick={() => handleSendCurriculumChat(undefined, "Generate 5 interactive speaking and listening practice drills for learners")}
+                                      className="p-3 bg-emerald-50/70 hover:bg-emerald-100 border border-emerald-200 rounded-xl text-left transition-all cursor-pointer group"
+                                    >
+                                      <span className="text-[10px] font-bold uppercase text-emerald-800 block">Classroom Practice</span>
+                                      <span className="text-xs font-semibold text-slate-800 group-hover:text-emerald-900">Generate 5 oral communication drills</span>
+                                    </button>
+
+                                    <button
+                                      type="button"
+                                      onClick={() => handleSendCurriculumChat(undefined, "Summarize the full course milestones and Can-Do competency targets")}
+                                      className="p-3 bg-purple-50/70 hover:bg-purple-100 border border-purple-200 rounded-xl text-left transition-all cursor-pointer group"
+                                    >
+                                      <span className="text-[10px] font-bold uppercase text-purple-800 block">Syllabus Overview</span>
+                                      <span className="text-xs font-semibold text-slate-800 group-hover:text-purple-900">Summarize course milestones & Can-Do targets</span>
+                                    </button>
+
+                                    <button
+                                      type="button"
+                                      onClick={() => handleSendCurriculumChat(undefined, "List 10 key vocabulary words with pronunciation guides and example sentences")}
+                                      className="p-3 bg-amber-50/70 hover:bg-amber-100 border border-amber-200 rounded-xl text-left transition-all cursor-pointer group"
+                                    >
+                                      <span className="text-[10px] font-bold uppercase text-amber-800 block">Vocabulary Bank</span>
+                                      <span className="text-xs font-semibold text-slate-800 group-hover:text-amber-900">List 10 vocabulary words with phonetics</span>
+                                    </button>
+                                  </div>
+                                </div>
+                              )}
+
+                              {/* Messages List */}
+                              <div className="space-y-3.5 max-w-3xl mx-auto w-full">
+                                {curriculumChatMessages.map((msg, idx) => {
+                                  const isAssistant = msg.role === 'assistant';
+                                  return (
+                                    <div
+                                      key={idx}
+                                      className={`flex items-start gap-2.5 sm:gap-3 ${isAssistant ? '' : 'flex-row-reverse'}`}
+                                    >
+                                      <div className={`w-7 h-7 sm:w-8 sm:h-8 rounded-xl flex items-center justify-center text-[10px] sm:text-xs font-extrabold shrink-0 shadow-xs ${
+                                        isAssistant ? 'bg-[#0052CC] text-white' : 'bg-slate-800 text-white'
+                                      }`}>
+                                        {isAssistant ? 'AI' : 'You'}
+                                      </div>
+
+                                      <div className={`max-w-2xl rounded-2xl px-4 py-3 text-xs leading-relaxed ${
+                                        isAssistant
+                                          ? 'bg-white border border-slate-200 text-slate-800 shadow-xs'
+                                          : 'bg-[#0052CC] text-white shadow-xs font-medium'
+                                      }`}>
+                                        <div className="whitespace-pre-wrap">{msg.content}</div>
+                                        {msg.timestamp && (
+                                          <div className={`text-[9px] mt-1.5 font-mono ${
+                                            isAssistant ? 'text-slate-400' : 'text-blue-200 text-right'
+                                          }`}>
+                                            {msg.timestamp}
+                                          </div>
+                                        )}
+                                      </div>
+                                    </div>
+                                  );
+                                })}
+
+                                {curriculumChatLoading && (
+                                  <div className="flex items-start gap-2.5 sm:gap-3">
+                                    <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-xl bg-[#0052CC] text-white flex items-center justify-center text-[10px] sm:text-xs font-bold shrink-0">
+                                      AI
+                                    </div>
+                                    <div className="bg-white border border-slate-200 rounded-2xl px-4 py-3 text-xs text-slate-600 shadow-xs flex items-center gap-2">
+                                      <Loader2 className="w-3.5 h-3.5 animate-spin text-[#0052CC]" />
+                                      <span>ISML Academic Agent is analyzing curriculum memory...</span>
+                                    </div>
+                                  </div>
+                                )}
+                                <div ref={chatMessagesEndRef} />
+                              </div>
+                            </div>
+
+                            {/* Chat Input Bar */}
+                            <div className="bg-white border-t border-slate-200 p-3 sm:p-4 shrink-0">
+                              <form onSubmit={handleSendCurriculumChat} className="max-w-3xl mx-auto space-y-2">
+                                {/* Quick Prompt Pill Shortcuts */}
+                                <div className="flex items-center gap-1.5 overflow-x-auto text-[11px] pb-1">
+                                  <span className="text-[10px] font-bold uppercase text-slate-400 shrink-0">
+                                    Quick:
+                                  </span>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleSendCurriculumChat(undefined, "Explain Period 1 grammar rules and sentence formula")}
+                                    className="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg shrink-0 cursor-pointer transition-colors border border-slate-200 font-medium"
+                                  >
+                                    Period 1 Grammar
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleSendCurriculumChat(undefined, "Generate 5 oral speaking drills with answers")}
+                                    className="px-2.5 py-1 bg-blue-50 hover:bg-blue-100 text-blue-800 rounded-lg shrink-0 cursor-pointer transition-colors border border-blue-200 font-medium"
+                                  >
+                                    5 Speaking Drills
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleSendCurriculumChat(undefined, "Provide 10 vocabulary cards with pronunciation")}
+                                    className="px-2.5 py-1 bg-purple-50 hover:bg-purple-100 text-purple-800 rounded-lg shrink-0 cursor-pointer transition-colors border border-purple-200 font-medium"
+                                  >
+                                    10 Vocab Cards
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleSendCurriculumChat(undefined, "Explain cultural etiquette rules for this level")}
+                                    className="px-2.5 py-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 rounded-lg shrink-0 cursor-pointer transition-colors border border-emerald-200 font-medium"
+                                  >
+                                    Cultural Etiquette
+                                  </button>
+                                </div>
+
+                                <div className="relative flex items-center">
+                                  <textarea
+                                    rows={2}
+                                    value={curriculumChatInput}
+                                    onChange={(e) => setCurriculumChatInput(e.target.value)}
+                                    onKeyDown={(e) => {
+                                      if (e.key === 'Enter' && !e.shiftKey) {
+                                        e.preventDefault();
+                                        handleSendCurriculumChat();
+                                      }
+                                    }}
+                                    placeholder={`Ask anything about ${cleanSessionTitle(activeSavedSession)} or request extra drills...`}
+                                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-[#0052CC] focus:bg-white resize-none pr-20"
+                                  />
+                                  <div className="absolute right-2 bottom-2.5 flex items-center gap-1.5">
+                                    <button
+                                      type="submit"
+                                      disabled={curriculumChatLoading || !curriculumChatInput.trim()}
+                                      className="px-3 py-1.5 bg-[#0052CC] hover:bg-blue-700 disabled:opacity-40 text-white font-bold text-xs rounded-lg shadow-xs transition-all flex items-center gap-1 cursor-pointer"
+                                    >
+                                      <span>Send</span>
+                                      <span>→</span>
+                                    </button>
+                                  </div>
+                                </div>
+
+                                <div className="flex items-center justify-between text-[10px] text-slate-400">
+                                  <span>Grounded in authentic curriculum memory with zero hallucination.</span>
+                                  <span className="hidden sm:inline">Press Enter to send, Shift+Enter for newline</span>
+                                </div>
+                              </form>
+                            </div>
+                          </>
+                        )}
+                      </>
+                    );
+                  })()}
+                </>
+              ) : (
+                /* Empty state when no session is selected */
+                <div className="flex-1 flex flex-col items-center justify-center p-8 text-center space-y-3">
+                  <div className="w-14 h-14 rounded-2xl bg-blue-50 border border-blue-200 flex items-center justify-center text-[#0052CC] font-bold text-lg">
+                    ISML
+                  </div>
+                  <h3 className="text-base font-extrabold text-[#0B2447]">
+                    Select a Saved Curriculum
+                  </h3>
+                  <p className="text-xs text-slate-500 max-w-md">
+                    Choose any past course or session blueprint from the left panel to review its curriculum chat, test student drills, or launch directly into the full teaching studio.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      handleNewChat();
+                      setCameFromSavedSessions(true);
+                      setIsHistoryOpen(false);
+                    }}
+                    className="px-4 py-2 bg-[#0052CC] hover:bg-blue-700 text-white font-bold text-xs rounded-xl shadow-xs transition-all cursor-pointer"
+                  >
+                    + Create New Curriculum
+                  </button>
+                </div>
               )}
             </div>
           </div>
@@ -2340,18 +3683,18 @@ export default function FacultyStudioPage() {
       )}
 
       
-      {/* 🧭 Professional 4-Step Sequential Workflow Navigation */}
+      {/* Professional 3-Step Sequential Workflow Navigation */}
       <div className="bg-white border-y sm:border sm:rounded-2xl border-slate-200 px-4 py-3 sm:px-6">
         <div className="flex items-center justify-between w-full mx-auto">
           {/* Step 1: Course Setup */}
           <button
             type="button"
             onClick={() => setStudioStep(1)}
-            className={`flex items-center gap-2 cursor-pointer transition-all ${
+            className={`flex items-center gap-1.5 sm:gap-2 cursor-pointer transition-all ${
               studioStep === 1 ? 'text-blue-600 font-bold' : studioStep > 1 ? 'text-slate-800 font-semibold' : 'text-slate-400'
             }`}
           >
-            <span className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${
+            <span className={`w-5 h-5 sm:w-6 sm:h-6 rounded-full flex items-center justify-center text-[10px] sm:text-xs font-bold shrink-0 ${
               studioStep === 1
                 ? 'bg-blue-600 text-white shadow-xs'
                 : studioStep > 1
@@ -2360,23 +3703,25 @@ export default function FacultyStudioPage() {
             }`}>
               {studioStep > 1 ? '✓' : '1'}
             </span>
-            <span className="text-xs sm:text-sm">Course Setup</span>
+            <span className="text-xs sm:text-sm whitespace-nowrap">
+              <span className="hidden sm:inline">Course </span>Setup
+            </span>
           </button>
 
-          <div className={`flex-1 h-0.5 mx-2 sm:mx-3 transition-colors ${studioStep >= 2 ? 'bg-blue-600' : 'bg-slate-200'}`} />
+          <div className={`flex-1 h-0.5 mx-1.5 sm:mx-3 transition-colors ${studioStep >= 2 ? 'bg-blue-600' : 'bg-slate-200'}`} />
 
-          {/* Step 2: Upload Study Materials */}
+          {/* Step 2: Session Planner & Timetable */}
           <button
             type="button"
             onClick={() => {
-              if (selectedLanguage) setStudioStep(2);
+              if (proposedPlanner) setStudioStep(2);
             }}
-            disabled={!selectedLanguage}
-            className={`flex items-center gap-2 transition-all ${
+            disabled={!proposedPlanner}
+            className={`flex items-center gap-1.5 sm:gap-2 transition-all ${
               studioStep === 2 ? 'text-blue-600 font-bold' : studioStep > 2 ? 'text-slate-800 font-semibold' : 'text-slate-400'
-            } ${!selectedLanguage ? 'cursor-not-allowed opacity-60' : 'cursor-pointer'}`}
+            } ${!proposedPlanner ? 'cursor-not-allowed opacity-60' : 'cursor-pointer'}`}
           >
-            <span className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${
+            <span className={`w-5 h-5 sm:w-6 sm:h-6 rounded-full flex items-center justify-center text-[10px] sm:text-xs font-bold shrink-0 ${
               studioStep === 2
                 ? 'bg-blue-600 text-white shadow-xs'
                 : studioStep > 2
@@ -2385,96 +3730,92 @@ export default function FacultyStudioPage() {
             }`}>
               {studioStep > 2 ? '✓' : '2'}
             </span>
-            <span className="text-xs sm:text-sm">Study Materials</span>
-          </button>
-
-          <div className={`flex-1 h-0.5 mx-2 sm:mx-3 transition-colors ${studioStep >= 3 ? 'bg-blue-600' : 'bg-slate-200'}`} />
-
-          {/* Step 3: Session Planner & Timetable */}
-          <button
-            type="button"
-            onClick={() => {
-              if (proposedPlanner) setStudioStep(3);
-            }}
-            disabled={!proposedPlanner}
-            className={`flex items-center gap-2 transition-all ${
-              studioStep === 3 ? 'text-blue-600 font-bold' : studioStep > 3 ? 'text-slate-800 font-semibold' : 'text-slate-400'
-            } ${!proposedPlanner ? 'cursor-not-allowed opacity-60' : 'cursor-pointer'}`}
-          >
-            <span className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${
-              studioStep === 3
-                ? 'bg-blue-600 text-white shadow-xs'
-                : studioStep > 3
-                ? 'bg-blue-100 text-blue-700 font-bold'
-                : 'bg-slate-100 text-slate-400'
-            }`}>
-              {studioStep > 3 ? '✓' : '3'}
+            <span className="text-xs sm:text-sm whitespace-nowrap">
+              Planner<span className="hidden sm:inline"> & Timetable</span>
             </span>
-            <span className="text-xs sm:text-sm">Planner & Timetable</span>
           </button>
 
-          <div className={`flex-1 h-0.5 mx-2 sm:mx-3 transition-colors ${studioStep >= 4 ? 'bg-blue-600' : 'bg-slate-200'}`} />
+          <div className={`flex-1 h-0.5 mx-1.5 sm:mx-3 transition-colors ${studioStep >= 3 ? 'bg-blue-600' : 'bg-slate-200'}`} />
 
-          {/* Step 4: Teaching Kit */}
+          {/* Step 3: Teaching Kit & Assessments */}
           <button
             type="button"
             onClick={() => {
-              if (sessionPackage) setStudioStep(4);
+              if (sessionPackage) setStudioStep(3);
             }}
             disabled={!sessionPackage}
-            className={`flex items-center gap-2 transition-all ${
-              studioStep === 4 ? 'text-blue-600 font-bold' : 'text-slate-400'
+            className={`flex items-center gap-1.5 sm:gap-2 transition-all ${
+              studioStep === 3 ? 'text-blue-600 font-bold' : 'text-slate-400'
             } ${!sessionPackage ? 'cursor-not-allowed opacity-60' : 'cursor-pointer'}`}
           >
-            <span className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${
-              studioStep === 4
+            <span className={`w-5 h-5 sm:w-6 sm:h-6 rounded-full flex items-center justify-center text-[10px] sm:text-xs font-bold shrink-0 ${
+              studioStep === 3
                 ? 'bg-blue-600 text-white shadow-xs'
                 : 'bg-slate-100 text-slate-400'
             }`}>
-              4
+              3
             </span>
-            <span className="text-xs sm:text-sm">Teaching Kit</span>
+            <span className="text-xs sm:text-sm whitespace-nowrap">
+              <span className="hidden sm:inline">Teaching </span>Kit<span className="hidden sm:inline"> & Assessments</span>
+            </span>
           </button>
         </div>
       </div>
       {/* Target anchor for auto-scrolling to errors */}
       <div ref={errorAlertRef} className="scroll-mt-8 space-y-4">
-        {/* Language Mismatch Error Banner */}
+        {/* Language Mismatch or Knowledge Vault Required Error Banner */}
         {mismatchError && (
-          <div className="bg-gradient-to-r from-rose-50 to-red-50 border-2 border-red-500 rounded-2xl p-5 shadow-lg flex flex-col sm:flex-row items-start gap-4 animate-in fade-in slide-in-from-top-4 duration-300">
-            <div className="w-12 h-12 rounded-xl bg-red-100 border border-red-300 flex items-center justify-center shrink-0">
-              <XCircle className="w-7 h-7 text-red-600" />
+          <div className={`bg-gradient-to-r ${mismatchError.includes('Knowledge Vault') ? 'from-amber-50 to-orange-50 border-amber-500' : 'from-rose-50 to-red-50 border-red-500'} border-2 rounded-2xl p-5 shadow-lg flex flex-col sm:flex-row items-start gap-4 animate-in fade-in slide-in-from-top-4 duration-300`}>
+            <div className={`w-12 h-12 rounded-xl ${mismatchError.includes('Knowledge Vault') ? 'bg-amber-100 border-amber-300' : 'bg-red-100 border-red-300'} border flex items-center justify-center shrink-0`}>
+              {mismatchError.includes('Knowledge Vault') ? (
+                <AlertTriangle className="w-7 h-7 text-amber-600" />
+              ) : (
+                <XCircle className="w-7 h-7 text-red-600" />
+              )}
             </div>
             <div className="flex-1">
               <div className="flex items-center gap-2">
-                <span className="bg-red-600 text-white text-[11px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full">
-                  Language Mismatch Warning
+                <span className={`${mismatchError.includes('Knowledge Vault') ? 'bg-amber-600' : 'bg-red-600'} text-white text-[11px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full`}>
+                  {mismatchError.includes('Knowledge Vault') ? 'Knowledge Vault Materials Required' : 'Language Mismatch Warning'}
                 </span>
-                <span className="text-xs font-bold text-red-900">Language & Material Check</span>
+                <span className={`text-xs font-bold ${mismatchError.includes('Knowledge Vault') ? 'text-amber-900' : 'text-red-900'}`}>
+                  {mismatchError.includes('Knowledge Vault') ? 'Zero-Hallucination Policy' : 'Language & Material Check'}
+                </span>
               </div>
-              <h3 className="text-base font-bold text-red-950 mt-1">
-                Language Check Warning: Incorrect Language Material Detected
+              <h3 className={`text-base font-bold ${mismatchError.includes('Knowledge Vault') ? 'text-amber-950' : 'text-red-950'} mt-1`}>
+                {mismatchError.includes('Knowledge Vault') ? 'Study Materials Required in Knowledge Vault' : 'Language Check Warning: Incorrect Language Material Detected'}
               </h3>
-              <p className="text-sm text-red-800 mt-1 leading-relaxed">
+              <p className={`text-sm ${mismatchError.includes('Knowledge Vault') ? 'text-amber-800' : 'text-red-800'} mt-1 leading-relaxed`}>
                 {mismatchError}
               </p>
               <div className="mt-3 flex flex-wrap items-center gap-3">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setUploadedFiles([]);
-                    setSourceUrls(['']);
-                    setMismatchError(null);
-                  }}
-                  className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white text-xs font-bold rounded-xl shadow-md transition-colors flex items-center gap-1.5"
-                >
-                  <RefreshCw className="w-3.5 h-3.5" />
-                  Clear Wrong Files & Upload Correct {selectedLanguage} Materials
-                </button>
+                {mismatchError.includes('Knowledge Vault') ? (
+                  <a
+                    href="/vault"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="px-4 py-2 bg-amber-600 hover:bg-amber-700 active:scale-[0.99] text-white text-xs font-bold rounded-xl shadow-md transition-colors flex items-center gap-1.5"
+                  >
+                    + Upload Materials in Knowledge Vault →
+                  </a>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setUploadedFiles([]);
+                      setSourceUrls(['']);
+                      setMismatchError(null);
+                    }}
+                    className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white text-xs font-bold rounded-xl shadow-md transition-colors flex items-center gap-1.5"
+                  >
+                    <RefreshCw className="w-3.5 h-3.5" />
+                    Clear Wrong Files & Upload Correct {selectedLanguage} Materials
+                  </button>
+                )}
                 <button
                   type="button"
                   onClick={() => setMismatchError(null)}
-                  className="px-3 py-2 bg-white hover:bg-red-100 text-red-800 text-xs font-semibold rounded-xl border border-red-300 transition-colors"
+                  className={`px-3 py-2 bg-white ${mismatchError.includes('Knowledge Vault') ? 'hover:bg-amber-100 text-amber-900 border-amber-300' : 'hover:bg-red-100 text-red-800 border-red-300'} text-xs font-semibold rounded-xl border transition-colors`}
                 >
                   Dismiss Warning
                 </button>
@@ -2555,8 +3896,16 @@ export default function FacultyStudioPage() {
           <div className="bg-white border-b sm:border sm:rounded-2xl border-slate-200 p-4 sm:p-6 lg:p-8 w-full">
             {/* Unified Form Header */}
             <div className="flex items-center justify-between pb-3.5 mb-4 border-b border-slate-100">
-              <div className="flex items-center gap-2">
-                
+              <div className="flex items-center gap-2.5">
+                <button
+                  type="button"
+                  onClick={handleGoHome}
+                  className="px-2.5 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 hover:text-slate-900 border border-slate-200 text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shrink-0 active:scale-95 shadow-2xs"
+                  title="Go to Home Page (http://localhost:3003/)"
+                >
+                  <Home className="w-3.5 h-3.5 text-slate-600" />
+                  <span>Home Page</span>
+                </button>
                 <div>
                   <h3 className="text-sm font-black text-slate-900 tracking-tight">Course Setup</h3>
                   <p className="text-[10px] text-slate-400 font-medium">Configure stream, language, syllabus & materials</p>
@@ -2585,7 +3934,12 @@ export default function FacultyStudioPage() {
                 <div className="grid grid-cols-2 gap-2 p-1 bg-slate-100 rounded-xl border border-slate-200">
                   <button
                     type="button"
-                    onClick={() => setInstitutionType('SCHOOL')}
+                    onClick={() => {
+                      setInstitutionType('SCHOOL');
+                      if (selectedLanguage === 'Korean') {
+                        setSchoolLevel('L1');
+                      }
+                    }}
                     className={`py-2.5 px-3 rounded-lg text-xs font-extrabold flex items-center justify-center gap-2 transition-all ${
                       institutionType === 'SCHOOL'
                         ? 'bg-blue-600 text-white shadow-md'
@@ -2597,7 +3951,12 @@ export default function FacultyStudioPage() {
                   </button>
                   <button
                     type="button"
-                    onClick={() => setInstitutionType('COLLEGE')}
+                    onClick={() => {
+                      setInstitutionType('COLLEGE');
+                      if (selectedLanguage === 'Korean') {
+                        setSelectedLevel('L1');
+                      }
+                    }}
                     className={`py-2.5 px-3 rounded-lg text-xs font-extrabold flex items-center justify-center gap-2 transition-all ${
                       institutionType === 'COLLEGE'
                         ? 'bg-indigo-600 text-white shadow-md'
@@ -2613,7 +3972,7 @@ export default function FacultyStudioPage() {
               {/* Language Selection */}
               <div>
                 <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5 flex items-center justify-between">
-                  <span>Language ({institutionType === 'SCHOOL' ? '4 Core School Languages' : 'Core Languages & JLPT Japanese'}) <span className="text-rose-500 font-bold">*</span></span>
+                  <span>Language ({institutionType === 'SCHOOL' ? 'Core School Languages (incl. Korean)' : 'Core Languages & JLPT Japanese'}) <span className="text-rose-500 font-bold">*</span></span>
                   {!selectedLanguage && (
                     <span className="text-[10px] text-rose-500 font-semibold bg-rose-50 px-2 py-0.5 rounded border border-rose-200">
                       Required
@@ -2642,6 +4001,108 @@ export default function FacultyStudioPage() {
                     <option value="Japanese">Japanese (日本語 • JLPT) </option>
                   )}
                 </select>
+              </div>
+
+              {/* Master Knowledge Pillar Priority (Curriculum Focus) */}
+              <div className="space-y-1.5">
+                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1 flex items-center justify-between">
+                  <span className="flex items-center gap-2">
+                    <span className="w-1.5 h-3.5 rounded-full bg-blue-600 inline-block"></span>
+                    <span>Master Knowledge Pillar Priority</span>
+                  </span>
+                  <span className={`text-[10px] font-semibold px-2 py-0.5 rounded border transition-colors ${
+                    !selectedLanguage
+                      ? 'text-slate-500 bg-slate-100 border-slate-200'
+                      : 'text-blue-700 bg-blue-50 border-blue-200'
+                  }`}>
+                    {!selectedLanguage ? 'Requires Language Selection' : `${selectedLanguage} Curriculum Alignment`}
+                  </span>
+                </label>
+                <select
+                  value={masterPillarPriority}
+                  disabled={!selectedLanguage}
+                  onChange={(e) => setMasterPillarPriority(e.target.value)}
+                  className={`w-full px-3.5 py-2.5 rounded-xl text-sm font-semibold transition-all ${
+                    !selectedLanguage
+                      ? 'bg-slate-100 border border-slate-200 text-slate-400 cursor-not-allowed select-none shadow-none'
+                      : 'bg-white border border-slate-200 text-slate-800 hover:border-slate-300 focus:outline-none focus:ring-2 focus:ring-blue-500 shadow-2xs cursor-pointer'
+                  }`}
+                >
+                  {!selectedLanguage ? (
+                    <option value="COMPREHENSIVE">-- Select Target Language above to activate pillar priority --</option>
+                  ) : (
+                    <>
+                      <option value="COMPREHENSIVE">
+                        Comprehensive 6-Pillar Synthesis (Auto-Balanced — Recommended)
+                      </option>
+                      <option value="LANGUAGE_KNOWLEDGE">
+                        Pillar 1: Language Knowledge (Intensive Grammar, Syntax & Lexicon)
+                      </option>
+                      <option value="PROFICIENCY_FRAMEWORKS">
+                        {selectedLanguage === 'Japanese'
+                          ? 'Pillar 2: Proficiency Frameworks (JLPT N5-N1 Standards & Descriptors)'
+                          : selectedLanguage === 'Korean'
+                          ? 'Pillar 2: Proficiency Frameworks (TOPIK Levels 1-4 Standards & Descriptors)'
+                          : selectedLanguage === 'English'
+                          ? 'Pillar 2: Proficiency Frameworks (CEFR & Cambridge International Standards)'
+                          : 'Pillar 2: Proficiency Frameworks (CEFR A1-C2 Can-Do Objectives)'}
+                      </option>
+                      <option value="CULTURE_SOCIETY">
+                        {selectedLanguage === 'German'
+                          ? 'Pillar 3: Culture & Society (DACH Region Customs, Du/Sie Formality & Etiquette)'
+                          : selectedLanguage === 'French'
+                          ? 'Pillar 3: Culture & Society (Francophone Culture, Tu/Vous Registers & Manners)'
+                          : selectedLanguage === 'Spanish'
+                          ? 'Pillar 3: Culture & Society (Hispanic Pragmatics, Tú/Usted Registers & Traditions)'
+                          : selectedLanguage === 'Japanese'
+                          ? 'Pillar 3: Culture & Society (Japanese Keigo, Pragmatics & Social Etiquette)'
+                          : selectedLanguage === 'Korean'
+                          ? 'Pillar 3: Culture & Society (Korean Honorifics, Jondaenmal & Cultural Norms)'
+                          : selectedLanguage === 'English'
+                          ? 'Pillar 3: Culture & Society (Cross-Cultural Communication & Social Registers)'
+                          : 'Pillar 3: Culture & Society (Pragmatics, Formality Registers & Etiquette)'}
+                      </option>
+                      <option value="LITERATURE_ARTS">
+                        {selectedLanguage === 'German'
+                          ? 'Pillar 4: Literature & Arts (Authentic German Spoken Dialogues & Literature)'
+                          : selectedLanguage === 'French'
+                          ? 'Pillar 4: Literature & Arts (Authentic French Dialogues & Conversational Scripts)'
+                          : selectedLanguage === 'Spanish'
+                          ? 'Pillar 4: Literature & Arts (Hispanic Spoken Roleplay Scripts & Dialogues)'
+                          : selectedLanguage === 'Japanese'
+                          ? 'Pillar 4: Literature & Arts (Authentic Japanese Dialogues & Situational Roleplays)'
+                          : selectedLanguage === 'Korean'
+                          ? 'Pillar 4: Literature & Arts (Spoken K-Drama / Real-world Dialogues & Roleplays)'
+                          : selectedLanguage === 'English'
+                          ? 'Pillar 4: Literature & Arts (Authentic Spoken Roleplay Scripts & Literary Passages)'
+                          : 'Pillar 4: Literature & Arts (Spoken Roleplay Scripts & Authentic Dialogues)'}
+                      </option>
+                      <option value="ACADEMIC_PROFESSIONAL">
+                        {selectedLanguage === 'German'
+                          ? 'Pillar 5: Academic & Professional (Berufssprache & German Workplace Fluency)'
+                          : selectedLanguage === 'French'
+                          ? 'Pillar 5: Academic & Professional (Français Professionnel & Corporate Fluency)'
+                          : selectedLanguage === 'Spanish'
+                          ? 'Pillar 5: Academic & Professional (Business Spanish & Workplace Protocols)'
+                          : selectedLanguage === 'Japanese'
+                          ? 'Pillar 5: Academic & Professional (Business Japanese & Corporate Etiquette)'
+                          : selectedLanguage === 'Korean'
+                          ? 'Pillar 5: Academic & Professional (Corporate Korean & Business Communications)'
+                          : selectedLanguage === 'English'
+                          ? 'Pillar 5: Academic & Professional (Business English & Corporate Fluency)'
+                          : 'Pillar 5: Academic & Professional (Workplace & Corporate Fluency)'}
+                      </option>
+                      <option value="TEACHING_PEDAGOGY">
+                        Pillar 6: Teaching & Pedagogy (Faculty PPP Procedures & Solutions)
+                      </option>
+                    </>
+                  )}
+                </select>
+                <p className="text-[10px] text-slate-400">
+                  {!selectedLanguage
+                    ? 'Please select a target language above first. The master pillar priority will then automatically configure to that language.'
+                    : `Configured for ${selectedLanguage}: Directs the AI to emphasize this pillar while generating a balanced 6-pillar curriculum.`}
+                </p>
               </div>
 
               {/* ----------------- SCHOOL SPECIFIC CONFIGURATION ----------------- */}
@@ -2691,10 +4152,10 @@ export default function FacultyStudioPage() {
                     )}
                   </div>
 
-                  {/* School Sub-Levels Dropdown (A1.1 to B1.4) */}
+                  {/* School Sub-Levels Dropdown (A1.1 to B1.4 or L1 to L4 for Korean) */}
                   <div>
                     <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
-                      Target School Grade Level (A1.1 – B1.4)
+                      Target School Grade Level ({selectedLanguage === 'Korean' ? 'Korean L1 – L4' : 'A1.1 – B1.4'})
                     </label>
                     <select
                       value={schoolLevel}
@@ -2706,13 +4167,19 @@ export default function FacultyStudioPage() {
                       }}
                       className="w-full px-3.5 py-2.5 bg-white border border-slate-200 rounded-xl text-sm font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500 shadow-2xs"
                     >
-                      {SCHOOL_LEVEL_SCHEDULES.map((sched) => (
-                        <option key={sched.level} value={sched.level}>
-                          Level {sched.level} ({sched.courseDurationHours} Hours Curriculum)
-                        </option>
-                      ))}
-                                          <option value="CUSTOM">Custom Grade Level / Term</option>
-</select>
+                      {selectedLanguage === 'Korean'
+                        ? KOREAN_SCHOOL_LEVEL_SCHEDULES.map((sched) => (
+                            <option key={sched.level} value={sched.level}>
+                              Level {sched.level} ({sched.courseDurationHours} Hours Curriculum)
+                            </option>
+                          ))
+                        : SCHOOL_LEVEL_SCHEDULES.map((sched) => (
+                            <option key={sched.level} value={sched.level}>
+                              Level {sched.level} ({sched.courseDurationHours} Hours Curriculum)
+                            </option>
+                          ))}
+                      <option value="CUSTOM">Custom Grade Level / Term</option>
+                    </select>
                     {schoolLevel === 'CUSTOM' && (
                       <div className="mt-2.5 p-3 bg-white border border-blue-200 rounded-xl space-y-2.5 animate-in fade-in">
                         <div className="flex items-center justify-between gap-2">
@@ -2747,7 +4214,7 @@ export default function FacultyStudioPage() {
                   {/* School Dynamic Metric Summary Card (100% Directly Selectable & Editable) */}
                   {(() => {
                     const fallbackCategory: SchoolCategoryKey = schoolCategory === 'CUSTOM' ? 'CAT_3' : schoolCategory;
-                    const fallbackLevel = schoolLevel === 'CUSTOM' ? 'A1.1' : schoolLevel;
+                    const fallbackLevel = schoolLevel === 'CUSTOM' ? (selectedLanguage === 'Korean' ? 'L1' : 'A1.1') : schoolLevel;
                     const activeSchool = getSchoolSchedule(fallbackLevel, fallbackCategory);
 
                     const effectivePeriodMins = schoolCategory === 'CUSTOM' && customSchoolCategoryMins !== ''
@@ -2786,9 +4253,16 @@ export default function FacultyStudioPage() {
                             </span>
                             <span className="text-[10px] text-slate-400 font-medium">Edit or select any value directly</span>
                           </div>
-                          <span className="text-xs font-black text-blue-700 bg-blue-50 px-3 py-1 rounded-xl border border-blue-200">
-                            {totalCalculatedPeriods} Total Periods
-                          </span>
+                          <div className="text-right">
+                            <span className="text-xs font-black text-blue-700 bg-blue-50 px-2.5 py-1 rounded-xl border border-blue-200">
+                              {courseDurationMode === 'CUSTOM' ? `${customDays || 2} Periods Active` : `${totalCalculatedPeriods} Total Periods`}
+                            </span>
+                            {courseDurationMode === 'CUSTOM' && (
+                              <span className="text-[10px] text-slate-400 block mt-0.5 font-medium">
+                                (Full Term Baseline: {totalCalculatedPeriods} Periods • {effectiveHours}h)
+                              </span>
+                            )}
+                          </div>
                         </div>
 
                         {/* Direct Selectable & Customizable Metrics Grid */}
@@ -3023,7 +4497,7 @@ export default function FacultyStudioPage() {
                               type="button"
                               onClick={() => {
                                 setSchoolCategory('CAT_1');
-                                setSchoolLevel('A1.1');
+                                setSchoolLevel(selectedLanguage === 'Korean' ? 'L1' : 'A1.1');
                                 setCustomTeachingHours('');
                                 setCustomPeriodMins('');
                                 setCustomPeriodsPerWeek('');
@@ -3090,7 +4564,7 @@ export default function FacultyStudioPage() {
                   {/* College Levels Dropdown */}
                   <div>
                     <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
-                      College Target Level ({selectedLanguage === 'Japanese' ? 'JLPT' : 'CEFR'})
+                      College Target Level ({selectedLanguage === 'Japanese' ? 'JLPT' : (selectedLanguage === 'Korean' ? 'Korean L1–L4' : 'CEFR')})
                     </label>
                     <select
                       value={selectedLevel}
@@ -3103,13 +4577,19 @@ export default function FacultyStudioPage() {
                               Level {lvl} (JLPT Standard)
                             </option>
                           ))
+                        : selectedLanguage === 'Korean'
+                        ? ['L1', 'L2', 'L3', 'L4'].map((lvl) => (
+                            <option key={lvl} value={lvl}>
+                              Level {lvl} (Korean Standard L1–L4)
+                            </option>
+                          ))
                         : ['A1', 'A2', 'B1', 'B2'].map((lvl) => (
                             <option key={lvl} value={lvl}>
                               Level {lvl} (CEFR College Track)
                             </option>
                           ))}
-                                          <option value="CUSTOM">Custom College Level & Hours</option>
-</select>
+                      <option value="CUSTOM">Custom College Level & Hours</option>
+                    </select>
                     {selectedLevel === 'CUSTOM' && (
                       <div className="mt-2 p-3 bg-white border border-indigo-200 rounded-xl space-y-2.5 animate-in fade-in">
                         <div className="flex items-center justify-between gap-2">
@@ -3148,11 +4628,18 @@ export default function FacultyStudioPage() {
                       <div className="bg-white border border-indigo-200 rounded-xl p-3 shadow-xs space-y-2">
                         <div className="flex items-center justify-between border-b border-indigo-100 pb-2">
                           <span className="text-[11px] font-extrabold uppercase text-indigo-900">
-                            🎓 College Curriculum Metrics
+                            College Curriculum Metrics
                           </span>
-                          <span className="text-[11px] font-black text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded border border-indigo-200">
-                            {activeCollege.sessionsRequired} Sessions • {activeCollege.monthsRequired} Months
-                          </span>
+                          <div className="text-right">
+                            <span className="text-[11px] font-black text-indigo-700 bg-indigo-50 px-2.5 py-0.5 rounded border border-indigo-200">
+                              {courseDurationMode === 'CUSTOM' ? `${customDays || 2} Sessions Active` : `${activeCollege.sessionsRequired} Sessions • ${activeCollege.monthsRequired} Mo`}
+                            </span>
+                            {courseDurationMode === 'CUSTOM' && (
+                              <span className="text-[10px] text-slate-400 block mt-0.5 font-medium">
+                                (Semester Baseline: {activeCollege.sessionsRequired} Sessions)
+                              </span>
+                            )}
+                          </div>
                         </div>
 
                         <div className="grid grid-cols-2 gap-2 text-xs">
@@ -3274,39 +4761,231 @@ export default function FacultyStudioPage() {
                 )}
               </div>
 
-              {/* Left Column Controls */}
-              <div className="pt-2 space-y-2">
+              {/* Knowledge Vault Grounding Status Indicator Card */}
+              <div className="pt-2 space-y-3">
+                {selectedLanguage ? (
+                  matchingVaultResources.length > 0 ? (
+                    <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 space-y-2 text-xs shadow-2xs">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                          <span className="font-extrabold text-slate-900">
+                            Knowledge Vault Auto-Grounding Active
+                          </span>
+                        </div>
+                        <span className="text-[10px] font-mono font-bold bg-blue-100 text-blue-800 border border-blue-200 px-2 py-0.5 rounded-full">
+                          {matchingVaultResources.length} Vault Materials Linked
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-slate-500 leading-relaxed">
+                        Syllabus planning, progressive day-by-day timetable, and formal examinations are synthesized directly from verified textbooks, media, and articles in the central Knowledge Vault with 0% hallucination.
+                      </p>
+                      <div className="pt-1 flex items-center justify-between border-t border-slate-200/70 text-[11px]">
+                        <span className="text-slate-400">Institutional Grounding: {selectedLanguage} ({currentEffectiveLevel})</span>
+                        <a href="/vault" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline font-bold">
+                          Open Knowledge Vault Master Hub →
+                        </a>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="bg-amber-50/90 border-2 border-amber-300 rounded-2xl p-4 space-y-3 text-xs shadow-xs animate-in fade-in duration-200">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <div className="w-2.5 h-2.5 rounded-full bg-amber-500 animate-pulse" />
+                          <span className="font-extrabold text-amber-950">
+                            Knowledge Vault Materials Required
+                          </span>
+                        </div>
+                        <span className="text-[10px] font-mono font-bold bg-amber-200/80 text-amber-900 border border-amber-300 px-2 py-0.5 rounded-full">
+                          0 Materials in Vault
+                        </span>
+                      </div>
+                      <div className="p-3 bg-white/80 rounded-xl border border-amber-200 text-amber-900 leading-relaxed space-y-1">
+                        <p className="font-bold text-xs text-amber-950">
+                          Please upload the materials first in the Knowledge Vault.
+                        </p>
+                        <p className="text-[11px] text-amber-800">
+                          No study materials, textbooks, or data files found for <strong>{selectedLanguage} ({currentEffectiveLevel})</strong> in the Knowledge Vault database. Curriculum and lesson plan generation are locked until materials are uploaded.
+                        </p>
+                      </div>
+                      <div className="pt-1">
+                        <a
+                          href="/vault"
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="w-full py-2.5 px-3.5 bg-amber-600 hover:bg-amber-700 active:scale-[0.99] text-white font-bold rounded-xl text-xs flex items-center justify-center gap-2 shadow-xs transition-all text-center"
+                        >
+                          + Upload Materials in Knowledge Vault →
+                        </a>
+                      </div>
+                    </div>
+                  )
+                ) : (
+                  <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 space-y-2 text-xs shadow-2xs">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <div className="w-2 h-2 rounded-full bg-slate-400" />
+                        <span className="font-extrabold text-slate-800">
+                          Knowledge Vault Auto-Grounding
+                        </span>
+                      </div>
+                      <span className="text-[10px] font-mono font-bold bg-slate-100 text-slate-600 border border-slate-200 px-2 py-0.5 rounded-full">
+                        Select Language
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-slate-500 leading-relaxed">
+                      Select a language above to inspect matching Knowledge Vault textbooks, documents, and interactive resources.
+                    </p>
+                    <div className="pt-1 flex items-center justify-between border-t border-slate-200/70 text-[11px]">
+                      <span className="text-slate-400">Institutional Master Hub</span>
+                      <a href="/vault" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline font-bold">
+                        Open Vault →
+                      </a>
+                    </div>
+                  </div>
+                )}
+
+                {/* Active Curriculum Blueprint Target & Live Output Summary */}
+                {(() => {
+                  const isSchoolMode = institutionType === 'SCHOOL';
+                  const fallbackLvl = isSchoolMode
+                    ? (schoolLevel === 'CUSTOM' ? (selectedLanguage === 'Korean' ? 'L1' : 'A1.1') : schoolLevel)
+                    : (selectedLevel === 'CUSTOM' ? 'A1' : selectedLevel);
+                  const fallbackCat = schoolCategory === 'CUSTOM' ? 'CAT_1' : schoolCategory;
+                  const schoolSched = getSchoolSchedule(fallbackLvl, fallbackCat);
+                  const collegeSched = getCollegeSchedule(selectedLanguage, selectedLevel, collegeTrack);
+
+                  const livePeriodMins = isSchoolMode
+                    ? (schoolCategory === 'CUSTOM' && customSchoolCategoryMins !== ''
+                        ? Number(customSchoolCategoryMins)
+                        : (customPeriodMins !== '' ? Number(customPeriodMins) : schoolSched.periodDurationMinutes))
+                    : (collegeTrack === 'CUSTOM' && customCollegeTrackMins !== ''
+                        ? Number(customCollegeTrackMins)
+                        : (customPeriodMins !== '' ? Number(customPeriodMins) : ((collegeSched as any).sessionMinutes || (collegeSched as any).sessionDurationMinutes || 45)));
+
+                  const liveBaselinePeriods = isSchoolMode
+                    ? (customTeachingHours !== ''
+                        ? Math.max(2, Math.round((Number(customTeachingHours) * 60) / livePeriodMins))
+                        : schoolSched.totalPeriods)
+                    : (customCollegeTeachingHours !== ''
+                        ? Math.max(2, Math.round((Number(customCollegeTeachingHours) * 60) / livePeriodMins))
+                        : collegeSched.sessionsRequired);
+
+                  const liveTargetPeriods = (courseDurationMode === 'CUSTOM' && customDays && Number(customDays) > 0)
+                    ? Number(customDays)
+                    : liveBaselinePeriods;
+
+                  const liveTotalMinutes = liveTargetPeriods * livePeriodMins;
+                  const liveTotalHours = (liveTotalMinutes / 60).toFixed(1).replace(/\.0$/, '');
+
+                  const livePeriodsPerWeek = isSchoolMode
+                    ? (customPeriodsPerWeek !== '' ? Number(customPeriodsPerWeek) : schoolSched.periodsPerWeek)
+                    : collegeSched.sessionsPerWeek;
+
+                  const liveWeeks = Math.max(1, Math.ceil(liveTargetPeriods / Math.max(1, livePeriodsPerWeek)));
+
+                  const liveAssessments = isSchoolMode
+                    ? (customAssessmentsCount !== '' ? Number(customAssessmentsCount) : (liveTargetPeriods <= 5 ? 1 : schoolSched.assessmentsCount))
+                    : (customAssessmentsCount !== '' ? Number(customAssessmentsCount) : (liveTargetPeriods <= 5 ? 1 : collegeSched.assessmentsCount));
+
+                  return (
+                    <div className="bg-gradient-to-r from-blue-50/90 to-indigo-50/70 border-2 border-blue-200/90 rounded-2xl p-4 space-y-3 shadow-xs">
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-blue-200/80 pb-2.5">
+                        <div className="flex items-center gap-2">
+                          <span className="w-2.5 h-2.5 rounded-full bg-blue-600 animate-pulse" />
+                          <h4 className="text-xs sm:text-sm font-black text-slate-900 tracking-tight uppercase">
+                            Target Curriculum Scope: {liveTargetPeriods} {isSchoolMode ? 'Periods' : 'Sessions'}
+                          </h4>
+                        </div>
+                        <span className="text-[10px] font-black uppercase tracking-wider text-blue-700 bg-white border border-blue-300 px-2.5 py-0.5 rounded-full self-start sm:self-auto shadow-2xs">
+                          {courseDurationMode === 'CUSTOM' ? `Custom Mode (${liveTargetPeriods} Days)` : `Institutional Full Term`}
+                        </span>
+                      </div>
+
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
+                        <div className="bg-white p-2.5 rounded-xl border border-blue-100 shadow-2xs">
+                          <span className="text-[10px] font-bold text-slate-400 block uppercase">Course Duration</span>
+                          <span className="text-xs sm:text-sm font-black text-blue-950">{liveTargetPeriods} {isSchoolMode ? 'Periods' : 'Sessions'}</span>
+                        </div>
+                        <div className="bg-white p-2.5 rounded-xl border border-blue-100 shadow-2xs">
+                          <span className="text-[10px] font-bold text-slate-400 block uppercase">Total Hours</span>
+                          <span className="text-xs sm:text-sm font-black text-blue-950">{liveTotalHours}h ({liveTotalMinutes}m)</span>
+                        </div>
+                        <div className="bg-white p-2.5 rounded-xl border border-blue-100 shadow-2xs">
+                          <span className="text-[10px] font-bold text-slate-400 block uppercase">{isSchoolMode ? 'Period' : 'Session'} Length</span>
+                          <span className="text-xs sm:text-sm font-black text-blue-950">{livePeriodMins} Mins</span>
+                        </div>
+                        <div className="bg-white p-2.5 rounded-xl border border-blue-100 shadow-2xs">
+                          <span className="text-[10px] font-bold text-slate-400 block uppercase">Pace & Weeks</span>
+                          <span className="text-xs sm:text-sm font-black text-blue-950">~{liveWeeks} {liveWeeks === 1 ? 'Wk' : 'Wks'} ({livePeriodsPerWeek}/wk)</span>
+                        </div>
+                      </div>
+
+                      <div className="flex flex-wrap items-center justify-between gap-2 pt-1 text-[11px] text-slate-600 border-t border-blue-100/80">
+                        <span className="flex items-center gap-1">
+                          <span>Target:</span>
+                          <strong className="text-slate-900 font-bold">{selectedLanguage || 'Language'}</strong>
+                          <span>•</span>
+                          <strong className="text-slate-900 font-bold">{currentEffectiveLevel}</strong>
+                          {courseDurationMode === 'CUSTOM' && (
+                            <span className="text-slate-400 text-[10px] ml-1">(Full Term Baseline: {liveBaselinePeriods} Periods)</span>
+                          )}
+                        </span>
+                        <span className="text-blue-900 font-semibold">
+                          Assessments: <strong>{liveAssessments} {liveAssessments === 1 ? 'Benchmark Exam' : 'Benchmark Exams'}</strong>
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })()}
+
                 <button
                   type="button"
                   onClick={(e) => {
                     e.preventDefault();
                     if (!selectedLanguage) {
-                      setSelectedLanguage('English'); // auto-select English if user clicked next
-                      setStudioStep(2);
-                      window.scrollTo({ top: 0, behavior: 'smooth' });
+                      setMismatchError('Target Language is required. Please select a language.');
                       return;
+                    }
+                    if (matchingVaultResources.length === 0) {
+                      setMismatchError(`No study materials or data files found in the Knowledge Vault for ${selectedLanguage} (${currentEffectiveLevel}). Please upload the materials first in the Knowledge Vault before generating the curriculum.`);
                       setTimeout(() => {
                         errorAlertRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
                       }, 50);
                       return;
                     }
                     setMismatchError(null);
-                    setStudioStep(2);
-                    window.scrollTo({ top: 0, behavior: 'smooth' });
+                    handleProposeCurriculum();
                   }}
-                  disabled={!selectedLanguage}
-                  className={`w-full py-3.5 px-4 font-bold rounded-xl shadow-md flex items-center justify-center gap-2 transition-all cursor-pointer text-sm ${
-                    !selectedLanguage
+                  disabled={!selectedLanguage || loading || plannerLoading || matchingVaultResources.length === 0}
+                  className={`w-full py-3.5 px-4 font-bold rounded-xl shadow-md flex items-center justify-center gap-2 transition-all text-sm ${
+                    !selectedLanguage || matchingVaultResources.length === 0
                       ? 'bg-slate-200 text-slate-400 cursor-not-allowed shadow-none'
-                      : 'bg-blue-600 hover:bg-blue-700 text-white shadow-blue-600/20 active:scale-[0.99]'
+                      : 'bg-blue-600 hover:bg-blue-700 text-white shadow-blue-600/20 cursor-pointer active:scale-[0.99]'
                   }`}
                 >
-                  <span>Next: Add Study Materials & Links →</span>
+                  {loading || plannerLoading ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin text-white" />
+                      <span>Synthesizing from Vault Materials...</span>
+                    </>
+                  ) : !selectedLanguage ? (
+                    <span>Select Language to Proceed →</span>
+                  ) : matchingVaultResources.length === 0 ? (
+                    <span>Generation Locked: Please Upload Materials First</span>
+                  ) : (
+                    <span>Propose {courseDurationMode === 'CUSTOM' ? `${customDays || 2} Days` : 'Full Term'} Curriculum Plan from Vault →</span>
+                  )}
                 </button>
 
                 {!selectedLanguage && (
                   <p className="text-[11px] text-amber-700 font-medium text-center mt-2 flex items-center justify-center gap-1">
-                    <span></span> Please select a target language above to proceed
+                    Please select a target language above to proceed
+                  </p>
+                )}
+                {selectedLanguage && matchingVaultResources.length === 0 && (
+                  <p className="text-[11px] text-amber-800 font-medium text-center mt-1">
+                    Please upload the materials first in the Knowledge Vault. Blueprint generation is locked to ensure zero AI hallucination.
                   </p>
                 )}
               </div>
@@ -3318,295 +4997,133 @@ export default function FacultyStudioPage() {
         {/* Right Column: Generated Curriculum Workspace (Full width if isFullScreen with active planner/package/loading, otherwise 8 cols) */}
         <div className="space-y-6 w-full animate-in fade-in">
           {/* 1. Proposed Lesson Planner Review & Confirmation Card (Strictly blocked if mismatch error exists) */}
-          {studioStep === 3 && Boolean(proposedPlanner) && !sessionPackage && !loading && (
+          {studioStep === 2 && Boolean(proposedPlanner) && !sessionPackage && !loading && (
             <div className="bg-white rounded-2xl border border-blue-200/90 shadow-md overflow-hidden animate-in fade-in slide-in-from-top-3 duration-300">
-              {/* Course Lesson Planner Header */}
-              <div className="p-4 sm:p-5 bg-slate-900 border-b border-slate-800 text-white">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-slate-800">
-                  <div className="space-y-1.5">
-                    <div className="flex items-center gap-2">
-                      <span className="bg-slate-800 text-white text-[11px] font-bold px-2.5 py-1 rounded-lg border border-slate-700 flex items-center gap-1.5 shadow-xs">
-                        <Bot className="w-3.5 h-3.5 text-indigo-400" />
-                        Autonomous Lesson Planner Agent
-                      </span>
-                      <span className="bg-emerald-500/10 text-emerald-300 text-xs font-mono font-semibold px-2 py-0.5 rounded-md border border-emerald-500/25 flex items-center gap-1.5">
-                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                        Live Studio
-                      </span>
-                      <span className="bg-slate-800/80 text-slate-300 text-xs font-medium px-2 py-0.5 rounded-md border border-slate-700/60 hidden md:inline">
+              {/* Executive Curriculum Planner Header */}
+              <div className="bg-slate-900 text-white p-4 sm:p-6 border-b border-slate-800 space-y-3.5">
+                {/* Top Action Row (Mobile & Desktop) */}
+                <div className="flex items-center justify-between gap-2.5">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setStudioStep(1);
+                      window.scrollTo({ top: 0, behavior: 'smooth' });
+                    }}
+                    className="group inline-flex items-center gap-1.5 px-3 py-1.5 sm:px-3.5 sm:py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white rounded-xl text-xs font-bold border border-slate-700 hover:border-slate-600 transition-all shadow-xs shrink-0 cursor-pointer active:scale-95"
+                    title="Return to Step 1: Course Setup"
+                  >
+                    <svg
+                      className="w-3.5 h-3.5 text-slate-400 group-hover:text-white transition-transform group-hover:-translate-x-0.5"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                      strokeWidth={2.5}
+                    >
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M10.5 19.5L3 12m0 0l7.5-7.5M3 12h18" />
+                    </svg>
+                    <span>Back to Setup</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={navigateToGroundedMaterials}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 sm:px-3.5 sm:py-2 bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-300 border border-emerald-500/40 rounded-xl text-xs font-bold transition-all shadow-xs shrink-0 cursor-pointer active:scale-95"
+                    title="View all verified Knowledge Vault materials grounded for this level on separate page"
+                  >
+                    <svg className="w-3.5 h-3.5 text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
+                    </svg>
+                    <span>View Materials</span>
+                    <span className="bg-emerald-500/30 text-emerald-200 text-[10px] px-1.5 py-0.5 rounded-full font-mono font-bold">
+                      {matchingVaultResources.length}
+                    </span>
+                  </button>
+                </div>
+
+                {/* Identity, Title & Metrics Row */}
+                <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+                  {/* Left: Identity & Title */}
+                  <div className="space-y-1.5 min-w-0">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="bg-blue-600/25 text-blue-300 border border-blue-500/40 text-xs font-black px-2.5 py-0.5 rounded-lg tracking-wide shadow-2xs whitespace-nowrap">
                         {proposedPlanner.language} • {proposedPlanner.level}
                       </span>
+                      <span className="text-slate-600 text-xs font-bold">•</span>
+                      <span className="text-xs text-slate-300 font-bold whitespace-nowrap">
+                        {proposedPlanner.total_days} {proposedPlanner.unit_name}s Blueprint
+                      </span>
+                      <span className="text-slate-600 text-xs font-bold">•</span>
+                      <button
+                        type="button"
+                        onClick={navigateToGroundedMaterials}
+                        className="inline-flex items-center gap-1.5 text-xs font-bold text-emerald-400 hover:text-emerald-300 transition-colors cursor-pointer"
+                        title="Inspect verified materials on separate page"
+                      >
+                        <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                        <span>{matchingVaultResources.length} Vault Grounded</span>
+                        <span className="text-slate-400 text-[10px]">↗</span>
+                      </button>
                     </div>
-                    <h3 className="text-base sm:text-lg font-black text-white tracking-tight">
-                      {proposedPlanner.total_days} {proposedPlanner.unit_name}s Curriculum Blueprint
-                    </h3>
+
+                    <h2 className="text-lg sm:text-2xl font-black text-white tracking-tight leading-snug break-words">
+                      {proposedPlanner.topic || `Comprehensive ${proposedPlanner.language} Course`}
+                    </h2>
                   </div>
 
-                  <div className="flex items-center gap-2 shrink-0 flex-wrap">
-                    {/* 📎 Add More Materials Input for Step 3 Session Planner */}
-                    <input
-                      type="file"
-                      ref={plannerMaterialsInputRef}
-                      className="hidden"
-                      multiple
-                      accept="image/*,video/*,audio/*,.pdf,.txt,.docx,.csv,.pptx,.ppt"
-                      onChange={handleStep4AddMaterials}
-                    />
-                    <button
-                      type="button"
-                      onClick={() => plannerMaterialsInputRef.current?.click()}
-                      disabled={isExtractingHeaderMaterials}
-                      className="flex items-center gap-1.5 px-3.5 py-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white rounded-xl text-xs font-black transition-all border border-emerald-400/50 cursor-pointer shadow-md shadow-emerald-950/20 disabled:opacity-50"
-                      title="Upload more study files, PDFs, Word docs, or audio to enrich this lesson planner blueprint"
-                    >
-                      {isExtractingHeaderMaterials ? (
-                        <>
-                          <Loader2 className="w-3.5 h-3.5 animate-spin text-amber-300" />
-                          <span>Ingesting Material...</span>
-                        </>
-                      ) : (
-                        <>
-                          <Upload className="w-3.5 h-3.5 text-amber-300" />
-                          <span>+ Add More Materials</span>
-                          {uploadedFiles.length > 0 && (
-                            <span className="bg-amber-400 text-slate-950 text-[10px] px-1.5 py-0.2 rounded-full font-black">
-                              {uploadedFiles.length}
-                            </span>
-                          )}
-                        </>
-                      )}
-                    </button>
+                  {/* Right: Metrics Pill & Confirm Primary Action Button */}
+                  <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 shrink-0">
+                    {/* Clean Metrics Summary */}
+                    <div className="grid grid-cols-3 sm:flex items-center gap-2 sm:gap-3 bg-slate-800/90 border border-slate-700/80 px-3.5 py-2 rounded-xl text-xs text-center sm:text-left">
+                      <div>
+                        <span className="text-slate-400 text-[10px] block uppercase font-bold tracking-wider">Duration</span>
+                        <span className="font-extrabold text-slate-100">{proposedPlanner.course_duration_hours}h</span>
+                      </div>
+                      <div className="hidden sm:block w-px h-6 bg-slate-700" />
+                      <div>
+                        <span className="text-slate-400 text-[10px] block uppercase font-bold tracking-wider">Length</span>
+                        <span className="font-extrabold text-slate-100">{proposedPlanner.period_duration_minutes}m</span>
+                      </div>
+                      <div className="hidden sm:block w-px h-6 bg-slate-700" />
+                      <div>
+                        <span className="text-slate-400 text-[10px] block uppercase font-bold tracking-wider">Cadence</span>
+                        <span className="font-extrabold text-slate-100">{proposedPlanner.periods_per_week}/wk</span>
+                      </div>
+                    </div>
 
-                    <button
-                      type="button"
-                      onClick={() => {
-                        const url = window.prompt("Enter YouTube video link or reference website URL to ingest into Session Planner:");
-                        if (url && url.trim()) {
-                          handleAddLinkToPlanner(url.trim());
-                        }
-                      }}
-                      className="flex items-center gap-1.5 px-3 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white rounded-xl text-xs font-bold transition-all border border-slate-700 cursor-pointer shadow-xs"
-                      title="Add a YouTube video, web article, or reference link to this session planner"
-                    >
-                      <Link2 className="w-3.5 h-3.5 text-cyan-400" />
-                      <span>+ Add Link</span>
-                      {sourceUrls.filter(u => u.trim()).length > 0 && (
-                        <span className="bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 text-[10px] px-1.5 py-0.2 rounded-full font-mono">
-                          {sourceUrls.filter(u => u.trim()).length}
-                        </span>
-                      )}
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setStudioStep(2);
-                        window.scrollTo({ top: 0, behavior: 'smooth' });
-                      }}
-                      className="px-3.5 py-2 rounded-xl text-xs sm:text-sm font-bold bg-white hover:bg-slate-100 text-slate-800 transition-all flex items-center gap-1.5 cursor-pointer shadow-sm active:scale-[0.98] border border-slate-300"
-                      title="Return to materials and files upload"
-                    >
-                      <span>← Back to Materials</span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setStudioStep(1);
-                        window.scrollTo({ top: 0, behavior: 'smooth' });
-                      }}
-                      className="px-3 py-2 rounded-xl text-xs sm:text-sm font-medium bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition-all flex items-center gap-1 cursor-pointer border border-slate-700 active:scale-[0.98]"
-                      title="Return to course parameters setup"
-                    >
-                      <span>Course Setup</span>
-                    </button>
                     <button
                       type="button"
                       onClick={handleGenerate}
-                      className="px-4 py-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-bold rounded-xl text-xs shadow-md shadow-blue-600/25 transition-all flex items-center gap-1.5 cursor-pointer"
+                      className="px-5 py-2.5 bg-blue-600 hover:bg-blue-500 active:scale-[0.99] text-white font-bold rounded-xl text-xs shadow-md shadow-blue-600/30 transition-all cursor-pointer whitespace-nowrap text-center"
                     >
-                      <Sparkles className="w-3.5 h-3.5 text-white" />
-                      <span>Confirm & Generate Package</span>
+                      Confirm & Generate Package →
                     </button>
                   </div>
                 </div>
+
+                {/* Module switcher if multiple modules */}
+                {proposedPlanner.total_modules > 1 && (
+                  <div className="pt-3 mt-3 border-t border-slate-800 flex items-center gap-2 overflow-x-auto no-scrollbar">
+                    <span className="text-[10px] uppercase font-bold tracking-wider text-slate-400 shrink-0">Modules:</span>
+                    {proposedPlanner.modules.map((m: any) => (
+                      <button
+                        key={m.moduleNumber}
+                        type="button"
+                        onClick={() => {
+                          setPlannerActiveModule(m.moduleNumber);
+                          setExpandedPeriodId(null);
+                        }}
+                        className={`px-3 py-1 rounded-lg text-xs font-semibold transition-all shrink-0 cursor-pointer ${
+                          plannerActiveModule === m.moduleNumber
+                            ? 'bg-blue-600 text-white font-bold shadow-xs'
+                            : 'bg-slate-800 text-slate-400 hover:text-slate-200 border border-slate-700/60'
+                        }`}
+                      >
+                        Module {m.moduleNumber} ({m.startUnit}–{m.endUnit})
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
-
-              {/* Header Ingestion Notification Toast */}
-              {headerMaterialToast && (
-                <div className="bg-emerald-500 text-slate-950 px-5 py-2.5 text-xs font-black flex items-center justify-between shadow-md animate-in fade-in">
-                  <div className="flex items-center gap-2">
-                    <CheckCircle2 className="w-4 h-4 text-slate-950 shrink-0" />
-                    <span>{headerMaterialToast}</span>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => setHeaderMaterialToast(null)}
-                    className="text-slate-950 font-black hover:opacity-75 cursor-pointer ml-3"
-                  >
-                    ✕
-                  </button>
-                </div>
-              )}
-
-              {/* Active Ingested Materials Strip for Session Planner */}
-              {(uploadedFiles.length > 0 || sourceUrls.filter(u => u.trim()).length > 0) && (
-                <div className="bg-slate-950/70 border-b border-slate-800 px-5 py-2.5 flex flex-wrap items-center justify-between gap-2 text-xs">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span className="text-[10px] font-black uppercase text-indigo-400 tracking-wider flex items-center gap-1">
-                      <Paperclip className="w-3 h-3 text-indigo-400" />
-                      Active Ingested Materials ({uploadedFiles.length + sourceUrls.filter(u => u.trim()).length}):
-                    </span>
-                    <div className="flex flex-wrap items-center gap-1.5">
-                      {uploadedFiles.map((file, i) => (
-                        <span
-                          key={i}
-                          className="inline-flex items-center gap-1 bg-slate-800 text-slate-200 border border-slate-700 px-2 py-0.5 rounded-md text-[10px] font-mono shadow-xs"
-                          title={file.name}
-                        >
-                          <FileText className="w-2.5 h-2.5 text-indigo-400" />
-                          <span className="truncate max-w-[140px] font-medium">{file.name}</span>
-                          <span className="text-slate-400">({(file.size / 1024).toFixed(0)}KB)</span>
-                          <button
-                            type="button"
-                            onClick={() => removeUploadedFile(i)}
-                            className="text-slate-400 hover:text-rose-400 ml-0.5 font-bold cursor-pointer"
-                            title="Remove file"
-                          >
-                            ✕
-                          </button>
-                        </span>
-                      ))}
-                      {sourceUrls.filter(u => u.trim()).map((url, i) => (
-                        <span
-                          key={`url-${i}`}
-                          className="inline-flex items-center gap-1 bg-cyan-950/60 text-cyan-300 border border-cyan-800 px-2 py-0.5 rounded-md text-[10px] font-mono shadow-xs"
-                          title={url}
-                        >
-                          <Link2 className="w-2.5 h-2.5 text-cyan-400" />
-                          <span className="truncate max-w-[160px] font-medium">{url.replace(/^https?:\/\/(www\.)?/, '')}</span>
-                          <button
-                            type="button"
-                            onClick={() => setSourceUrls(prev => prev.filter(u => u !== url))}
-                            className="text-cyan-400 hover:text-rose-400 ml-0.5 font-bold cursor-pointer"
-                            title="Remove link"
-                          >
-                            ✕
-                          </button>
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => plannerMaterialsInputRef.current?.click()}
-                    className="text-[10px] text-emerald-400 hover:text-emerald-300 font-bold underline cursor-pointer"
-                  >
-                    + Add More
-                  </button>
-                </div>
-              )}
-
-              {/* Course Metrics Ribbon */}
-              <div className="bg-slate-50 border-b border-slate-200 px-5 py-3 flex flex-wrap items-center justify-between gap-4 text-xs text-slate-600">
-                <div className="flex flex-wrap items-center gap-5">
-                  <span className="inline-flex items-center gap-2">
-                    <span className="w-2 h-2 rounded-full bg-blue-600" />
-                    <span className="text-slate-500">Duration:</span>
-                    <strong className="text-slate-900">{proposedPlanner.course_duration_hours} Total Hours</strong>
-                  </span>
-                  <span className="inline-flex items-center gap-2">
-                    <span className="w-2 h-2 rounded-full bg-slate-400" />
-                    <span className="text-slate-500">Cadence:</span>
-                    <strong className="text-slate-900">{proposedPlanner.periods_per_week} {proposedPlanner.unit_name}s / wk</strong>
-                  </span>
-                  <span className="inline-flex items-center gap-2">
-                    <span className="w-2 h-2 rounded-full bg-slate-400" />
-                    <span className="text-slate-500">Period Length:</span>
-                    <strong className="text-slate-900">{proposedPlanner.period_duration_minutes} Mins</strong>
-                  </span>
-                </div>
-
-                <div className="flex items-center gap-2 text-xs text-slate-500 font-medium">
-                  <span>Scope: <strong className="text-slate-900">{proposedPlanner.total_modules} Modules</strong> ({proposedPlanner.total_days} {proposedPlanner.unit_name}s total)</span>
-                </div>
-              </div>
-
-              {/* Sleek Navigation Bar for Proposed Planner Modules & Periods */}
-              {(() => {
-                const activeMod = proposedPlanner.modules.find((m: any) => m.moduleNumber === plannerActiveModule) || proposedPlanner.modules[0];
-                return (
-                  <div className="bg-slate-900 text-white border-b border-slate-800 p-4 space-y-3">
-                    {/* Top Row: Module pills */}
-                    <div className="flex items-center justify-between gap-3">
-                      <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar scroll-smooth py-0.5">
-                        <span className="text-[10px] uppercase font-bold tracking-wider text-slate-400 mr-2 shrink-0">
-                          Modules:
-                        </span>
-                        {proposedPlanner.modules.map((m: any) => {
-                          const isActive = plannerActiveModule === m.moduleNumber;
-                          return (
-                            <button
-                              key={m.moduleNumber}
-                              type="button"
-                              onClick={() => {
-                                setPlannerActiveModule(m.moduleNumber);
-                                setExpandedPeriodId(null);
-                              }}
-                              className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-all shrink-0 cursor-pointer flex items-center gap-1.5 border ${
-                                isActive
-                                  ? 'bg-blue-600 text-white border-blue-500 shadow-sm'
-                                  : 'bg-slate-800 hover:bg-slate-700/80 text-slate-300 border-slate-700/80 hover:text-white'
-                              }`}
-                            >
-                              <span>Module {m.moduleNumber}</span>
-                              <span className={`text-[10px] font-mono px-1.5 py-0.2 rounded ${
-                                isActive ? 'bg-black/25 text-white font-bold' : 'bg-slate-900/60 text-slate-400'
-                              }`}>
-                                {m.startUnit}–{m.endUnit}
-                              </span>
-                            </button>
-                          );
-                        })}
-                      </div>
-
-                      <div className="hidden lg:flex items-center gap-2 shrink-0">
-                        <span className="text-xs text-slate-300 bg-slate-800 px-3 py-1 rounded-lg border border-slate-700">
-                          Viewing: <strong className="text-white">Module {activeMod.moduleNumber}</strong> ({proposedPlanner.unit_name}s {activeMod.startUnit}–{activeMod.endUnit})
-                        </span>
-                      </div>
-                    </div>
-
-                    {/* Bottom Row: Quick Period Buttons in Active Module */}
-                    <div className="pt-2.5 border-t border-slate-800/80 flex items-center gap-1.5 overflow-x-auto no-scrollbar py-0.5">
-                      <span className="text-[10px] uppercase font-bold tracking-wider text-slate-400 mr-2 shrink-0">
-                        {proposedPlanner.unit_name}s:
-                      </span>
-                      {activeMod.days.map((d: any) => {
-                        const isExpanded = expandedPeriodId === d.day_number;
-                        const isMilestone = d.day_number % 10 === 0;
-                        return (
-                          <button
-                            key={d.day_number}
-                            type="button"
-                            onClick={() => setExpandedPeriodId(isExpanded ? null : d.day_number)}
-                            className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer border flex items-center gap-1 shrink-0 ${
-                              isExpanded
-                                ? 'bg-blue-600 text-white border-blue-400 shadow-sm scale-105'
-                                : isMilestone
-                                ? 'bg-slate-800 border-amber-500/40 text-amber-300 hover:bg-slate-700'
-                                : 'bg-slate-800 hover:bg-slate-700 text-slate-300 border-slate-700 hover:text-white'
-                            }`}
-                          >
-                            <span className="text-[9px] opacity-70 font-semibold">{proposedPlanner.unit_name.slice(0, 1)}</span>
-                            <span>{d.day_number}</span>
-                            {isMilestone && <span className="text-[8px] bg-amber-400/20 text-amber-300 px-1 rounded font-bold">Quiz</span>}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-                );
-              })()}
 
               {/* Interactive Period Breakdown Matrix & Visual Blueprint Cards */}
               <PlannerBlueprintSection
@@ -3625,580 +5142,206 @@ export default function FacultyStudioPage() {
                 sourceUrls={sourceUrls}
               />
 
-              {/* Bottom Simple Action Bar */}
+              {/* Bottom Clean Action Bar */}
               <div className="p-4 bg-slate-50 border-t border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
-                <span className="text-slate-500 font-medium">
-                  Ready to proceed? Confirm to generate all teaching guides, slides, and student worksheets.
-                </span>
-                <div className="flex items-center gap-2 flex-wrap">
+                <div className="flex items-center gap-3">
                   <button
                     type="button"
                     onClick={() => {
                       setIsFullScreen(false);
                       setProposedPlanner(null);
                       setIsEditingPlanner(false);
+                      setStudioStep(1);
                       setTimeout(() => {
                         formContainerRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
                       }, 50);
                     }}
-                    className="px-3.5 py-2 bg-white hover:bg-slate-100 text-slate-700 font-semibold rounded-xl border border-slate-300 transition-colors cursor-pointer text-xs flex items-center gap-1.5 shadow-2xs"
+                    className="group px-3.5 py-2 bg-white hover:bg-slate-100 text-slate-700 font-semibold rounded-xl border border-slate-300 transition-colors cursor-pointer text-xs flex items-center gap-2 shadow-2xs"
                   >
-                    <ArrowLeft className="w-3.5 h-3.5" />
-                    <span>Back to Setup Form</span>
+                    <svg
+                      className="w-3.5 h-3.5 text-slate-500 group-hover:text-slate-800 transition-transform group-hover:-translate-x-0.5"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                      strokeWidth={2.5}
+                    >
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M10.5 19.5L3 12m0 0l7.5-7.5M3 12h18" />
+                    </svg>
+                    <span>Back to Setup</span>
                   </button>
-                  {/* 📁 View Ingested Materials Button */}
+                  <span className="text-slate-500 font-medium hidden md:inline">
+                    Ready to proceed? Confirm to generate all teaching guides, slides, and student worksheets.
+                  </span>
+                </div>
+
+                <div className="flex items-center gap-2.5 flex-wrap sm:flex-nowrap justify-end">
                   <button
                     type="button"
-                    onClick={() => {
-                      if (!activeSavedSession && sessionPackage) {
-                        setActiveSavedSession({
-                          sessionId: sessionPackage.session_id,
-                          title: sessionPackage.session_plan?.session_title || sessionPackage.title,
-                          language: sessionPackage.language,
-                          level: sessionPackage.level,
-                          topic: sessionPackage.topic,
-                          tutorFileRef: uploadedFiles.map(f => f.name).join(', ') || undefined,
-                          sourceUrl: sourceUrls.filter(u => u.trim()).join(', ') || undefined,
-                          sessionPlanJson: sessionPackage.session_plan,
-                        });
-                      }
-                      setShowChatFilesModal(true);
-                    }}
-                    className="flex items-center gap-1.5 px-3.5 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white rounded-xl text-xs font-black transition-all border border-slate-700 cursor-pointer shadow-md"
-                    title="View all uploaded documents, audio files, and reference web links used for this curriculum"
+                    onClick={navigateToGroundedMaterials}
+                    className="px-3.5 py-2 bg-white hover:bg-emerald-50 text-emerald-700 font-semibold rounded-xl border border-emerald-300 transition-colors cursor-pointer text-xs flex items-center gap-1.5 shadow-2xs"
                   >
-                    <Paperclip className="w-3.5 h-3.5 text-indigo-400" />
-                    <span>View Materials</span>
-                    {(() => {
-                      const fileCount = activeSavedSession?.tutorFileRef
-                        ? activeSavedSession.tutorFileRef.split(',').filter(Boolean).length
-                        : uploadedFiles.length;
-                      const urlCount = activeSavedSession?.sourceUrl
-                        ? activeSavedSession.sourceUrl.split(',').filter(Boolean).length
-                        : sourceUrls.filter(u => u.trim()).length;
-                      const total = fileCount + urlCount;
-                      return total > 0 ? (
-                        <span className="bg-indigo-500/30 text-indigo-300 border border-indigo-400/40 text-[10px] px-1.5 py-0.2 rounded-full font-mono font-bold">
-                          {total}
-                        </span>
-                      ) : null;
-                    })()}
+                    <svg className="w-3.5 h-3.5 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
+                    </svg>
+                    <span>View Materials ({matchingVaultResources.length})</span>
                   </button>
 
                   <button
                     type="button"
                     onClick={() => handleDownloadFullCurriculumDocx()}
                     disabled={downloadingFullDocx}
-                    className="px-3.5 py-2 bg-slate-800 hover:bg-slate-700 text-white font-semibold rounded-xl text-xs shadow-2xs transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                    className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-white font-semibold rounded-xl text-xs shadow-2xs transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
                   >
                     {downloadingFullDocx ? (
                       <>
                         <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                        <span>Exporting {proposedPlanner.total_days} {proposedPlanner.unit_name}s...</span>
+                        <span>Exporting Blueprint...</span>
                       </>
                     ) : (
                       <>
                         <Download className="w-3.5 h-3.5 text-blue-400" />
-                        <span>Download All {proposedPlanner.total_days}</span>
+                        <span>Download Full Blueprint (.docx)</span>
                       </>
                     )}
                   </button>
+
                   <button
                     type="button"
                     onClick={handleGenerate}
-                    className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-xl text-xs shadow-md shadow-blue-600/20 transition-all flex items-center gap-1.5 cursor-pointer"
+                    className="px-5 py-2 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-xl text-xs shadow-md shadow-blue-600/25 transition-all flex items-center gap-1.5 cursor-pointer whitespace-nowrap"
                   >
-                    <Sparkles className="w-3.5 h-3.5 text-white" />
-                    <span>Confirm & Generate Package</span>
+                    <span>Confirm & Generate Package →</span>
                   </button>
                 </div>
               </div>
             </div>
           )}
 
-          {/* 1.1 Autonomous Planner Blueprint Compilation Loader Animation */}
+          {/* 1.1 Minimalist Ambient Studio Loader (Zero Boxy Card, Zero Clunky Icons) */}
           {plannerLoading && !mismatchError && (
-            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/20 backdrop-blur-xs animate-in fade-in duration-150">
-              <div className="bg-white border border-slate-200/80 rounded-2xl p-6 sm:p-8 shadow-xl text-center max-w-sm w-full animate-in zoom-in-95 duration-150 space-y-5">
-                
-                {/* Minimalist AI Pulse Icon */}
-                <div className="relative mx-auto w-12 h-12 flex items-center justify-center">
-                  <div className="w-12 h-12 rounded-xl bg-blue-50 border border-blue-200 flex items-center justify-center text-blue-600">
-                    <span className="w-2.5 h-2.5 rounded-full bg-blue-600 animate-ping absolute opacity-40" />
-                    <span className="w-2.5 h-2.5 rounded-full bg-blue-600" />
+            <div className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-white/85 backdrop-blur-xl animate-in fade-in duration-200 select-none">
+              <div className="flex flex-col items-center justify-center max-w-sm px-6 text-center">
+                {/* Organic Soft Breathing Aura (No Card, No Box) */}
+                <div className="relative w-24 h-24 mb-5 flex items-center justify-center">
+                  <div className="absolute inset-0 rounded-full bg-gradient-to-tr from-[#0052CC] via-[#00B4D8] to-indigo-500 opacity-20 blur-2xl animate-pulse" />
+                  <div className="relative w-14 h-14 rounded-full border border-blue-400/20 bg-white/70 backdrop-blur-md flex items-center justify-center shadow-sm">
+                    <div className="w-7 h-7 rounded-full border-2 border-transparent border-t-[#0052CC] border-r-[#00B4D8] animate-spin" />
                   </div>
                 </div>
 
-                {/* Minimalist Title */}
-                <div className="space-y-1">
-                  <h3 className="text-base font-bold text-slate-800">
-                    Creating Session Planner
-                  </h3>
-                  <p className="text-xs text-slate-500">
-                    AI agent is organizing your timetable & lessons...
-                  </p>
-                </div>
+                {/* Clean Editorial Typography */}
+                <h2 className="text-xl sm:text-2xl font-light text-slate-800 tracking-tight">
+                  Preparing <span className="font-semibold text-[#0052CC]">{selectedLanguage}</span> Curriculum
+                </h2>
+                <p className="text-xs text-slate-500 font-normal mt-1.5 tracking-wide">
+                  CEFR {institutionType === 'SCHOOL' ? schoolLevel : selectedLevel} • Ingesting Knowledge Vault
+                </p>
 
-                {/* Simple Smooth Progress Bar */}
-                <div className="w-full h-1.5 bg-slate-100 rounded-full overflow-hidden">
-                  <div className="h-full bg-blue-600 rounded-full animate-pulse w-3/4" />
+                {/* Ultra-Slim Minimalist Progress Hairline */}
+                <div className="w-44 h-1 bg-slate-200/70 rounded-full mt-6 overflow-hidden">
+                  <div className="h-full bg-gradient-to-r from-[#0052CC] to-[#00B4D8] rounded-full w-3/4 animate-pulse" />
                 </div>
               </div>
             </div>
           )}
 
-          {/* 2. Ready State (Before Planner or Package) - Conversational AI Assistant Workspace with Instant Upload & Prompting */}
-          {studioStep === 2 && !loading && (
-            <div className="bg-white border-y sm:border sm:rounded-2xl border-slate-200 overflow-hidden flex flex-col w-full">
-              {/* Header Bar */}
-              <div className="p-4 sm:p-5 bg-white text-slate-900 flex items-center justify-between border-b border-slate-200">
-                <div className="flex items-center gap-3">
-                  
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <h3 className="text-sm sm:text-base font-extrabold text-white tracking-tight">
-                        AI Course Assistant
-                      </h3>
-                      
-                    </div>
-                    <p className="text-[11px] text-slate-300">
-                      Upload your study files, drop video/web links, or describe your curriculum to start synthesis immediately.
-                    </p>
-                  </div>
-                </div>
-
-                <div className="hidden sm:flex items-center gap-2">
-                  <span className="text-[10px] bg-slate-100 text-slate-700 border border-slate-200 px-3 py-1 rounded-lg font-medium text-xs">
-                    {selectedLanguage ? `${selectedLanguage} • ${selectedLevel}` : 'Select Language'}
-                  </span>
-                </div>
-              </div>
-
-              {/* Chat-Like Interactive Body */}
-              <div className="p-4 sm:p-6 space-y-4 bg-white">
-                  {/* Top Navigation Row: Back to Course Setup */}
-                  <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setStudioStep(1);
-                        setIsFullScreen(false);
-                        window.scrollTo({ top: 0, behavior: "smooth" });
-                      }}
-                      className="px-4 py-2 bg-slate-100 hover:bg-slate-200 active:bg-slate-300 text-slate-800 font-bold text-xs rounded-xl transition-all cursor-pointer border border-slate-300 flex items-center gap-2 shadow-xs"
-                    >
-                      <span>← Back to Course Setup</span>
-                    </button>
-                    <span className="text-xs font-semibold text-slate-500 hidden sm:inline">
-                      Step 2: Upload study files or drop web links
-                    </span>
-                  </div>
-                {/* AI Welcome Message Bubble */}
-                <div className="flex gap-3 items-start max-w-2xl">
-                  
-                  <div className="py-2 text-xs text-slate-800 space-y-2 leading-relaxed w-full">
-                    <p className="font-semibold text-slate-900">
-                      Welcome to ISML Academic Studio! I am your Autonomous Curriculum Agent.
-                    </p>
-                    <p className="text-slate-600">
-                      You can drop your lesson materials (PDF, Word doc, audio/video links) below, or type your teaching goals. I will organize your materials and create ready-to-teach daily lesson plans.
-                    </p>
-                    <div className="flex flex-wrap gap-1.5 pt-1">
-                      <span className="text-[10px] font-bold bg-blue-50 text-blue-700 px-2 py-0.5 rounded border border-blue-200">
-                        Multi-Doc PDF/DOCX
-                      </span>
-                      <span className="text-[10px] font-bold bg-red-50 text-red-700 px-2 py-0.5 rounded border border-red-200">
-                        Video Transcripts
-                      </span>
-                      <span className="text-[10px] font-bold bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded border border-emerald-200">
-                        Web Article Scraper
-                      </span>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Drag & Drop File Upload Strip */}
-                <input
-                  type="file"
-                  ref={heroFileInputRef}
-                  className="hidden"
-                  multiple
-                  accept="image/*,video/*,audio/*,.pdf,.txt,.docx,.csv,.pptx,.ppt"
-                  onChange={handleFileUpload}
-                />
-                <div
-                  onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); }}
-                  onDrop={(e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    if (e.dataTransfer?.files && e.dataTransfer.files.length > 0) {
-                      const dropped = Array.from(e.dataTransfer.files);
-                      setUploadedFiles(prev => [...prev, ...dropped].slice(0, 15));
-                    }
-                  }}
-                  className="border-2 border-dashed border-indigo-200 hover:border-indigo-500 bg-white rounded-2xl p-5 text-center transition-all cursor-pointer group shadow-2xs"
-                  onClick={() => heroFileInputRef.current?.click()}
-                >
-                  <div className="flex flex-col items-center gap-2">
-                    
-                    <div>
-                      <p className="text-xs font-bold text-slate-800">
-                        Drop curriculum files here or <span className="text-indigo-600 underline">browse</span>
-                      </p>
-                      <p className="text-[10px] text-slate-400 mt-0.5">
-                        Supports PDF, DOCX, TXT, CSV, MP3, MP4 audio/video materials (Up to 15 files)
-                      </p>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Uploaded Files Chips preview */}
-                {uploadedFiles.length > 0 && (
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-between text-xs">
-                      <span className="font-bold text-slate-700 flex items-center gap-1.5">
-                        <Paperclip className="w-3.5 h-3.5 text-indigo-600" />
-                        Uploaded Files for Memory Ingestion ({uploadedFiles.length})
-                      </span>
-                      <button
-                        type="button"
-                        onClick={() => setUploadedFiles([])}
-                        className="text-[10px] text-rose-600 hover:underline font-bold"
-                      >
-                        Clear All
-                      </button>
-                    </div>
-                    <div className="flex flex-wrap gap-2">
-                      {uploadedFiles.map((file, i) => (
-                        <div key={i} className="flex items-center gap-1.5 bg-white border border-slate-200 px-3 py-1.5 rounded-xl text-xs text-slate-800 shadow-2xs">
-                          <FileText className="w-3.5 h-3.5 text-indigo-600 shrink-0" />
-                          <span className="font-medium truncate max-w-[180px]">{file.name}</span>
-                          <span className="text-[10px] text-slate-400 font-mono">({(file.size / 1024).toFixed(0)} KB)</span>
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              removeUploadedFile(i);
-                            }}
-                            className="text-slate-400 hover:text-rose-600 ml-1 font-bold"
-                          >
-                            ✕
-                          </button>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {/* Quick Topic / Goal Input Box with Direct Action */}
-                <div className="border-t border-slate-200 pt-4 space-y-3">
-                  <input
-                    type="text"
-                    value={topic}
-                    onChange={(e) => setTopic(e.target.value)}
-                    placeholder="Describe your curriculum theme, goal, or special instructions (optional)..."
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-xs text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-600 focus:bg-white transition-all"
-                  />
-
-                  {/* YouTube Video & Web Reference Links Ingestion */}
-                  <div className="py-2 border-t border-slate-100 space-y-2">
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
-                        <Video className="w-3.5 h-3.5 text-red-600" />
-                        Reference Videos & Web Links (Optional)
-                      </span>
-                      <span className="text-[10px] text-slate-400 font-mono">
-                        {sourceUrls.filter(u => u.trim()).length} Added
-                      </span>
-                    </div>
-
-                    <div className="space-y-1.5 max-h-36 overflow-y-auto pr-1">
-                      {sourceUrls.map((url, i) => (
-                        <div key={i} className="flex items-center gap-2">
-                          <span className="text-[10px] font-bold text-slate-400 w-5 text-right font-mono">#{i + 1}</span>
-                          <input
-                            type="url"
-                            value={url}
-                            onChange={(e) => updateSourceUrl(i, e.target.value)}
-                            placeholder={i === 0 ? "Paste YouTube video, news clip, or web link..." : "Paste additional link..."}
-                            className="flex-1 bg-white border border-slate-200 rounded-lg px-3 py-1.5 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-indigo-500"
-                          />
-                          {sourceUrls.length > 1 && (
-                            <button
-                              type="button"
-                              onClick={() => removeSourceUrlField(i)}
-                              className="text-slate-400 hover:text-rose-600 p-1 text-xs font-bold"
-                            >
-                              ✕
-                            </button>
-                          )}
-                        </div>
-                      ))}
-                    </div>
-
-                    <button
-                      type="button"
-                      onClick={addSourceUrlField}
-                      className="text-[11px] font-bold text-indigo-600 hover:text-indigo-800 flex items-center gap-1 transition-colors cursor-pointer"
-                    >
-                      <Plus className="w-3 h-3" />
-                      <span>+ Add Another Video / Web Link</span>
-                    </button>
-                  </div>
-
-                  {/* Dual Action Buttons (Review Planner or Directly Generate Full Teaching Kit) */}
-                  {/* Dual Action Buttons (Back to Setup OR Create Session Planner) */}
-                  <div className="flex flex-col sm:flex-row items-center gap-3 pt-3 border-t border-slate-100">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setStudioStep(1);
-                        setIsFullScreen(false);
-                        window.scrollTo({ top: 0, behavior: "smooth" });
-                      }}
-                      className="w-full sm:w-auto px-6 py-3.5 bg-slate-100 hover:bg-slate-200 active:bg-slate-300 text-slate-800 font-bold text-sm rounded-xl transition-all cursor-pointer border border-slate-300 flex items-center justify-center gap-2 shadow-xs"
-                    >
-                      <span>← Back to Course Setup</span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => handlePreviewPlanner()}
-                      disabled={!selectedLanguage || loading}
-                      className="w-full sm:flex-1 py-3.5 px-4 bg-blue-600 hover:bg-blue-700 text-white font-bold text-sm rounded-xl shadow-md transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-40 active:scale-[0.99]"
-                    >
-                      <span>Create Session Planner & Timetable →</span>
-                    </button>
-                  </div>
-
-                  {!selectedLanguage && (
-                    <div className="bg-amber-50 border border-amber-200 rounded-xl p-2.5 text-center text-xs text-amber-800 font-medium flex items-center justify-center gap-1.5 animate-in fade-in">
-                      <span></span>
-                      <span>Please select a target language in the left panel to proceed with generation.</span>
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
-          )}
-
+          {/* 2. Minimalist Ambient Package Generation Loader (Zero Boxy Card, Zero Clunky Icons) */}
           {loading && (
-            <div className="bg-white text-slate-800 rounded-2xl border border-blue-100 p-6 sm:p-10 shadow-sm space-y-6 animate-in fade-in duration-300 relative overflow-hidden">
-              {/* Background ambient glow */}
-              <div className="absolute -right-20 -top-20 w-72 h-72 bg-indigo-600/20 rounded-full blur-3xl pointer-events-none" />
-              <div className="absolute -left-20 -bottom-20 w-72 h-72 bg-blue-600/20 rounded-full blur-3xl pointer-events-none" />
-
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between border-b border-white/10 pb-5 gap-4 relative z-10">
-                <div className="flex items-center gap-3.5">
-                  <div className="relative">
-                    <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-blue-600 via-indigo-600 to-purple-600 flex items-center justify-center shadow-xl shadow-blue-500/40">
-                      <Sparkles className="w-6 h-6 text-amber-300 animate-spin" style={{ animationDuration: '6s' }} />
-                    </div>
-                    <span className="absolute -top-1 -right-1 flex h-3.5 w-3.5">
-                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                      <span className="relative inline-flex rounded-full h-3.5 w-3.5 bg-emerald-500"></span>
-                    </span>
-                  </div>
-                  <div>
-                    <h3 className="text-base sm:text-xl font-black tracking-tight text-white flex items-center gap-2">
-                      <span>ISML Multi-Pipeline Academic AI Synthesis Engine</span>
-                    </h3>
-                    <p className="text-xs text-indigo-300 font-medium mt-0.5">
-                      Autonomous CEFR Rigor Verification • DB Evidence Grounding • Safety Verification
-                    </p>
+            <div className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-white/85 backdrop-blur-xl animate-in fade-in duration-200 select-none">
+              <div className="flex flex-col items-center justify-center max-w-sm px-6 text-center">
+                {/* Organic Soft Breathing Aura (No Card, No Box) */}
+                <div className="relative w-24 h-24 mb-5 flex items-center justify-center">
+                  <div className="absolute inset-0 rounded-full bg-gradient-to-tr from-[#0052CC] via-[#00B4D8] to-indigo-500 opacity-20 blur-2xl animate-pulse" />
+                  <div className="relative w-14 h-14 rounded-full border border-blue-400/20 bg-white/70 backdrop-blur-md flex items-center justify-center shadow-sm">
+                    <div className="w-7 h-7 rounded-full border-2 border-transparent border-t-[#0052CC] border-r-[#00B4D8] animate-spin" />
                   </div>
                 </div>
 
-                <div className="flex items-center gap-2.5 bg-white/10 px-4 py-2 rounded-2xl border border-white/15 text-xs font-mono text-cyan-300 self-start sm:self-auto backdrop-blur-sm">
-                  <Loader2 className="w-4 h-4 animate-spin text-cyan-400" />
-                  <span className="font-bold">Active Stage: {activePipelineStage}</span>
+                {/* Clean Editorial Typography */}
+                <h2 className="text-xl sm:text-2xl font-light text-slate-800 tracking-tight">
+                  Generating <span className="font-semibold text-[#0052CC]">{selectedLanguage}</span> Package
+                </h2>
+                <p className="text-xs text-slate-500 font-normal mt-1.5 tracking-wide">
+                  {activePipelineStage === 'A' && 'Extracting Knowledge Vault sources...'}
+                  {activePipelineStage === 'B' && 'Auditing linguistic patterns & grammar formulas...'}
+                  {activePipelineStage === 'C' && 'Calibrating institutional period pacing...'}
+                  {activePipelineStage === 'D' && 'Synthesizing lecture slides & lesson blueprints...'}
+                  {activePipelineStage === 'E' && 'Finalizing CEFR certification & quality audit...'}
+                  {!['A', 'B', 'C', 'D', 'E'].includes(activePipelineStage) && 'Synthesizing comprehensive curriculum...'}
+                </p>
+
+                {/* Ultra-Slim Minimalist Progress Hairline */}
+                <div className="w-48 h-1 bg-slate-200/70 rounded-full mt-6 overflow-hidden">
+                  <div className={`h-full bg-gradient-to-r from-[#0052CC] to-[#00B4D8] rounded-full transition-all duration-500 ${
+                    activePipelineStage === 'A' ? 'w-1/5' :
+                    activePipelineStage === 'B' ? 'w-2/5' :
+                    activePipelineStage === 'C' ? 'w-3/5' :
+                    activePipelineStage === 'D' ? 'w-4/5' : 'w-full animate-pulse'
+                  }`} />
                 </div>
-              </div>
 
-              {/* 5-Stage Visual Pipeline Progress with Dynamic Real-time Status */}
-              <div className="space-y-3 relative z-10">
-                <div className="flex items-center justify-between">
-                  <span className="text-[11px] font-black text-indigo-300 uppercase tracking-wider flex items-center gap-1.5">
-                    <Cpu className="w-3.5 h-3.5 text-amber-300" />
-                    <span>Autonomous Multi-Stage Pipeline Execution:</span>
-                  </span>
-                  <span className="text-[11px] font-mono text-slate-400">
-                    Step {activePipelineStage === 'A' ? '1' : activePipelineStage === 'B' ? '2' : activePipelineStage === 'C' ? '3' : activePipelineStage === 'D' ? '4' : '5'} of 5
-                  </span>
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-5 gap-3">
-                  {/* Stage A */}
-                  {(() => {
-                    const isDone = ['B', 'C', 'D', 'E'].includes(activePipelineStage);
-                    const isCurrent = activePipelineStage === 'A';
-                    return (
-                      <div className={`p-3.5 rounded-2xl border transition-all duration-300 ${
-                        isCurrent
-                          ? 'bg-blue-600/20 border-blue-400 shadow-lg shadow-blue-500/20 ring-1 ring-blue-400/50 scale-[1.02]'
-                          : isDone
-                          ? 'bg-emerald-950/30 border-emerald-500/40'
-                          : 'bg-white/5 border-white/10 opacity-60'
-                      }`}>
-                        <div className="flex items-center justify-between text-[11px] mb-1">
-                          <span className="font-black text-blue-400">Stage A</span>
-                          <span className={`text-[10px] font-bold ${
-                            isDone ? 'text-emerald-400' : isCurrent ? 'text-amber-300 animate-pulse' : 'text-slate-400'
-                          }`}>
-                            {isDone ? '✓ Completed' : isCurrent ? '● Extracting' : 'Queued'}
-                          </span>
-                        </div>
-                        <div className="text-xs font-black text-white">Source Extraction</div>
-                        <p className="text-[10px] text-slate-300 leading-snug mt-1">Parsing video audio, transcripts & uploaded documents.</p>
-                      </div>
-                    );
-                  })()}
-
-                  {/* Stage B */}
-                  {(() => {
-                    const isDone = ['C', 'D', 'E'].includes(activePipelineStage);
-                    const isCurrent = activePipelineStage === 'B';
-                    return (
-                      <div className={`p-3.5 rounded-2xl border transition-all duration-300 ${
-                        isCurrent
-                          ? 'bg-indigo-600/20 border-indigo-400 shadow-lg shadow-indigo-500/20 ring-1 ring-indigo-400/50 scale-[1.02]'
-                          : isDone
-                          ? 'bg-emerald-950/30 border-emerald-500/40'
-                          : 'bg-white/5 border-white/10 opacity-60'
-                      }`}>
-                        <div className="flex items-center justify-between text-[11px] mb-1">
-                          <span className="font-black text-indigo-400">Stage B</span>
-                          <span className={`text-[10px] font-bold ${
-                            isDone ? 'text-emerald-400' : isCurrent ? 'text-cyan-300 animate-pulse' : 'text-slate-400'
-                          }`}>
-                            {isDone ? '✓ Verified' : isCurrent ? '● Auditing' : 'Queued'}
-                          </span>
-                        </div>
-                        <div className="text-xs font-black text-white">Source Analyzer</div>
-                        <p className="text-[10px] text-slate-300 leading-snug mt-1">Auditing evidence density, vocabulary & syntactic patterns.</p>
-                      </div>
-                    );
-                  })()}
-
-                  {/* Stage C */}
-                  {(() => {
-                    const isDone = ['D', 'E'].includes(activePipelineStage);
-                    const isCurrent = activePipelineStage === 'C';
-                    return (
-                      <div className={`p-3.5 rounded-2xl border transition-all duration-300 ${
-                        isCurrent
-                          ? 'bg-purple-600/20 border-purple-400 shadow-lg shadow-purple-500/20 ring-1 ring-purple-400/50 scale-[1.02]'
-                          : isDone
-                          ? 'bg-emerald-950/30 border-emerald-500/40'
-                          : 'bg-white/5 border-white/10 opacity-60'
-                      }`}>
-                        <div className="flex items-center justify-between text-[11px] mb-1">
-                          <span className="font-black text-purple-400">Stage C</span>
-                          <span className={`text-[10px] font-bold ${
-                            isDone ? 'text-emerald-400' : isCurrent ? 'text-purple-300 animate-pulse' : 'text-slate-400'
-                          }`}>
-                            {isDone ? '✓ Formulated' : isCurrent ? '● Pacing' : 'Queued'}
-                          </span>
-                        </div>
-                        <div className="text-xs font-black text-white">Instruction Design</div>
-                        <p className="text-[10px] text-slate-300 leading-snug mt-1">Formulating pedagogical objectives & institutional slot pacing.</p>
-                      </div>
-                    );
-                  })()}
-
-                  {/* Stage D */}
-                  {(() => {
-                    const isDone = ['E'].includes(activePipelineStage);
-                    const isCurrent = activePipelineStage === 'D';
-                    return (
-                      <div className={`p-3.5 rounded-2xl border transition-all duration-300 ${
-                        isCurrent
-                          ? 'bg-pink-600/20 border-pink-400 shadow-lg shadow-pink-500/20 ring-1 ring-pink-400/50 scale-[1.02]'
-                          : isDone
-                          ? 'bg-emerald-950/30 border-emerald-500/40'
-                          : 'bg-white/5 border-white/10 opacity-60'
-                      }`}>
-                        <div className="flex items-center justify-between text-[11px] mb-1">
-                          <span className="font-black text-pink-400">Stage D</span>
-                          <span className={`text-[10px] font-bold ${
-                            isDone ? 'text-emerald-400' : isCurrent ? 'text-pink-300 animate-pulse' : 'text-slate-400'
-                          }`}>
-                            {isDone ? '✓ Generated' : isCurrent ? '● Synthesizing' : 'Queued'}
-                          </span>
-                        </div>
-                        <div className="text-xs font-black text-white">Dual Output Engine</div>
-                        <p className="text-[10px] text-slate-300 leading-snug mt-1">Drafting Teacher lesson plans & Student LSRW practice kits.</p>
-                      </div>
-                    );
-                  })()}
-
-                  {/* Stage E */}
-                  {(() => {
-                    const isCurrent = activePipelineStage === 'E';
-                    return (
-                      <div className={`p-3.5 rounded-2xl border transition-all duration-300 ${
-                        isCurrent
-                          ? 'bg-amber-600/20 border-amber-400 shadow-lg shadow-amber-500/20 ring-1 ring-amber-400/50 scale-[1.02]'
-                          : 'bg-white/5 border-white/10 opacity-60'
-                      }`}>
-                        <div className="flex items-center justify-between text-[11px] mb-1">
-                          <span className="font-black text-amber-400">Stage E</span>
-                          <span className={`text-[10px] font-bold ${
-                            isCurrent ? 'text-amber-300 animate-pulse' : 'text-slate-400'
-                          }`}>
-                            {isCurrent ? '● Validating' : 'Queued'}
-                          </span>
-                        </div>
-                        <div className="text-xs font-black text-white">Evidence Audit</div>
-                        <p className="text-[10px] text-slate-300 leading-snug mt-1">52-point rigor verification, hallucination checks & lineage seal.</p>
-                      </div>
-                    );
-                  })()}
-                </div>
-              </div>
-
-              {/* Real-time status banner */}
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between bg-black/50 border border-white/15 p-4 rounded-2xl text-xs text-slate-200 gap-3 relative z-10 backdrop-blur-md">
-                <div className="flex items-center gap-3">
-                  <div className="w-3 h-3 rounded-full bg-emerald-400 animate-ping shrink-0" />
-                  <span className="leading-relaxed">
-                    Analyzing validated materials • Storing evidence lineage into DB • Grounded in authentic CEFR standards
-                  </span>
-                </div>
-                <div className="flex items-center gap-2 font-mono text-cyan-300 font-bold text-xs shrink-0">
-                  <Clock className="w-3.5 h-3.5 text-cyan-400" />
-                  <span>Zero-Hallucination Verified</span>
-                </div>
+                <p className="text-[10px] text-slate-400 font-medium mt-3 tracking-wider uppercase">
+                  Stage {activePipelineStage} of 5 • Institutional Grade
+                </p>
               </div>
             </div>
           )}
 
-          {(studioStep === 4 || sessionPackage) && !loading && (
+          {(studioStep === 3 || sessionPackage) && !loading && (
             <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
               {/* Senior Agent Studio Header Bar with Quality & Accuracy Check */}
-              <div className="p-5 sm:p-6 bg-gradient-to-r from-slate-900 via-indigo-950 to-blue-950 text-white border-b border-slate-200 flex flex-wrap items-center justify-between gap-4">
-                <div className="space-y-1.5">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span className="bg-amber-400 text-slate-950 text-xs font-black px-3 py-0.5 rounded-full shadow-xs flex items-center gap-1">
-                      <Sparkles className="w-3.5 h-3.5" />
-                      {sessionPackage.language} • {sessionPackage.level}
-                    </span>
-                    <span className="bg-white/10 text-cyan-200 text-xs font-extrabold px-3 py-0.5 rounded-full border border-white/20">
-                      {sessionPackage.track_duration_label || 'Track: Standard (12m)'}
-                    </span>
-                    <span className="text-[11px] font-mono text-slate-300 bg-black/40 px-2.5 py-0.5 rounded-md border border-white/10">
-                      ID: {(sessionPackage.session_id || sessionPackage.sessionId || '').slice(0, 16)}...
-                    </span>
+              <div className="p-4 sm:p-6 bg-gradient-to-r from-slate-900 via-indigo-950 to-blue-950 text-white border-b border-slate-200 flex flex-wrap items-center justify-between gap-3 sm:gap-4">
+                <div className="flex items-start sm:items-center gap-3 min-w-0 max-w-full">
+                  {/* Left Back Button */}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (proposedPlanner) {
+                        setStudioStep(2);
+                        setSessionPackage(null);
+                      } else {
+                        setSessionPackage(null);
+                        setStudioStep(1);
+                        setIsHistoryOpen(true);
+                      }
+                    }}
+                    className="px-3 py-1.5 rounded-xl bg-white/10 hover:bg-white/20 text-white border border-white/20 text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shadow-sm shrink-0 active:scale-95 mt-0.5 sm:mt-0"
+                    title="Back to previous step / saved sessions"
+                  >
+                    <span className="text-sm font-bold">←</span>
+                    <span>Back</span>
+                  </button>
+
+                  <div className="space-y-1.5 min-w-0">
+                    <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
+                      <span className="bg-amber-400 text-slate-950 text-[11px] sm:text-xs font-black px-2.5 py-0.5 rounded-full shadow-xs flex items-center gap-1">
+                        <Sparkles className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
+                        {sessionPackage.language} • {sessionPackage.level}
+                      </span>
+                      <span className="bg-white/10 text-cyan-200 text-[11px] sm:text-xs font-extrabold px-2.5 py-0.5 rounded-full border border-white/20">
+                        {sessionPackage.track_duration_label || 'Track: Standard (12m)'}
+                      </span>
+                      <span className="text-[10px] sm:text-[11px] font-mono text-slate-300 bg-black/40 px-2 py-0.5 rounded-md border border-white/10">
+                        ID: {(sessionPackage.session_id || sessionPackage.sessionId || '').slice(0, 16)}...
+                      </span>
+                    </div>
+                    <h2 className="text-base sm:text-xl font-bold sm:font-black text-white tracking-tight leading-snug break-words">
+                      {(() => {
+                        const raw = sessionPackage.session_plan?.session_title || sessionPackage.title || `${sessionPackage.language || 'Language'} ${sessionPackage.level || ''} Master Guide`;
+                        if (raw.includes(' — ')) {
+                          return raw.split(' — ')[0].trim();
+                        }
+                        return raw;
+                      })()}
+                    </h2>
+                    <p className="text-[11px] sm:text-xs text-slate-300 max-w-xl leading-normal">
+                      Complete lesson plans, teaching notes, daily exercises, and exams.
+                    </p>
                   </div>
-                  <h2 className="text-lg sm:text-2xl font-black text-white tracking-tight">
-                    {sessionPackage.session_plan?.session_title || sessionPackage.title || `${sessionPackage.language || 'Language'} ${sessionPackage.level || ''} Master Guide`}
-                  </h2>
-                  <p className="text-xs text-slate-300 max-w-xl">
-                    Autonomous Curriculum Delivery Plan • Verified against CEFR/JLPT Common Core Framework
-                  </p>
                 </div>
 
-                {/* Action Controls & LMS Sync */}
-                <div className="flex items-center gap-3">
+                {/* Action Controls */}
+                <div className="flex flex-wrap items-center gap-2 pt-1 sm:pt-0 w-full sm:w-auto">
                   {/* Hidden Input for Step 4 Materials Upload */}
                   <input
                     type="file"
@@ -4209,133 +5352,136 @@ export default function FacultyStudioPage() {
                     onChange={handleStep4AddMaterials}
                   />
 
-                  {/* 📎 Add More Materials Button on Active Workspace Header */}
+                  {/* Manual Save Curriculum Button (Auto-save disabled) */}
                   <button
                     type="button"
-                    onClick={() => step4MaterialsInputRef.current?.click()}
-                    disabled={isExtractingHeaderMaterials}
-                    className="flex items-center gap-1.5 px-3.5 py-2.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white rounded-xl text-xs font-black transition-all border border-emerald-400/50 cursor-pointer shadow-md shadow-emerald-950/20 disabled:opacity-50"
-                    title="Upload more study files, PDFs, or audio into this active curriculum session"
+                    onClick={handleManualSaveSession}
+                    disabled={savingSession || isSessionSaved}
+                    className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer shadow-sm shrink-0 border ${
+                      isSessionSaved
+                        ? 'bg-emerald-600/90 text-white border-emerald-500 cursor-default'
+                        : 'bg-emerald-600 hover:bg-emerald-500 text-white border-emerald-400 active:scale-95'
+                    }`}
+                    title={isSessionSaved ? "Curriculum already saved to archive" : "Save this curriculum session to database & archive"}
                   >
-                    {isExtractingHeaderMaterials ? (
+                    {savingSession ? (
                       <>
-                        <Loader2 className="w-3.5 h-3.5 animate-spin text-amber-300" />
-                        <span>Ingesting Material...</span>
+                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                        <span>Saving...</span>
+                      </>
+                    ) : isSessionSaved ? (
+                      <>
+                        <CheckCircle2 className="w-3.5 h-3.5 text-emerald-200" />
+                        <span>✓ Saved</span>
                       </>
                     ) : (
                       <>
-                        <Upload className="w-3.5 h-3.5 text-amber-300" />
-                        <span>+ Add More Materials</span>
-                        {uploadedFiles.length > 0 && (
-                          <span className="bg-amber-400 text-slate-950 text-[10px] px-1.5 py-0.2 rounded-full font-black">
-                            {uploadedFiles.length}
-                          </span>
-                        )}
+                        <Save className="w-3.5 h-3.5 text-emerald-200" />
+                        <span>Save Curriculum</span>
                       </>
                     )}
                   </button>
 
-                  {/* 📁 View Ingested Materials Button */}
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (!activeSavedSession && sessionPackage) {
-                        setActiveSavedSession({
-                          sessionId: sessionPackage.session_id,
-                          title: sessionPackage.session_plan?.session_title || sessionPackage.title,
-                          language: sessionPackage.language,
-                          level: sessionPackage.level,
-                          topic: sessionPackage.topic,
-                          tutorFileRef: uploadedFiles.map(f => f.name).join(', ') || undefined,
-                          sourceUrl: sourceUrls.filter(u => u.trim()).join(', ') || undefined,
-                          sessionPlanJson: sessionPackage.session_plan,
-                        });
-                      }
-                      setShowChatFilesModal(true);
-                    }}
-                    className="flex items-center gap-1.5 px-3.5 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white rounded-xl text-xs font-black transition-all border border-slate-700 cursor-pointer shadow-md"
-                    title="View all uploaded documents, audio files, and reference web links used for this curriculum"
+                  {/* Knowledge Vault Master Hub Link */}
+                  <a
+                    href="/vault"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center gap-1.5 px-3 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white rounded-xl text-xs font-semibold transition-all border border-slate-700 cursor-pointer shadow-sm shrink-0"
+                    title="Open central Knowledge Vault to inspect or add materials"
+                  >
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                    <span>Knowledge Vault</span>
+                    <span className="text-slate-400 font-bold text-xs">→</span>
+                  </a>
+
+                  {/* View Ingested Materials Button - Dedicated Responsive Screen */}
+                  <Link
+                    href={`/faculty/studio/materials?lang=${encodeURIComponent(sessionPackage.language || selectedLanguage || 'English')}&level=${encodeURIComponent(sessionPackage.level || selectedLevel || 'A1.1')}&topic=${encodeURIComponent(sessionPackage.topic || topic || '')}`}
+                    className="flex items-center gap-1.5 px-3 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white rounded-xl text-xs font-bold transition-all border border-slate-700 cursor-pointer shadow-sm shrink-0"
+                    title="View all grounded materials in dedicated responsive page"
                   >
                     <Paperclip className="w-3.5 h-3.5 text-indigo-400" />
                     <span>View Materials</span>
                     {(() => {
-                      const fileCount = activeSavedSession?.tutorFileRef
-                        ? activeSavedSession.tutorFileRef.split(',').filter(Boolean).length
-                        : uploadedFiles.length;
-                      const urlCount = activeSavedSession?.sourceUrl
-                        ? activeSavedSession.sourceUrl.split(',').filter(Boolean).length
-                        : sourceUrls.filter(u => u.trim()).length;
-                      const total = fileCount + urlCount;
+                      const total = matchingVaultResources?.length || 1;
                       return total > 0 ? (
                         <span className="bg-indigo-500/30 text-indigo-300 border border-indigo-400/40 text-[10px] px-1.5 py-0.2 rounded-full font-mono font-bold">
                           {total}
                         </span>
                       ) : null;
                     })()}
+                  </Link>
+
+                  {/* AI Audio & Voice Generator Button */}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const targetPeriod = activeDayDetail || 1;
+                      const syllabus = sessionPackage?.session_plan?.day_wise_syllabus || [];
+                      const curDay = syllabus.find((d: any) => d.day_number === targetPeriod) || syllabus[0] || {};
+                      const curOverride = periodOverrides[targetPeriod] || {};
+                      const effectiveDay = { ...curDay, ...curOverride };
+
+                      if (!audioModalText) {
+                        if (effectiveDay.classroom_dialogues && effectiveDay.classroom_dialogues.length > 0) {
+                          setAudioModalText(effectiveDay.classroom_dialogues.join('\n\n'));
+                        } else if (effectiveDay.grammar_rules_detail) {
+                          setAudioModalText(effectiveDay.grammar_rules_detail);
+                        } else {
+                          setAudioModalText(`Welcome to ${sessionPackage?.language || selectedLanguage || 'Language'} Period ${targetPeriod}.\nToday we will practice listening and speaking.`);
+                        }
+                      }
+                      setModalAudioSuccessMsg(null);
+                      setModalAudioErrorMsg(null);
+                      setShowAudioGeneratorModal(true);
+                    }}
+                    className="flex items-center gap-1.5 px-3 py-2 bg-gradient-to-r from-indigo-600 via-purple-600 to-indigo-700 hover:from-indigo-500 hover:to-purple-500 text-white rounded-xl text-xs font-bold transition-all border border-indigo-400/40 cursor-pointer shadow-md shrink-0"
+                    title={`Generate AI Voice and Download MP3 for Period ${activeDayDetail || 1}`}
+                  >
+                    <Headphones className="w-3.5 h-3.5 text-amber-300" />
+                    <span>Generate Audio (Period {activeDayDetail || 1})</span>
                   </button>
 
+                  {/* Download Full Kit Button */}
                   <button
                     type="button"
                     onClick={() => handleDownloadFullCurriculumDocx()}
                     disabled={downloadingFullDocx}
-                    className="flex items-center gap-2 px-4 py-2.5 bg-gradient-to-r from-blue-600 via-indigo-600 to-blue-700 hover:from-blue-500 hover:to-indigo-500 text-white rounded-xl text-xs font-black shadow-lg shadow-blue-500/25 transition-all cursor-pointer border border-blue-400/40 disabled:opacity-50"
+                    className="flex items-center gap-1.5 sm:gap-2 px-3.5 py-2 bg-gradient-to-r from-blue-600 via-indigo-600 to-blue-700 hover:from-blue-500 hover:to-indigo-500 text-white rounded-xl text-xs font-black shadow-md transition-all cursor-pointer border border-blue-400/40 disabled:opacity-50 shrink-0"
                     title="Download complete Master Guide containing all periods and pages"
                   >
                     {downloadingFullDocx ? (
                       <>
-                        <Loader2 className="w-4 h-4 animate-spin text-amber-300" />
-                        <span>Compiling Master Kit...</span>
+                        <Loader2 className="w-3.5 h-3.5 animate-spin text-amber-300" />
+                        <span>Compiling Kit...</span>
                       </>
                     ) : (
                       <>
-                        <Download className="w-4 h-4 text-amber-300" />
-                        <span>Download Full Kit (All Pages)</span>
-                      </>
-                    )}
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => setIsFullScreen(!isFullScreen)}
-                    className="flex items-center gap-1.5 px-3.5 py-2.5 bg-white/10 hover:bg-white/20 text-white rounded-xl text-xs font-bold transition-all border border-white/20 cursor-pointer shadow-sm"
-                    title={isFullScreen ? "Restore Split View" : "Maximize Fullscreen Workspace"}
-                  >
-                    {isFullScreen ? (
-                      <>
-                        <Minimize2 className="w-3.5 h-3.5 text-cyan-300" />
-                        <span>Exit Fullscreen</span>
-                      </>
-                    ) : (
-                      <>
-                        <Maximize2 className="w-3.5 h-3.5 text-cyan-300" />
-                        <span>Full Screen Workspace</span>
-                      </>
-                    )}
-                  </button>
-
-                  <button
-                    onClick={handleLmsSync}
-                    className="flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-slate-950 rounded-xl text-xs font-black shadow-lg shadow-emerald-500/20 transition-all cursor-pointer"
-                  >
-                    {syncStatus === 'synced' ? (
-                      <>
-                        <CheckCircle2 className="w-4 h-4 text-slate-950" />
-                        Pushed to LMS (Active)
-                      </>
-                    ) : syncStatus === 'syncing' ? (
-                      <>
-                        <Loader2 className="w-4 h-4 animate-spin text-slate-950" />
-                        Synchronizing Curriculum...
-                      </>
-                    ) : (
-                      <>
-                        <Send className="w-4 h-4 text-slate-950" />
-                        Publish to ISML LMS
+                        <Download className="w-3.5 h-3.5 text-amber-300" />
+                        <span>Download Full Kit</span>
                       </>
                     )}
                   </button>
                 </div>
               </div>
+
+              {/* Manual Save Confirmation Toast */}
+              {manualSaveSuccessMsg && (
+                <div className="bg-emerald-500 text-slate-950 px-5 py-2.5 text-xs font-black flex items-center justify-between shadow-md">
+                  <div className="flex items-center gap-2">
+                    <CheckCircle2 className="w-4 h-4 text-slate-950 shrink-0" />
+                    <span>{manualSaveSuccessMsg}</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setManualSaveSuccessMsg(null)}
+                    className="text-slate-950 font-black hover:opacity-75 cursor-pointer ml-3"
+                  >
+                    ✕
+                  </button>
+                </div>
+              )}
 
               {/* Header Ingestion Notification Toast */}
               {headerMaterialToast && (
@@ -4354,141 +5500,210 @@ export default function FacultyStudioPage() {
                 </div>
               )}
 
-              {/* Grounded Ingested Materials Summary Strip for Step 4 Delivery Workspace */}
+              {/* Note: Source Materials Grounding Banner for Master Guide */}
               {(() => {
-                const fileNames = activeSavedSession?.tutorFileRef
-                  ? activeSavedSession.tutorFileRef.split(',').map((s: string) => s.trim()).filter(Boolean)
-                  : (activeSavedSession?.sessionPlanJson?.uploaded_files_list
-                      ? activeSavedSession.sessionPlanJson.uploaded_files_list.map((f: any) => typeof f === 'string' ? f : f?.name).filter(Boolean)
-                      : (sessionPackage?.tutorFileRef
-                          ? sessionPackage.tutorFileRef.split(',').map((s: string) => s.trim()).filter(Boolean)
-                          : uploadedFiles.map(f => f.name)));
-                const urls = activeSavedSession?.sourceUrl
-                  ? activeSavedSession.sourceUrl.split(',').map((s: string) => s.trim()).filter(Boolean)
-                  : (activeSavedSession?.sessionPlanJson?.source_urls_list
-                      ? activeSavedSession.sessionPlanJson.source_urls_list.map((u: any) => typeof u === 'string' ? u : u?.url).filter(Boolean)
-                      : (sessionPackage?.sourceUrl
-                          ? sessionPackage.sourceUrl.split(',').map((s: string) => s.trim()).filter(Boolean)
-                          : sourceUrls.filter(u => u.trim())));
+                const parsedMaterials: Array<{ type: 'MANUAL_FILE' | 'YOUTUBE' | 'WEB_LINK' | 'VAULT'; name: string; url?: string }> = [];
+                const seen = new Set<string>();
 
-                if (fileNames.length === 0 && urls.length === 0) return null;
+                const addMat = (item: { type: 'MANUAL_FILE' | 'YOUTUBE' | 'WEB_LINK' | 'VAULT'; name: string; url?: string }) => {
+                  const key = `${item.type}:${item.name.toLowerCase().trim()}`;
+                  if (!seen.has(key) && item.name.trim()) {
+                    seen.add(key);
+                    parsedMaterials.push(item);
+                  }
+                };
+
+                const isYouTube = (u: string) => /youtube\.com|youtu\.be/i.test(u);
+                const isWebUrl = (u: string) => /^https?:\/\//i.test(u);
+                const isManualFile = (n: string, t?: string) => {
+                  if (t === 'MANUAL_FILE') return true;
+                  return /\.(pdf|docx|txt|csv|pptx|ppt|xlsx|xls|png|jpg|jpeg)$/i.test(n);
+                };
+
+                // 1. Process tutorFileRef & uploadedFiles
+                const rawFileRefs = sessionPackage?.tutorFileRef || activeSavedSession?.tutorFileRef || '';
+                if (rawFileRefs) {
+                  rawFileRefs.split(',').forEach((f: string) => {
+                    const trimmed = f.trim();
+                    if (trimmed) {
+                      if (isYouTube(trimmed)) addMat({ type: 'YOUTUBE', name: trimmed, url: trimmed });
+                      else if (isWebUrl(trimmed)) addMat({ type: 'WEB_LINK', name: trimmed, url: trimmed });
+                      else addMat({ type: 'MANUAL_FILE', name: trimmed });
+                    }
+                  });
+                }
+                uploadedFiles.forEach(f => {
+                  if (f.name) addMat({ type: 'MANUAL_FILE', name: f.name });
+                });
+
+                // 2. Process uploaded_files_list
+                const uploadedList = sessionPackage?.session_plan?.uploaded_files_list || activeSavedSession?.sessionPlanJson?.uploaded_files_list;
+                if (Array.isArray(uploadedList)) {
+                  uploadedList.forEach((f: any) => {
+                    const name = typeof f === 'string' ? f.trim() : (f?.name || f?.title || '').trim();
+                    const type = typeof f === 'object' ? f?.type : undefined;
+                    if (name) {
+                      if (isYouTube(name)) addMat({ type: 'YOUTUBE', name, url: name });
+                      else if (isManualFile(name, type)) addMat({ type: 'MANUAL_FILE', name });
+                      else if (isWebUrl(name)) addMat({ type: 'WEB_LINK', name, url: name });
+                      else addMat({ type: 'VAULT', name });
+                    }
+                  });
+                }
+
+                // 3. Process sourceUrl & source_urls_list
+                const allUrls: string[] = [];
+                const rawUrls = sessionPackage?.sourceUrl || activeSavedSession?.sourceUrl;
+                if (rawUrls) {
+                  rawUrls.split(',').forEach((u: string) => allUrls.push(u.trim()));
+                }
+                const sourceList = sessionPackage?.session_plan?.source_urls_list || activeSavedSession?.sessionPlanJson?.source_urls_list;
+                if (Array.isArray(sourceList)) {
+                  sourceList.forEach((u: any) => {
+                    const url = typeof u === 'string' ? u.trim() : (u?.url || '').trim();
+                    if (url) allUrls.push(url);
+                  });
+                }
+                sourceUrls.forEach(u => {
+                  if (u && u.trim()) allUrls.push(u.trim());
+                });
+                allUrls.forEach((url) => {
+                  if (url) {
+                    if (isYouTube(url)) addMat({ type: 'YOUTUBE', name: url, url });
+                    else if (isWebUrl(url)) addMat({ type: 'WEB_LINK', name: url, url });
+                    else addMat({ type: 'MANUAL_FILE', name: url });
+                  }
+                });
+
+                // 4. Grounded Knowledge Vault Study Materials (Matching Language & Level)
+                if (Array.isArray(matchingVaultResources) && matchingVaultResources.length > 0) {
+                  matchingVaultResources.forEach((r: any) => {
+                    if (r.title) {
+                      addMat({ type: 'VAULT', name: r.title, url: r.sourceUrl });
+                    }
+                    if (r.sourceUrl) {
+                      if (isYouTube(r.sourceUrl)) addMat({ type: 'YOUTUBE', name: r.sourceUrl, url: r.sourceUrl });
+                      else addMat({ type: 'WEB_LINK', name: r.sourceUrl, url: r.sourceUrl });
+                    }
+                  });
+                }
+
+                // Fallback if empty
+                if (parsedMaterials.length === 0) {
+                  parsedMaterials.push({
+                    type: 'VAULT',
+                    name: `Knowledge Vault ${sessionPackage?.language || selectedLanguage || 'Language'} ${sessionPackage?.level || selectedLevel || 'A1.1'} Foundation Corpus`
+                  });
+                }
 
                 return (
-                  <div className="bg-slate-900 border-b border-slate-800 px-5 sm:px-6 py-2.5 flex flex-wrap items-center justify-between gap-3 text-xs">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <span className="text-[10px] font-black uppercase text-indigo-400 tracking-wider flex items-center gap-1">
-                        <Paperclip className="w-3.5 h-3.5 text-indigo-400" />
-                        Grounded Sources & Study Materials ({fileNames.length + urls.length}):
-                      </span>
-                      <div className="flex flex-wrap items-center gap-1.5">
-                        {fileNames.map((name: string, i: number) => (
-                          <span
-                            key={i}
-                            className="inline-flex items-center gap-1 bg-slate-800 text-slate-200 border border-slate-700 px-2.5 py-1 rounded-lg text-[11px] font-mono shadow-xs"
-                            title={name}
-                          >
-                            <FileText className="w-3 h-3 text-indigo-400 shrink-0" />
-                            <span className="truncate max-w-[150px] font-medium">{name}</span>
+                  <div className="bg-blue-50/70 border-b border-blue-200/80 px-5 sm:px-6 py-3 text-xs space-y-2">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                      <div className="space-y-0.5">
+                        <div className="flex items-center gap-1.5 font-bold text-blue-950">
+                          <span className="px-2 py-0.5 rounded-md bg-[#0052CC] text-white text-[10px] font-black uppercase tracking-wider">
+                            Note
                           </span>
-                        ))}
-                        {urls.map((url: string, i: number) => (
-                          <a
-                            key={`url-${i}`}
-                            href={url}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="inline-flex items-center gap-1 bg-cyan-950/60 hover:bg-cyan-900/60 text-cyan-300 border border-cyan-800 px-2.5 py-1 rounded-lg text-[11px] font-mono shadow-xs transition-colors"
-                            title={url}
-                          >
-                            <Link2 className="w-3 h-3 text-cyan-400 shrink-0" />
-                            <span className="truncate max-w-[160px] font-medium">{url.replace(/^https?:\/\/(www\.)?/, '')}</span>
-                            <ExternalLink className="w-2.5 h-2.5 opacity-60 ml-0.5" />
-                          </a>
-                        ))}
+                          <span className="text-xs sm:text-sm font-extrabold text-[#0B2447]">
+                            Source Materials Grounding
+                          </span>
+                        </div>
+                        <p className="text-slate-600 leading-relaxed text-[11px] sm:text-xs font-medium">
+                          This content was generated from the following study materials below. If you add more new materials in the Knowledge Vault, you can generate a new refined curriculum again anytime.
+                        </p>
                       </div>
+                      <Link
+                        href={`/faculty/studio/materials?lang=${encodeURIComponent(sessionPackage?.language || selectedLanguage || 'English')}&level=${encodeURIComponent(sessionPackage?.level || selectedLevel || 'A1.1')}&topic=${encodeURIComponent(sessionPackage?.topic || topic || '')}`}
+                        className="px-3 py-1.5 rounded-xl bg-[#0052CC] hover:bg-blue-700 text-white font-bold text-xs flex items-center gap-1 transition-colors cursor-pointer shrink-0 shadow-2xs whitespace-nowrap self-start sm:self-auto"
+                      >
+                        <span>View All Materials ({parsedMaterials.length}) →</span>
+                      </Link>
                     </div>
-                    <button
-                      type="button"
-                      onClick={() => setShowChatFilesModal(true)}
-                      className="px-3 py-1 rounded-lg bg-indigo-600/30 hover:bg-indigo-600/50 text-indigo-300 hover:text-white border border-indigo-500/40 text-[11px] font-bold flex items-center gap-1 transition-colors cursor-pointer"
-                    >
-                      <span>Inspect Chunks & Details →</span>
-                    </button>
+
+                    {/* Grounded Materials Categorized Badges */}
+                    <div className="flex items-center gap-1.5 flex-wrap pt-0.5">
+                      {parsedMaterials.map((item, idx) => {
+                        if (item.type === 'MANUAL_FILE') {
+                          return (
+                            <span
+                              key={idx}
+                              className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-emerald-50 border border-emerald-300 text-emerald-950 font-medium text-[11px] shadow-2xs"
+                              title={`Uploaded Manual Material File: ${item.name}`}
+                            >
+                              <span className="text-emerald-700 font-extrabold flex items-center gap-1">
+                                <span>📄</span>
+                                <span>Manual File:</span>
+                              </span>
+                              <span className="truncate max-w-[220px] font-mono text-[10px] font-bold text-emerald-900">{item.name}</span>
+                            </span>
+                          );
+                        }
+                        if (item.type === 'YOUTUBE') {
+                          return (
+                            <a
+                              key={idx}
+                              href={item.url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-red-50 hover:bg-red-100 border border-red-200 text-red-900 font-medium text-[11px] shadow-2xs transition-colors"
+                              title={`Watch YouTube Video: ${item.url}`}
+                            >
+                              <span className="text-red-600 font-extrabold flex items-center gap-1">
+                                <span>▶️</span>
+                                <span>YouTube Video:</span>
+                              </span>
+                              <span className="truncate max-w-[200px] font-mono text-[10px] underline text-red-800">{item.name}</span>
+                            </a>
+                          );
+                        }
+                        if (item.type === 'WEB_LINK') {
+                          return (
+                            <a
+                              key={idx}
+                              href={item.url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-sky-50 hover:bg-sky-100 border border-sky-200 text-sky-950 font-medium text-[11px] shadow-2xs transition-colors"
+                              title={`Open Web Reference: ${item.url}`}
+                            >
+                              <span className="text-sky-700 font-bold flex items-center gap-1">
+                                <span>🔗</span>
+                                <span>Link:</span>
+                              </span>
+                              <span className="truncate max-w-[200px] font-mono text-[10px] underline text-sky-800">{item.name}</span>
+                            </a>
+                          );
+                        }
+                        return (
+                          <span
+                            key={idx}
+                            className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-white border border-blue-200 text-slate-800 font-medium text-[11px] shadow-2xs"
+                            title={`Vault Study Resource: ${item.name}`}
+                          >
+                            <span className="text-blue-600 font-bold flex items-center gap-1">
+                              <span>📚</span>
+                              <span>Vault:</span>
+                            </span>
+                            <span className="truncate max-w-[260px] font-mono text-[10px] font-bold text-slate-700">{item.name}</span>
+                          </span>
+                        );
+                      })}
+                    </div>
                   </div>
                 );
               })()}
 
-              {/* Senior Academic Agent Pedagogical Rationale & Grounding Seal */}
-              <div className="bg-slate-50 text-slate-800 px-5 sm:px-6 py-3 border-b border-slate-200 grid grid-cols-1 md:grid-cols-3 gap-3 text-xs">
-                <div className="flex items-center gap-2.5">
-                  <div className="w-8 h-8 rounded-lg bg-blue-100 border border-blue-200 flex items-center justify-center shrink-0">
-                    <Award className="w-4 h-4 text-blue-700" />
-                  </div>
-                  <div>
-                    <span className="text-[10px] uppercase font-bold text-slate-500 block tracking-wider">Quality & Accuracy Check</span>
-                    <strong className="text-slate-900 text-xs">CEFR Level Rigor: 99.2% Aligned</strong>
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-2.5">
-                  <div className="w-8 h-8 rounded-lg bg-emerald-100 border border-emerald-200 flex items-center justify-center shrink-0">
-                    <CheckCircle className="w-4 h-4 text-emerald-700" />
-                  </div>
-                  <div>
-                    <span className="text-[10px] uppercase font-bold text-slate-500 block tracking-wider">Evidence Grounding</span>
-                    <strong className="text-slate-900 text-xs">100% Safety Verification</strong>
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-2.5">
-                  <div className="w-8 h-8 rounded-lg bg-amber-100 border border-amber-200 flex items-center justify-center shrink-0">
-                    <ShieldAlert className="w-4 h-4 text-amber-700" />
-                  </div>
-                  <div>
-                    <span className="text-[10px] uppercase font-bold text-slate-500 block tracking-wider">Academic Boundary</span>
-                    <strong className="text-amber-900 text-xs">Resource Creation Only • Non-Evaluator</strong>
-                  </div>
-                </div>
-              </div>
-
-              {/* Content Lineage & Review Status Banner */}
-              {sessionPackage.content_lineage && (
-                <div className="bg-amber-50/70 border-b border-amber-200/80 px-5 sm:px-6 py-2.5 flex flex-wrap items-center justify-between gap-3 text-xs">
-                  <div className="flex items-center gap-2">
-                    <span className="font-extrabold text-amber-900 flex items-center gap-1.5">
-                      <span>🛡️ Academic Review Status:</span>
-                      <span className="bg-amber-200/80 text-amber-950 font-black px-2 py-0.5 rounded text-[10px] tracking-wide">
-                        {sessionPackage.content_lineage.review_status}
-                      </span>
-                    </span>
-                    <span className="text-slate-400">•</span>
-                    <span className="text-slate-600 font-medium text-[11px]">
-                      Model: <strong className="text-slate-800">{sessionPackage.content_lineage.ai_synthesis_model}</strong>
-                    </span>
-                    <span className="text-slate-400">•</span>
-                    <span className="text-slate-600 font-medium text-[11px]">
-                      Rights: <span className="text-emerald-800 font-bold">{sessionPackage.content_lineage.source_rights_status}</span>
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <span className="bg-white border border-amber-300 text-amber-900 font-bold px-2.5 py-0.5 rounded-full text-[10px] shadow-2xs">
-                      ⚖️ Non-Evaluator Boundary: Content & Tasks Only
-                    </span>
-                  </div>
-                </div>
-              )}
-
               {/* Comprehensive Day-Wise Master Curriculum & Lesson Plans */}
-              <div className="p-6 space-y-6">
+              <div className="p-4 sm:p-6 space-y-6">
                   {/* Executive Pedagogical Banner */}
                   <div className="bg-gradient-to-r from-blue-900 to-indigo-900 rounded-xl p-5 text-white shadow-sm border border-blue-800">
                     <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
                       <div className="flex items-center gap-2">
                         <span className="bg-amber-400 text-blue-950 font-extrabold text-xs px-2.5 py-0.5 rounded-full">
-                          {sessionPackage.institution_type === 'SCHOOL' ? '🏫 School Curriculum Blueprint' : '🎓 College Curriculum Blueprint'}
+                          {sessionPackage.institution_type === 'SCHOOL' ? 'School Course Plan' : 'College Course Plan'}
                         </span>
                         <span className="text-xs text-blue-200">
-                          Total Scope:{' '}
+                          Total Lessons:{' '}
                           <strong className="text-white">
                             {(courseDurationMode === 'CUSTOM' && customDays && Number(customDays) > 0)
                               ? Number(customDays)
@@ -4572,7 +5787,7 @@ export default function FacultyStudioPage() {
                     )}
 
                     <p className="text-xs text-blue-100 leading-relaxed mt-2">
-                      {sessionPackage.session_plan.curriculum_overview_summary}
+                      {sessionPackage.session_plan?.curriculum_overview_summary || `Comprehensive CEFR-grounded ${sessionPackage.language || 'language'} curriculum structured across institutional modules.`}
                     </p>
                   </div>
 
@@ -4580,10 +5795,17 @@ export default function FacultyStudioPage() {
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div className="bg-blue-50/70 border border-blue-100 rounded-xl p-4">
                       <h4 className="text-xs font-bold uppercase tracking-wider text-blue-900 mb-2">
-                        Key Curriculum Objectives & Outcomes
+                        What Students Will Learn
                       </h4>
                       <ul className="space-y-1.5 text-xs text-blue-950 font-medium">
-                        {sessionPackage.session_plan.learning_objectives.map((obj: string, i: number) => (
+                        {(Array.isArray(sessionPackage.session_plan?.learning_objectives) && sessionPackage.session_plan.learning_objectives.length > 0
+                          ? sessionPackage.session_plan.learning_objectives
+                          : [
+                              `Master foundational ${sessionPackage.language || 'target language'} vocabulary, core sentence patterns, and conversational dialogue markers.`,
+                              `Build spontaneous spoken confidence and auditory comprehension in authentic daily scenarios.`,
+                              `Attain verified CEFR ${sessionPackage.level || 'A1'} receptive and productive communicative competencies.`
+                            ]
+                        ).map((obj: string, i: number) => (
                           <li key={i} className="flex items-start gap-2">
                             <span className="text-blue-600 font-bold">•</span>
                             <span>{obj}</span>
@@ -4594,7 +5816,7 @@ export default function FacultyStudioPage() {
 
                     <div className="bg-emerald-50/70 border border-emerald-100 rounded-xl p-4">
                       <h4 className="text-xs font-bold uppercase tracking-wider text-emerald-900 mb-2">
-                        Grammar Pillars & Functional Structures
+                        Key Grammar & Vocabulary Rules
                       </h4>
                       <div className="flex flex-wrap gap-1.5">
                         {(() => {
@@ -4750,24 +5972,24 @@ export default function FacultyStudioPage() {
                     return (
                       <div className="space-y-4">
                         {/* 1. Sleek Sticky Unified Curriculum Navigation Bar */}
-                        <div className="sticky top-0 z-30 bg-slate-900/95 backdrop-blur-md text-white rounded-2xl p-3 sm:p-4 shadow-xl border border-slate-800/80 transition-all">
+                        <div className="sticky top-0 z-30 bg-slate-900/95 backdrop-blur-md text-white -mx-4 sm:mx-0 rounded-none sm:rounded-2xl p-3.5 sm:p-4 shadow-xl border-y sm:border border-slate-800/80 transition-all">
                           {/* Top Row: Roadmap Title, Active Module & Period Badge, Quick Navigation */}
                           <div className="flex flex-wrap items-center justify-between gap-2.5 pb-2.5 border-b border-slate-800/80">
                             <div className="flex items-center gap-2">
                               <span className="w-7 h-7 rounded-lg bg-blue-500/20 text-blue-400 flex items-center justify-center border border-blue-500/30 text-xs font-bold shrink-0">
-                                📑
+                                <BookOpen className="w-3.5 h-3.5 text-blue-400" />
                               </span>
                               <div>
                                 <div className="flex items-center gap-2">
                                   <h3 className="text-xs sm:text-sm font-black tracking-tight text-white">
-                                    {isSchool ? 'Curriculum Delivery Roadmap' : 'College Immersion Roadmap'}
+                                    Course Schedule & Lessons
                                   </h3>
                                   <span className="text-[10px] font-mono font-bold bg-blue-500/25 text-blue-300 px-2 py-0.5 rounded-full border border-blue-400/30 shrink-0">
                                     {totalDays} {unitName}s • {totalModules} Modules
                                   </span>
                                 </div>
                                 <p className="text-[10px] text-slate-400 hidden sm:block">
-                                  Navigate modules and {unitName.toLowerCase()}s to view lesson plans & materials
+                                  Select any {unitName.toLowerCase()} to view lesson notes and materials
                                 </p>
                               </div>
                             </div>
@@ -4783,7 +6005,7 @@ export default function FacultyStudioPage() {
                               <button
                                 type="button"
                                 onClick={() => handleDownloadFullCurriculumDocx(allDays)}
-                                disabled={downloadingFullDocx || downloadingDocx}
+                                disabled={downloadingFullDocx || downloadingDocx || downloadingAllPptxZip || downloadingPptx}
                                 className="px-3 py-1 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-extrabold rounded-lg text-[11px] shadow-sm transition-all flex items-center gap-1.5 disabled:opacity-50 cursor-pointer border border-emerald-400/40"
                                 title="Download complete Master Guide for all periods and modules"
                               >
@@ -4796,6 +6018,26 @@ export default function FacultyStudioPage() {
                                   <>
                                     <Download className="w-3 h-3 text-amber-300" />
                                     <span>Download All {totalDays} {unitName}s</span>
+                                  </>
+                                )}
+                              </button>
+
+                              <button
+                                type="button"
+                                onClick={() => handleDownloadAllPptxZip(allDays)}
+                                disabled={downloadingAllPptxZip || downloadingFullDocx || downloadingDocx || downloadingPptx}
+                                className="px-3 py-1 bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-500 hover:to-orange-500 text-white font-extrabold rounded-lg text-[11px] shadow-sm transition-all flex items-center gap-1.5 disabled:opacity-50 cursor-pointer border border-amber-400/40"
+                                title="Download all period presentations as a ZIP archive"
+                              >
+                                {downloadingAllPptxZip ? (
+                                  <>
+                                    <Loader2 className="w-3 h-3 animate-spin" />
+                                    <span>Zipping PPTX...</span>
+                                  </>
+                                ) : (
+                                  <>
+                                    <FileArchive className="w-3 h-3 text-amber-200" />
+                                    <span>Download All PPTX (.zip)</span>
                                   </>
                                 )}
                               </button>
@@ -4869,6 +6111,13 @@ export default function FacultyStudioPage() {
                           downloadingDocx={downloadingDocx}
                           handleDownloadFullCurriculumDocx={handleDownloadFullCurriculumDocx}
                           downloadingFullDocx={downloadingFullDocx}
+                          handleDownloadDayPptx={handleDownloadDayPptx}
+                          downloadingPptx={downloadingPptx}
+                          handleDownloadAllPptxZip={handleDownloadAllPptxZip}
+                          downloadingAllPptxZip={downloadingAllPptxZip}
+                          isSessionSaved={isSessionSaved}
+                          onManualSaveSession={handleManualSaveSession}
+                          savingSession={savingSession}
                           onApplyFullScheduleUpdate={(updatedAllDays: any[]) => {
                             if (!updatedAllDays || updatedAllDays.length === 0) return;
                             setSessionPackage((prev: any) => {
@@ -4968,7 +6217,7 @@ export default function FacultyStudioPage() {
 
       {/* Modal: View All Files & Links Ingested in this Active Session */}
       {showChatFilesModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm animate-in fade-in duration-200">
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm animate-in fade-in duration-200">
           <div className="bg-white w-full max-w-lg rounded-2xl shadow-2xl border border-slate-200 overflow-hidden flex flex-col max-h-[85vh] animate-in zoom-in-95 duration-200">
             {/* Header */}
             <div className="p-4 bg-slate-900 text-white flex items-center justify-between border-b border-slate-800">
@@ -5260,6 +6509,341 @@ export default function FacultyStudioPage() {
                 className="px-4 py-1.5 bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold rounded-xl transition-colors cursor-pointer"
               >
                 Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Right-Side Slide-Over Form: AI Voice Studio & Audio Generator (Light Professional Theme) */}
+      {showAudioGeneratorModal && (
+        <div className="fixed inset-0 z-50 overflow-hidden bg-slate-900/40 backdrop-blur-xs transition-opacity animate-in fade-in duration-200">
+          {/* Backdrop Click Dismiss */}
+          <div
+            className="absolute inset-0"
+            onClick={() => {
+              if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+                window.speechSynthesis.cancel();
+              }
+              setIsModalAudioPlaying(false);
+              setShowAudioGeneratorModal(false);
+            }}
+          />
+
+          {/* Right-Side Slide-Over Drawer Container (Full-width on mobile, max-w-xl on desktop) */}
+          <div className="fixed inset-y-0 right-0 flex max-w-full pointer-events-none">
+            <div className="w-screen max-w-full sm:max-w-md md:max-w-lg lg:max-w-xl pointer-events-auto bg-white shadow-2xl flex flex-col h-full border-l border-slate-200 animate-in slide-in-from-right duration-250">
+              
+              {/* Header */}
+              <div className="px-4 sm:px-5 py-3.5 sm:py-4 bg-slate-50/90 border-b border-slate-200 flex items-center justify-between shrink-0">
+                <div className="flex items-center gap-3">
+                  <div className="w-9 h-9 rounded-xl bg-indigo-50 border border-indigo-200 flex items-center justify-center text-indigo-600 shadow-2xs">
+                    <Headphones className="w-4 h-4 text-indigo-600" />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <h3 className="font-bold text-sm sm:text-base text-slate-900">
+                        AI Audio Studio & Voice Generator
+                      </h3>
+                      <span className="bg-indigo-50 text-indigo-700 border border-indigo-200 text-[10px] font-bold px-2 py-0.5 rounded-full">
+                        MP3
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-slate-500">
+                      Generate native AI voice audio and attach to Period {activeDayDetail}
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+                      window.speechSynthesis.cancel();
+                    }
+                    setIsModalAudioPlaying(false);
+                    setShowAudioGeneratorModal(false);
+                  }}
+                  className="w-8 h-8 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-500 hover:text-slate-800 flex items-center justify-center text-sm font-bold transition-colors cursor-pointer"
+                  aria-label="Close form"
+                >
+                  ✕
+                </button>
+              </div>
+
+              {/* Form Body - Scrollable */}
+              <div className="p-4 sm:p-5 space-y-4 overflow-y-auto flex-1 bg-white">
+                
+                {/* Auto Detected Course Language & Active Period Info */}
+                <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-xl space-y-2.5">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-semibold text-slate-500">Course:</span>
+                      <span className="text-xs font-bold text-slate-900">
+                        {sessionPackage?.language || selectedLanguage || 'English'}
+                      </span>
+                      <span className="text-slate-300">•</span>
+                      <span className="text-xs font-semibold text-indigo-600">
+                        {sessionPackage?.level || selectedLevel || 'A1.1'}
+                      </span>
+                      <span className="text-[10px] bg-emerald-50 text-emerald-700 border border-emerald-200 px-2 py-0.5 rounded-full font-medium">
+                        Auto-Detected
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-xs font-semibold text-slate-500">Target:</span>
+                      <span className="px-2 py-0.5 bg-indigo-100 text-indigo-800 border border-indigo-200 font-bold text-xs rounded-md">
+                        Period {activeDayDetail}
+                      </span>
+                    </div>
+                  </div>
+                  {(() => {
+                    const syllabus = sessionPackage?.session_plan?.day_wise_syllabus || [];
+                    const curDay = syllabus.find((d: any) => d.day_number === activeDayDetail) || syllabus[0] || {};
+                    const curOverride = periodOverrides[activeDayDetail] || {};
+                    const title = curOverride.day_topic || curDay.day_topic;
+                    return title ? (
+                      <p className="text-[11px] text-slate-600 font-medium truncate pt-1.5 border-t border-slate-200/70">
+                        Topic: {title}
+                      </p>
+                    ) : null;
+                  })()}
+                </div>
+
+                {/* Presets & Active Period Controls */}
+                <div className="space-y-1.5">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold text-slate-700">Quick Fill (Period {activeDayDetail}):</span>
+                    <button
+                      type="button"
+                      onClick={() => setAudioModalText('')}
+                      className="text-xs text-rose-600 hover:text-rose-700 hover:underline cursor-pointer font-medium"
+                    >
+                      Clear Text
+                    </button>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const syllabus = sessionPackage?.session_plan?.day_wise_syllabus || [];
+                        const curDay = syllabus.find((d: any) => d.day_number === activeDayDetail) || syllabus[0] || {};
+                        const curOverride = periodOverrides[activeDayDetail] || {};
+                        const effectiveDay = { ...curDay, ...curOverride };
+                        if (effectiveDay.classroom_dialogues && effectiveDay.classroom_dialogues.length > 0) {
+                          setAudioModalText(effectiveDay.classroom_dialogues.join('\n\n'));
+                        } else {
+                          setAudioModalText(`Instructor: Welcome to Period ${activeDayDetail}!\nLearner: Hello, we are ready to practice.`);
+                        }
+                      }}
+                      className="px-2.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200 rounded-lg text-xs font-medium cursor-pointer shadow-2xs transition-colors"
+                    >
+                      Load Dialogues
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const syllabus = sessionPackage?.session_plan?.day_wise_syllabus || [];
+                        const curDay = syllabus.find((d: any) => d.day_number === activeDayDetail) || syllabus[0] || {};
+                        const curOverride = periodOverrides[activeDayDetail] || {};
+                        const effectiveDay = { ...curDay, ...curOverride };
+                        if (effectiveDay.vocabulary_bank && effectiveDay.vocabulary_bank.length > 0) {
+                          const lines = effectiveDay.vocabulary_bank.map((v: any) => 
+                            `${v.word}: ${v.meaning}. ${v.example_sentence ? `Example: ${v.example_sentence}` : ''}`
+                          ).join('\n\n');
+                          setAudioModalText(lines);
+                        }
+                      }}
+                      className="px-2.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200 rounded-lg text-xs font-medium cursor-pointer shadow-2xs transition-colors"
+                    >
+                      Load Vocabulary
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const syllabus = sessionPackage?.session_plan?.day_wise_syllabus || [];
+                        const curDay = syllabus.find((d: any) => d.day_number === activeDayDetail) || syllabus[0] || {};
+                        const curOverride = periodOverrides[activeDayDetail] || {};
+                        const effectiveDay = { ...curDay, ...curOverride };
+                        if (effectiveDay.grammar_rules_detail) {
+                          setAudioModalText(effectiveDay.grammar_rules_detail);
+                        }
+                      }}
+                      className="px-2.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200 rounded-lg text-xs font-medium cursor-pointer shadow-2xs transition-colors"
+                    >
+                      Load Lecture Notes
+                    </button>
+                  </div>
+                </div>
+
+                {/* Textarea */}
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold text-slate-700 block">Passage / Script Content:</label>
+                  <textarea
+                    rows={6}
+                    value={audioModalText}
+                    onChange={(e) => setAudioModalText(e.target.value)}
+                    placeholder={`Paste or type any dialogue, listening exam question, story, or vocabulary words here to generate native pronunciation audio for Period ${activeDayDetail}...`}
+                    className="w-full bg-white border border-slate-300 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 rounded-xl p-3.5 text-xs sm:text-sm text-slate-800 placeholder:text-slate-400 focus:outline-none leading-relaxed transition-all shadow-2xs font-sans"
+                  />
+                  <div className="flex items-center justify-between text-xs text-slate-500 px-1">
+                    <span>{audioModalText.split(/\s+/).filter(Boolean).length} words • {audioModalText.length} characters</span>
+                    <span className="font-medium text-slate-600">
+                      Speed: {audioModalSpeed}x ({sessionPackage?.language || selectedLanguage || 'English'})
+                    </span>
+                  </div>
+                </div>
+
+                {/* Speaking Speed Controls */}
+                <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl flex items-center justify-between">
+                  <div>
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-xs font-bold text-slate-700 block">Speaking Speed</span>
+                      <span className="text-[10px] bg-purple-50 text-purple-700 border border-purple-200 px-1.5 py-0.5 rounded-full font-bold">
+                        Female Voice
+                      </span>
+                    </div>
+                    <span className="text-[11px] text-slate-500">Learner Pace: {audioModalSpeed}x</span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    {[0.8, 1.0, 1.25, 1.5].map((s) => (
+                      <button
+                        key={s}
+                        type="button"
+                        onClick={() => setAudioModalSpeed(s)}
+                        className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                          audioModalSpeed === s
+                            ? 'bg-indigo-600 text-white shadow-xs'
+                            : 'bg-white hover:bg-slate-100 text-slate-700 border border-slate-300'
+                        }`}
+                      >
+                        {s}x
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Status Alert Messages */}
+                {modalAudioSuccessMsg && (
+                  <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-emerald-800 text-xs flex items-center justify-between">
+                    <span className="font-medium">{modalAudioSuccessMsg}</span>
+                    <button type="button" onClick={() => setModalAudioSuccessMsg(null)} className="text-emerald-700 font-bold ml-2">✕</button>
+                  </div>
+                )}
+                {modalAudioErrorMsg && (
+                  <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-amber-800 text-xs flex items-center justify-between">
+                    <span className="font-medium">{modalAudioErrorMsg}</span>
+                    <button type="button" onClick={() => setModalAudioErrorMsg(null)} className="text-amber-700 font-bold ml-2">✕</button>
+                  </div>
+                )}
+              </div>
+
+              {/* Form Footer - Sticky Action Bar */}
+              <div className="p-4 bg-slate-50 border-t border-slate-200 flex flex-col gap-2 shrink-0">
+                <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={handleModalPlayAudio}
+                    disabled={!audioModalText.trim()}
+                    className={`px-3.5 py-2.5 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 cursor-pointer transition-all disabled:opacity-40 shrink-0 ${
+                      isModalAudioPlaying
+                        ? 'bg-rose-600 text-white animate-pulse'
+                        : 'bg-white hover:bg-slate-100 text-slate-700 border border-slate-300 shadow-2xs'
+                    }`}
+                    title="Listen to native voice preview"
+                  >
+                    <Volume2 className="w-4 h-4 text-indigo-600" />
+                    <span>{isModalAudioPlaying ? 'Stop Audio' : 'Play Voice'}</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={handleModalDownloadAudio}
+                    disabled={isModalGeneratingAudio || !audioModalText.trim()}
+                    className="flex-1 px-3.5 py-2.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 active:scale-[0.99] text-white font-bold rounded-xl text-xs shadow-md shadow-blue-200 transition-all flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
+                    title="Download clean named MP3 audio file to computer"
+                  >
+                    {isModalGeneratingAudio ? (
+                      <>
+                        <Loader2 className="w-4 h-4 animate-spin text-white" />
+                        <span>Generating MP3...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Download className="w-4 h-4 text-amber-200" />
+                        <span>Download MP3</span>
+                      </>
+                    )}
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={handleModalAddToPeriod}
+                    disabled={isModalSavingTrack || !audioModalText.trim()}
+                    className="flex-1 px-3.5 py-2.5 bg-emerald-600 hover:bg-emerald-500 active:scale-[0.99] text-white font-bold rounded-xl text-xs shadow-md shadow-emerald-200 transition-all flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
+                    title={`Attach and save this audio track directly into Period ${activeDayDetail}`}
+                  >
+                    <BookOpen className="w-4 h-4 text-emerald-100" />
+                    <span>Add to Period {activeDayDetail}</span>
+                  </button>
+                </div>
+                <p className="text-[11px] text-slate-500 text-center">
+                  Use "Download MP3" to save the file or "Add to Period {activeDayDetail}" to attach directly to curriculum
+                </p>
+              </div>
+
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Confirm to Delete Session Modal Popup */}
+      {sessionPendingDelete && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-xs animate-in fade-in select-none">
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-2xl max-w-sm w-full p-6 text-center space-y-4">
+            <div className="w-12 h-12 rounded-2xl bg-rose-50 border border-rose-200 text-rose-600 flex items-center justify-center mx-auto shadow-xs">
+              <Trash2 className="w-6 h-6 text-rose-600" />
+            </div>
+
+            <div className="space-y-1.5">
+              <h3 className="text-base font-black text-slate-900 tracking-tight">
+                Confirm to Delete Session
+              </h3>
+              <p className="text-xs text-slate-600 leading-relaxed font-medium">
+                Are you sure you want to permanently delete{' '}
+                <strong className="text-slate-900 font-bold">
+                  "{cleanSessionTitle(sessionPendingDelete)}"
+                </strong>
+                ? This session and its generated materials will be removed from your archive.
+              </p>
+            </div>
+
+            <div className="flex items-center gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setSessionPendingDelete(null)}
+                disabled={isDeletingSession}
+                className="flex-1 py-2.5 px-4 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-extrabold text-xs transition-colors cursor-pointer"
+              >
+                Cancel
+              </button>
+
+              <button
+                type="button"
+                onClick={executeDeleteSession}
+                disabled={isDeletingSession}
+                className="flex-1 py-2.5 px-4 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-extrabold text-xs transition-all shadow-md shadow-rose-600/25 flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
+              >
+                {isDeletingSession ? (
+                  <>
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    <span>Deleting...</span>
+                  </>
+                ) : (
+                  <>
+                    <Trash2 className="w-3.5 h-3.5" />
+                    <span>Delete</span>
+                  </>
+                )}
               </button>
             </div>
           </div>

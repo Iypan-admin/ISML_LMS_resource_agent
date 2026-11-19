@@ -1,4 +1,5 @@
 import os
+import re
 import uuid
 import logging
 from typing import Optional, List, Dict, Any
@@ -253,6 +254,7 @@ async def generate_session_package(
     periods_per_week: Optional[int] = Form(None, description="Weekly cadence of periods or sessions"),
     total_periods: Optional[int] = Form(None, description="Total periods / sessions count"),
     assessments_count: Optional[int] = Form(None, description="Total formal tests and assessments count"),
+    master_pillar_priority: Optional[str] = Form("COMPREHENSIVE", description="Priority focus among the 6 Universal Master Knowledge Pillars"),
     source_url: Optional[str] = Form(None, description="Optional legacy single URL"),
     source_urls: Optional[list[str]] = Form(None, description="Multiple YouTube or web article links"),
     tutor_file: Optional[UploadFile] = File(None, description="Optional legacy single file"),
@@ -454,6 +456,7 @@ async def generate_session_package(
             assessments_count=assessments_count,
             source_context=extracted_source_context.strip(),
             pptx_output_dir=PRESENTATION_DIR,
+            master_pillar_priority=master_pillar_priority or "COMPREHENSIVE",
         )
         return package
     except Exception as e:
@@ -548,6 +551,90 @@ async def download_pptx(filename: str):
     )
 
 
+class PeriodPptxRequest(BaseModel):
+    session_id: str
+    language: str
+    level: str
+    topic: str
+    track_label: str = "Standard Course Plan"
+    institution_type: str = "SCHOOL"
+    total_days: int = 2
+    day_data: Dict[str, Any]
+
+
+class FullCurriculumPptxZipRequest(BaseModel):
+    session_id: str
+    language: str
+    level: str
+    topic: str
+    track_label: str = "Standard Course Plan"
+    institution_type: str = "SCHOOL"
+    days_list: List[Dict[str, Any]]
+
+
+@router.post("/download/period-pptx")
+async def generate_and_download_period_pptx(payload: PeriodPptxRequest):
+    """Generates a professional 8-slide light theme lecture PPTX with ISML logo & watermark for a single period."""
+    from app.services.period_pptx_generator import PeriodPptxGenerator
+    day_num = payload.day_data.get("day_number", 1)
+    clean_lang = "".join(c for c in payload.language if c.isalnum() or c == "_")
+    clean_level = "".join(c for c in payload.level if c.isalnum() or c == "_")
+    unit_name = "Period" if payload.institution_type == "SCHOOL" else "Session"
+    filename = f"{clean_lang}_{clean_level}_Total_{payload.total_days}_{unit_name}s_{unit_name}_{day_num}_Lecture_Slides.pptx"
+    output_path = os.path.join(PRESENTATION_DIR, filename)
+
+    try:
+        PeriodPptxGenerator.generate_period_pptx(
+            day_data=payload.day_data,
+            language=payload.language,
+            level=payload.level,
+            topic=payload.topic,
+            track_label=payload.track_label,
+            institution_type=payload.institution_type,
+            total_days=payload.total_days,
+            output_filepath=output_path
+        )
+        return FileResponse(
+            path=output_path,
+            media_type="application/vnd.openxmlformats-officedocument.presentationml.presentation",
+            filename=filename,
+        )
+    except Exception as e:
+        logger.error(f"Error creating period pptx: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to generate Period PPTX: {str(e)}")
+
+
+@router.post("/download/full-curriculum-pptx-zip")
+async def generate_and_download_full_curriculum_pptx_zip(payload: FullCurriculumPptxZipRequest):
+    """Generates and packages all period lecture PPTX presentations into a single ZIP archive."""
+    from app.services.period_pptx_generator import PeriodPptxGenerator
+    count = len(payload.days_list)
+    clean_lang = "".join(c for c in payload.language if c.isalnum() or c == "_")
+    clean_level = "".join(c for c in payload.level if c.isalnum() or c == "_")
+    unit_name = "Period" if payload.institution_type == "SCHOOL" else "Session"
+    filename = f"{clean_lang}_{clean_level}_Total_{count}_{unit_name}s_Comprehensive_PPTX_Slides.zip"
+    output_path = os.path.join(PRESENTATION_DIR, filename)
+
+    try:
+        PeriodPptxGenerator.generate_all_periods_pptx_zip(
+            days_list=payload.days_list,
+            language=payload.language,
+            level=payload.level,
+            topic=payload.topic,
+            track_label=payload.track_label,
+            institution_type=payload.institution_type,
+            output_zip_path=output_path
+        )
+        return FileResponse(
+            path=output_path,
+            media_type="application/zip",
+            filename=filename,
+        )
+    except Exception as e:
+        logger.error(f"Error creating full curriculum pptx zip: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to generate Curriculum PPTX ZIP: {str(e)}")
+
+
 class SpeechSynthesisRequest(BaseModel):
     text: str
     language: Optional[str] = "French"
@@ -555,43 +642,124 @@ class SpeechSynthesisRequest(BaseModel):
 
 @router.post("/synthesize-speech")
 async def synthesize_speech(req: SpeechSynthesisRequest):
-    """Generates authentic native pronunciation audio WAV using Google Gemini 3.8 Flash TTS."""
+    """Generates authentic native pronunciation audio using Google Gemini TTS and high-fidelity native TTS engines."""
     import base64
     import httpx
+    import re
     from fastapi.responses import Response
     from app.config.settings import settings
-
-    if not settings.GEMINI_API_KEY:
-        raise HTTPException(status_code=500, detail="Gemini API key is not configured.")
 
     clean_text = req.text.strip()
     if not clean_text:
         raise HTTPException(status_code=400, detail="Text cannot be empty.")
 
-    # Prioritize specialized TTS models
-    tts_models = ["gemini-3.8-flash-tts", "gemini-3.8-flash-lite-tts", "gemini-2.5-flash-preview-tts"]
+    # Target language code mapping
+    target_lang = (req.language or "English").strip().lower()
+    lang_code_map = {
+        "english": "en",
+        "french": "fr",
+        "german": "de",
+        "spanish": "es",
+        "japanese": "ja",
+        "korean": "ko",
+        "italian": "it",
+        "chinese": "zh-CN",
+        "tamil": "ta",
+        "hindi": "hi"
+    }
+    lang_code = lang_code_map.get(target_lang, "en")
 
-    for model_name in tts_models:
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={settings.GEMINI_API_KEY}"
-        payload = {
-            "contents": [{"parts": [{"text": clean_text}]}]
+    # 1. Primary Engine: Google Native Female Speech Synthesis (Pure High-Fidelity MP3 Audio)
+    try:
+        sentences = re.split(r'([.?!;\n]+)', clean_text)
+        chunks = []
+        current_chunk = ""
+        for s in sentences:
+            if not s:
+                continue
+            if len(current_chunk) + len(s) < 180:
+                current_chunk += s
+            else:
+                if current_chunk.strip():
+                    chunks.append(current_chunk.strip())
+                current_chunk = s
+        if current_chunk.strip():
+            chunks.append(current_chunk.strip())
+        if not chunks:
+            chunks = [clean_text[:180]]
+
+        all_audio_bytes = bytearray()
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
         }
-        try:
-            async with httpx.AsyncClient(timeout=20.0) as client:
-                resp = await client.post(url, json=payload)
-                if resp.status_code == 200:
-                    data = resp.json()
-                    candidates = data.get("candidates", [])
-                    if candidates:
-                        parts = candidates[0].get("content", {}).get("parts", [])
-                        for part in parts:
-                            inline = part.get("inlineData") or part.get("inline_data")
-                            if inline and inline.get("data"):
-                                audio_bytes = base64.b64decode(inline["data"])
-                                return Response(content=audio_bytes, media_type="audio/wav")
-        except Exception as e:
-            logger.warning(f"TTS with {model_name} failed: {e}")
-            continue
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            for ch in chunks[:30]:  # Process up to 30 chunks
+                tts_url = "https://translate.google.com/translate_tts"
+                params = {
+                    "ie": "UTF-8",
+                    "q": ch,
+                    "tl": lang_code,
+                    "client": "tw-ob",
+                    "ttsspeed": "0.95"  # Articulate learner pace with native female voice
+                }
+                r = await client.get(tts_url, params=params, headers=headers)
+                if r.status_code == 200 and r.content:
+                    all_audio_bytes.extend(r.content)
+
+        if len(all_audio_bytes) > 0:
+            return Response(
+                content=bytes(all_audio_bytes),
+                media_type="audio/mpeg",
+                headers={
+                    "Content-Disposition": "attachment; filename=audio.mp3",
+                    "Content-Type": "audio/mpeg"
+                }
+            )
+    except Exception as e:
+        logger.warning(f"Google Native MP3 synthesis failed: {e}")
+
+    # 2. Secondary Engine: Gemini Audio Modality
+    api_key = settings.GEMINI_API_KEY
+    if api_key:
+        tts_models = ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-2.5-flash-preview-tts"]
+        for model_name in tts_models:
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={api_key}"
+            payload = {
+                "contents": [{"parts": [{"text": clean_text}]}],
+                "generationConfig": {
+                    "responseModalities": ["AUDIO"],
+                    "speechConfig": {
+                        "voiceConfig": {
+                            "prebuiltVoiceConfig": {
+                                "voiceName": "Aoede"  # Ultra-clear, natural female pronunciation for learners
+                            }
+                        }
+                    }
+                }
+            }
+            try:
+                async with httpx.AsyncClient(timeout=15.0) as client:
+                    resp = await client.post(url, json=payload)
+                    if resp.status_code == 200:
+                        data = resp.json()
+                        candidates = data.get("candidates", [])
+                        if candidates:
+                            parts = candidates[0].get("content", {}).get("parts", [])
+                            for part in parts:
+                                inline = part.get("inlineData") or part.get("inline_data")
+                                if inline and inline.get("data"):
+                                    audio_bytes = base64.b64decode(inline["data"])
+                                    return Response(
+                                        content=audio_bytes,
+                                        media_type="audio/mpeg",
+                                        headers={
+                                            "Content-Disposition": "attachment; filename=audio.mp3",
+                                            "Content-Type": "audio/mpeg"
+                                        }
+                                    )
+            except Exception as e:
+                logger.warning(f"Gemini Female TTS with {model_name} failed: {e}")
+                continue
 
     raise HTTPException(status_code=502, detail="Speech synthesis service temporarily unavailable.")
 

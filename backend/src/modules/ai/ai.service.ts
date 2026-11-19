@@ -82,4 +82,50 @@ export class AiService {
   async scrapeAnalyze(payload: any): Promise<any> {
     return this.forwardRequest('scrape-analyze', payload);
   }
+
+  async extractVaultResource(payload: {
+    resourceId?: string;
+    fileUrl?: string;
+    fileB64?: string;
+    filename?: string;
+    targetLanguageHint?: string;
+    tenantId?: string;
+  }): Promise<any> {
+    return this.forwardRequest('vault-extract', {
+      resource_id: payload.resourceId,
+      file_url: payload.fileUrl,
+      file_b64: payload.fileB64,
+      filename: payload.filename,
+      target_language_hint: payload.targetLanguageHint,
+      tenant_id: payload.tenantId,
+    });
+  }
+
+  async chunkAndEmbedVaultResource(payload: {
+    resourceId: string;
+    text: string;
+    sourceTitle: string;
+    sourceType?: string;
+    language?: string;
+    cefrLevel?: string;
+    tenantId?: string;
+    chunkSizeChars?: number;
+    overlapChars?: number;
+  }): Promise<any> {
+    return this.forwardRequest('vault-chunk-and-embed', {
+      resource_id: payload.resourceId,
+      text: payload.text,
+      source_title: payload.sourceTitle,
+      source_type: payload.sourceType,
+      language: payload.language,
+      cefr_level: payload.cefrLevel,
+      tenant_id: payload.tenantId,
+      chunk_size_chars: payload.chunkSizeChars,
+      overlap_chars: payload.overlapChars,
+    });
+  }
+
+  async embedVaultQuery(payload: { query: string; language?: string }): Promise<any> {
+    return this.forwardRequest('vault-embed-query', payload);
+  }
 }

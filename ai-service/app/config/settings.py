@@ -30,7 +30,7 @@ class Settings(BaseSettings):
     DATABASE_URL: Optional[str] = None
 
     # Knowledge Engine Thresholds
-    SIMHASH_DISTANCE_THRESHOLD: int = 3
+    SIMHASH_DISTANCE_THRESHOLD: int = 5
     SEMANTIC_DEDUP_THRESHOLD: float = 0.94
     RRF_K: int = 60
     RRF_TOP_K: int = 12

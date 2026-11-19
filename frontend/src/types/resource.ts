@@ -77,4 +77,19 @@ export interface Resource {
   content: ResourceContentPayload;
   versions: ResourceVersion[];
   activity: ResourceActivity[];
+
+  // Knowledge Vault & Multi-Stage Processing Fields
+  processingStatus?: 'PENDING' | 'PROCESSING' | 'READY' | 'FAILED';
+  processingProgress?: number;
+  failureReason?: string | null;
+  approvalStatus?: 'DRAFT' | 'PENDING_REVIEW' | 'CHANGES_REQUIRED' | 'APPROVED' | 'REJECTED';
+  publicationStatus?: 'UNPUBLISHED' | 'PUBLISHED' | 'ARCHIVED';
+  tenantId?: string;
+  isGlobal?: boolean;
+  framework?: 'CEFR' | 'JLPT' | 'TOPIK' | 'ACTFL' | 'CUSTOM';
+  cefrLevel?: string | null;
+  wordCount?: number | null;
+  tokenCount?: number | null;
+  pageCount?: number | null;
+  fileHash?: string | null;
 }

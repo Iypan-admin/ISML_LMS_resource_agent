@@ -55,6 +55,9 @@ yarn-error.log*
 next-env.d.ts
 
 # generated runtime assets & uploads
+scratch/
+static/*
+!static/.gitkeep
 static/documents/*
 static/presentations/*
 static/uploads/*

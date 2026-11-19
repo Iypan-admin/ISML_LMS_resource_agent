@@ -332,7 +332,7 @@ export function getMaster120Period(
       resolvedObjective = `JLPT ${level.toUpperCase()} に準拠した第${dayNumber}課の文法および会話能力の習得。`;
     } else if (isKorean) {
       resolvedTopic = `제${dayNumber}과 : ${period.topic}`;
-      resolvedObjective = `TOPIK ${level.toUpperCase()} 기준에 부합하는 제${dayNumber}과의 핵심 문법 및 회화 능력 완성.`;
+      resolvedObjective = `한국어 ${level.toUpperCase()} 기준에 부합하는 제${dayNumber}과의 핵심 문법 및 회화 능력 완성.`;
     }
 
     return {

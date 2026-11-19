@@ -4,6 +4,7 @@ from typing import Optional, List, Set
 import re
 import urllib.parse
 import asyncio
+import base64
 import httpx
 from bs4 import BeautifulSoup
 from app.models.requests import ResourceAnalysisRequest
@@ -11,6 +12,9 @@ from app.models.responses import ApiResponse
 from app.workflows.analyze_resource import AnalyzeResourceWorkflow
 from app.services.url_service import UrlService
 from app.agents.copyright_agent import CopyrightAgent
+from app.services.extractor import ContentExtractor
+from app.services.chunking_service import ChunkingService
+from app.services.embedding_service import EmbeddingService
 
 router = APIRouter(prefix="/api/v1/ai", tags=["Resource Analysis"])
 
@@ -432,4 +436,267 @@ async def scrape_and_analyze_web_page(req: ScrapeRequest):
                 "scraped_text": fallback_text,
                 "copyright": copyright_res.model_dump(),
             }
+        )
+
+
+# =============================================================================
+# PHASE 2: Knowledge Vault Multimodal Extraction & Classification Endpoint
+# =============================================================================
+
+class VaultExtractRequest(BaseModel):
+    resource_id: Optional[str] = None
+    file_url: Optional[str] = None
+    file_b64: Optional[str] = None
+    filename: Optional[str] = None
+    target_language_hint: Optional[str] = None
+    tenant_id: Optional[str] = None
+
+
+@router.post("/vault-extract", response_model=ApiResponse)
+async def vault_extract(req: VaultExtractRequest):
+    """
+    Multimodal extraction & academic classification endpoint for Knowledge Vault resources.
+    Extracts text from PDF, DOCX, PPTX, Images, Audio, Web, YouTube;
+    applies linguistic cleansing; and classifies CEFR/JLPT metadata.
+    """
+    file_bytes = None
+    url = None
+    filename = req.filename
+
+    # 1. Base64 payload decoding
+    if req.file_b64:
+        try:
+            file_bytes = base64.b64decode(req.file_b64)
+        except Exception as e:
+            return ApiResponse(
+                success=False,
+                message="Invalid base64 payload",
+                data={
+                    "success": False,
+                    "error_code": "ERR_INVALID_PAYLOAD",
+                    "failure_reason": f"Failed to decode base64 file data: {str(e)}",
+                    "text": "",
+                    "page_count": 0,
+                    "word_count": 0,
+                    "token_count": 0
+                }
+            )
+    # 2. Remote URL / Presigned Storage Download
+    elif req.file_url:
+        clean_url = req.file_url.strip()
+        if "youtube.com" in clean_url or "youtu.be" in clean_url:
+            url = clean_url
+        elif "supabase.co/storage" in clean_url or (filename and any(filename.lower().endswith(ext) for ext in ['.pdf', '.docx', '.doc', '.pptx', '.ppt', '.png', '.jpg', '.jpeg', '.webp', '.mp3', '.wav', '.txt', '.md'])):
+            try:
+                async with httpx.AsyncClient(timeout=45.0, follow_redirects=True) as client:
+                    res = await client.get(clean_url)
+                    if res.status_code != 200:
+                        return ApiResponse(
+                            success=False,
+                            message=f"Storage download returned status {res.status_code}",
+                            data={
+                                "success": False,
+                                "error_code": "ERR_DOWNLOAD_FAILED",
+                                "failure_reason": f"Failed to download file from storage URL (HTTP {res.status_code})",
+                                "text": "",
+                                "page_count": 0,
+                                "word_count": 0,
+                                "token_count": 0
+                            }
+                        )
+                    file_bytes = res.content
+            except Exception as dl_err:
+                return ApiResponse(
+                    success=False,
+                    message="Storage download network error",
+                    data={
+                        "success": False,
+                        "error_code": "ERR_DOWNLOAD_FAILED",
+                        "failure_reason": f"Network error while downloading from storage: {str(dl_err)}",
+                        "text": "",
+                        "page_count": 0,
+                        "word_count": 0,
+                        "token_count": 0
+                    }
+                )
+        else:
+            url = clean_url
+
+    if not file_bytes and not url:
+        return ApiResponse(
+            success=False,
+            message="Neither file payload nor valid URL provided.",
+            data={
+                "success": False,
+                "error_code": "ERR_EMPTY_PAYLOAD",
+                "failure_reason": "No valid binary payload, storage link, or URL supplied.",
+                "text": "",
+                "page_count": 0,
+                "word_count": 0,
+                "token_count": 0
+            }
+        )
+
+    try:
+        result = await ContentExtractor.extract_resource_comprehensive(
+            file_bytes=file_bytes,
+            filename=filename,
+            url=url,
+            target_language_hint=req.target_language_hint
+        )
+        return ApiResponse(
+            success=result.get("success", False),
+            message="Extraction completed successfully" if result.get("success") else result.get("failure_reason", "Extraction failed"),
+            data=result
+        )
+    except Exception as ext_err:
+        return ApiResponse(
+            success=False,
+            message="Unhandled extraction pipeline failure",
+            data={
+                "success": False,
+                "error_code": "ERR_PIPELINE_CRASH",
+                "failure_reason": f"Unhandled exception: {str(ext_err)}",
+                "text": "",
+                "page_count": 0,
+                "word_count": 0,
+                "token_count": 0
+            }
+        )
+
+
+# =============================================================================
+# PHASE 3: Knowledge Vault Chunking, Near-Duplicate Clustering & 768-dim Indexing
+# =============================================================================
+
+class VaultChunkRequest(BaseModel):
+    resource_id: str
+    text: str
+    source_title: str
+    source_type: Optional[str] = "DOCUMENT"
+    language: Optional[str] = None
+    cefr_level: Optional[str] = None
+    tenant_id: Optional[str] = None
+    chunk_size_chars: Optional[int] = 1200
+    overlap_chars: Optional[int] = 150
+
+
+class VaultQueryEmbedRequest(BaseModel):
+    query: str
+    language: Optional[str] = None
+
+
+@router.post("/vault-chunk-and-embed", response_model=ApiResponse)
+async def vault_chunk_and_embed(req: VaultChunkRequest):
+    """
+    Hierarchically chunks educational text, tags pedagogical variants using 64-bit SimHash,
+    and computes canonical 768-dim embeddings via gemini-embedding-2.
+    """
+    try:
+        if not req.text or len(req.text.strip()) < 10:
+            return ApiResponse(
+                success=False,
+                message="Text is too short to chunk and index.",
+                data={"chunks": [], "total_chunks": 0}
+            )
+
+        # 1. Semantic Chunking & Near-Duplicate Clustering with Enterprise Zero-Hallucination Context Anchor
+        chunks = ChunkingService.chunk_educational_text(
+            text=req.text,
+            chunk_size_chars=req.chunk_size_chars or 1200,
+            overlap_chars=req.overlap_chars or 150,
+            source_title=req.source_title,
+            source_type=req.source_type or "DOCUMENT",
+            language=req.language or "General",
+            cefr_level=req.cefr_level,
+            inject_context_header=True
+        )
+
+        if not chunks:
+            return ApiResponse(
+                success=False,
+                message="Chunking produced 0 valid segments.",
+                data={"chunks": [], "total_chunks": 0}
+            )
+
+        # 2. Canonical 768-dim Embedding Generation
+        embedding_service = EmbeddingService()
+        chunk_texts = [c["content"] for c in chunks]
+        embeddings = await embedding_service.get_embeddings_batch(chunk_texts)
+
+        # 3. Assemble complete chunk payloads ready for pgvector insert
+        assembled_chunks = []
+        for idx, c in enumerate(chunks):
+            vec = embeddings[idx] if idx < len(embeddings) else None
+            assembled_chunks.append({
+                "resource_id": req.resource_id,
+                "chunk_index": c["chunk_index"],
+                "total_chunks": c["total_chunks"],
+                "content": c["content"],
+                "token_count": c["token_count"],
+                "sim_hash": c["sim_hash"],
+                "duplicate_cluster_id": c["duplicate_cluster_id"],
+                "is_variant": c["is_variant"],
+                "pedagogical_archetype": c.get("pedagogical_archetype", "EXPLANATION"),
+                "section_heading": c.get("section_heading"),
+                "linguistic_entities": c.get("linguistic_entities", []),
+                "source_title": req.source_title,
+                "source_type": req.source_type or "DOCUMENT",
+                "language": req.language or "General",
+                "cefr_level": req.cefr_level,
+                "embedding_provider": "GEMINI",
+                "embedding_model": "gemini-embedding-001",
+                "embedding_version": "v1.0",
+                "embedding_dimension": 768,
+                "embedding": vec
+            })
+
+        return ApiResponse(
+            success=True,
+            message=f"Successfully chunked and generated 768-dim vectors for {len(assembled_chunks)} chunks.",
+            data={
+                "resource_id": req.resource_id,
+                "total_chunks": len(assembled_chunks),
+                "chunks": assembled_chunks
+            }
+        )
+    except Exception as e:
+        return ApiResponse(
+            success=False,
+            message=f"Chunking and embedding failed: {str(e)}",
+            data={"chunks": [], "total_chunks": 0}
+        )
+
+
+@router.post("/vault-embed-query", response_model=ApiResponse)
+async def vault_embed_query(req: VaultQueryEmbedRequest):
+    """
+    Computes a canonical 768-dim embedding vector for an incoming search query.
+    """
+    try:
+        embedding_service = EmbeddingService()
+        vec = await embedding_service.get_embedding(req.query)
+        if not vec:
+            return ApiResponse(
+                success=False,
+                message="Failed to compute query embedding.",
+                data={"embedding": None}
+            )
+
+        return ApiResponse(
+            success=True,
+            message="Query embedding generated.",
+            data={
+                "query": req.query,
+                "embedding": vec,
+                "dimension": len(vec),
+                "model": "gemini-embedding-2",
+                "provider": "GEMINI"
+            }
+        )
+    except Exception as e:
+        return ApiResponse(
+            success=False,
+            message=f"Query embedding generation failed: {str(e)}",
+            data={"embedding": None}
         )

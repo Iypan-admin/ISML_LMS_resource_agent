@@ -355,10 +355,10 @@ export default function InternalResourceAiPage() {
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
             <div className="flex items-center gap-5">
               <div className={`w-20 h-20 rounded-2xl flex flex-col items-center justify-center text-white shadow-lg font-black shrink-0 ${scrapeResult.copyright.copyright_safety_percentage >= 90
-                  ? 'bg-emerald-600'
-                  : scrapeResult.copyright.copyright_safety_percentage >= 70
-                    ? 'bg-blue-600'
-                    : 'bg-amber-600'
+                ? 'bg-emerald-600'
+                : scrapeResult.copyright.copyright_safety_percentage >= 70
+                  ? 'bg-blue-600'
+                  : 'bg-amber-600'
                 }`}>
                 <span className="text-2xl leading-none">{scrapeResult.copyright.copyright_safety_percentage}%</span>
                 <span className="text-[10px] uppercase font-bold tracking-tighter">SAFE</span>
@@ -443,10 +443,10 @@ export default function InternalResourceAiPage() {
 
           <div className="flex items-center gap-3 shrink-0">
             <Link
-              href="/resources"
+              href="/vault"
               className="px-4 py-2.5 rounded-xl bg-white/10 hover:bg-white/20 text-white text-xs font-bold transition-all border border-white/20 flex items-center gap-2"
             >
-              <Database className="w-4 h-4" /> View Internal Catalog
+              <Database className="w-4 h-4" /> View Knowledge Vault
             </Link>
           </div>
         </div>

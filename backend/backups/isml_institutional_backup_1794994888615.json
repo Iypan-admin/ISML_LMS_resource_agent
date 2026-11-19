@@ -1,0 +1,9 @@
+{
+  "backupTimestamp": "2026-11-18T09:41:28.614Z",
+  "platformVersion": "ISML-2.0-Enterprise",
+  "canonicalModel": "gemini-embedding-2",
+  "canonicalDimension": 768,
+  "totalCurriculums": 0,
+  "quarantinedLegacyResources": 97,
+  "curriculums": []
+}

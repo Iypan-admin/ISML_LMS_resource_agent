@@ -3,7 +3,7 @@
 import React, { useState } from 'react';
 import { Resource } from '@/types/resource';
 import { useResources } from '@/context/ResourceContext';
-import { X, CheckCircle2, Globe, ArrowRight, Library, Send } from 'lucide-react';
+import { X, CheckCircle2, Globe, ArrowRight, Library, Send, Database } from 'lucide-react';
 import Link from 'next/link';
 
 interface PublishDialogProps {
@@ -138,11 +138,11 @@ export default function PublishDialog({ resource, isOpen, onClose }: PublishDial
                 Close Dialog
               </button>
               <Link
-                href="/resources"
+                href="/vault"
                 onClick={onClose}
                 className="flex-1 py-2.5 bg-[#0052CC] hover:bg-blue-700 text-white text-xs font-bold rounded-xl shadow-md transition-colors text-center flex items-center justify-center gap-1"
               >
-                <Library className="w-4 h-4" /> Go to Library
+                <Database className="w-4 h-4" /> Go to Vault
               </Link>
             </div>
           </div>
