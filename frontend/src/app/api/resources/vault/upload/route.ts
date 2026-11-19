@@ -109,18 +109,23 @@ export async function POST(req: NextRequest) {
     const buffer = Buffer.from(arrayBuffer);
     const fileHash = crypto.createHash('sha256').update(buffer).digest('hex');
 
-    // Save physical file into public/uploads for direct browser viewing & download
+    // Save physical file into public/uploads if filesystem is writable (local dev), safely skip on serverless (Vercel)
     const safeFileName = `${Date.now()}_${file.name.replace(/[^a-zA-Z0-9._-]/g, '_')}`;
-    const uploadsDir = path.join(process.cwd(), 'public', 'uploads');
-    if (!fs.existsSync(uploadsDir)) {
-      fs.mkdirSync(uploadsDir, { recursive: true });
+    let fileUrl = `/uploads/${safeFileName}`;
+    try {
+      const uploadsDir = path.join(process.cwd(), 'public', 'uploads');
+      if (!fs.existsSync(uploadsDir)) {
+        fs.mkdirSync(uploadsDir, { recursive: true });
+      }
+      const targetFilePath = path.join(uploadsDir, safeFileName);
+      await fs.promises.writeFile(targetFilePath, buffer);
+    } catch (fsErr) {
+      console.warn('Filesystem write skipped in serverless environment:', fsErr);
     }
-    const targetFilePath = path.join(uploadsDir, safeFileName);
-    await fs.promises.writeFile(targetFilePath, buffer).catch((err) => {
-      console.warn('Could not write uploaded file to public/uploads:', err);
-    });
-    const fileUrl = `/uploads/${safeFileName}`;
     const dataUrl = buffer.length < 4000000 ? `data:${file.type || 'application/octet-stream'};base64,${buffer.toString('base64')}` : fileUrl;
+    if (fileUrl.startsWith('/uploads/') && dataUrl.startsWith('data:')) {
+      fileUrl = dataUrl;
+    }
 
     // 1. Resolve Language in Database
     let lang = await prisma.language.findFirst({
@@ -152,9 +157,16 @@ export async function POST(req: NextRequest) {
           ...existing,
           fileUrl: existing.canonicalUrl || fileUrl,
           fileData: dataUrl,
+          docHtml: `<p>${existing.title}</p>`,
+          content: {
+            body: existing.description,
+          },
         },
         fileUrl: existing.canonicalUrl || fileUrl,
         dataUrl,
+        extractedText: existing.description,
+        wordCount: existing.wordCount || 100,
+        pageCount: existing.pageCount || 1,
         message: `Resource already indexed in Vault: ${existing.title}`,
         isDuplicate: true,
       }, { status: 200 });

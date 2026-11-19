@@ -288,8 +288,12 @@ export function ResourceProvider({ children }: { children: React.ReactNode }) {
     if (typeof window === 'undefined') return;
     try {
       const existing = getSavedExternalResourcesFromStorage();
+      const sanitizedRes = {
+        ...res,
+        fileData: res.fileData && res.fileData.length > 500000 ? undefined : res.fileData,
+      };
       const filtered = existing.filter(item => item.id !== res.id && item.title !== res.title);
-      const updated = [res, ...filtered];
+      const updated = [sanitizedRes, ...filtered].slice(0, 50);
       localStorage.setItem('isml_saved_external_resources', JSON.stringify(updated));
     } catch (e) {
       console.warn('Failed to persist external resource to localStorage:', e);
@@ -306,12 +310,12 @@ export function ResourceProvider({ children }: { children: React.ReactNode }) {
 
     try {
       // 1. Same-Origin Next.js API first (5ms local server execution)
-      let resp: Response | null = await fetch('/api/resources', { signal: AbortSignal.timeout(1500) }).catch(() => null);
+      let resp: Response | null = await fetch('/api/resources', { signal: AbortSignal.timeout(4000) }).catch(() => null);
 
-      // 2. Railway fallback with 2-second timeout (never hangs for 2 minutes)
+      // 2. Railway fallback with 3-second timeout (never hangs for 2 minutes)
       if (!resp || !resp.ok) {
         const prodUrl = 'https://isml-resource-backend-production.up.railway.app/api/v1/resources?limit=500';
-        resp = await fetch(prodUrl, { signal: AbortSignal.timeout(2000) }).catch(() => null);
+        resp = await fetch(prodUrl, { signal: AbortSignal.timeout(3000) }).catch(() => null);
       }
 
       if (resp && resp.ok) {
@@ -319,13 +323,22 @@ export function ResourceProvider({ children }: { children: React.ReactNode }) {
         const rawData = Array.isArray(json.data) ? json.data : [];
         const mappedDbItems = rawData.map(mapBackendResource);
 
-        // Strictly ONLY display resources that the user uploaded - 0 mock records
-        const userUploadedIds = getUserUploadedIds();
-        const userUploadedDbItems = mappedDbItems.filter((d: Resource) => userUploadedIds.has(d.id));
+        // Filter out legacy quarantined mock records (keep genuine user uploads & published items)
+        const realDbItems = mappedDbItems.filter((d: any) => 
+          d.tenantId !== 'inst_legacy_quarantine' && 
+          !d.title?.includes('MicroBiology') &&
+          !d.tags?.includes('MockData')
+        );
 
         const idMap = new Map<string, Resource>();
-        savedExternalItems.forEach((s: Resource) => idMap.set(s.id, s));
-        userUploadedDbItems.forEach((d: Resource) => idMap.set(d.id, d));
+        // Add real database items first
+        realDbItems.forEach((d: Resource) => idMap.set(d.id, d));
+        // Merge client external items if not already present
+        savedExternalItems.forEach((s: Resource) => {
+          if (!idMap.has(s.id)) {
+            idMap.set(s.id, s);
+          }
+        });
         
         const combined = Array.from(idMap.values());
         setResources(combined);

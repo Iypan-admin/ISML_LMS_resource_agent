@@ -7,6 +7,9 @@ export const maxDuration = 60;
 export async function GET(req: NextRequest) {
   try {
     const resources = await prisma.resource.findMany({
+      where: {
+        tenantId: { not: 'inst_legacy_quarantine' },
+      },
       include: {
         language: true,
       },
