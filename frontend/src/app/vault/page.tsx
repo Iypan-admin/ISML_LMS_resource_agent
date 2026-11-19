@@ -58,6 +58,9 @@ export default function KnowledgeVaultPage() {
   // Tab switch handler with instant smooth auto-scroll
   const handleSwitchTab = (tab: 'CATALOG' | 'UPLOAD') => {
     setActiveTab(tab);
+    if (tab === 'UPLOAD' && selectedLanguage) {
+      setUploadLang(selectedLanguage);
+    }
     setTimeout(() => {
       if (tab === 'UPLOAD' && uploadSectionRef.current) {
         uploadSectionRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -140,9 +143,16 @@ export default function KnowledgeVaultPage() {
 
   // Professional Bulk Upload State
   const [uploadMode, setUploadMode] = useState<'FILE' | 'LINK'>('FILE');
-  const [uploadLang, setUploadLang] = useState('');
+  const [uploadLang, setUploadLang] = useState('English');
   const [uploadMasterIndex, setUploadMasterIndex] = useState('AUTO_DETECT');
   const [uploadLevel, setUploadLevel] = useState('AUTO_DETECT');
+
+  // Keep upload language in sync with selected catalog language
+  useEffect(() => {
+    if (selectedLanguage) {
+      setUploadLang(selectedLanguage);
+    }
+  }, [selectedLanguage]);
 
   // Staged Files Queue Interface & State
   interface StagedFileItem {
@@ -219,8 +229,8 @@ export default function KnowledgeVaultPage() {
     setStagedFiles((prev) => [...prev, ...newItems]);
     setBatchSummary(null);
     setTimeout(() => {
-      document.getElementById('staged-files-queue')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    }, 100);
+      document.getElementById('staged-files-queue')?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }, 60);
   };
 
   const handleAddSingleLink = (e?: React.FormEvent) => {
@@ -379,12 +389,14 @@ export default function KnowledgeVaultPage() {
   // Action Handlers
   // ---------------------------------------------------------------------------
 
-  const handleBatchSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleBatchSubmit = async (e?: React.FormEvent | React.MouseEvent) => {
+    if (e && typeof e.preventDefault === 'function') {
+      e.preventDefault();
+    }
 
+    const activeUploadLang = uploadLang || selectedLanguage || 'English';
     if (!uploadLang) {
-      alert('Please select a Language in Step 1 before uploading.');
-      return;
+      setUploadLang(activeUploadLang);
     }
 
     if (uploadMode === 'FILE') {
@@ -397,7 +409,7 @@ export default function KnowledgeVaultPage() {
       setBatchSummary(null);
       let successCount = 0;
       let failCount = 0;
-      const framework = uploadLang === 'Japanese' ? 'JLPT' : (uploadLang === 'Korean' ? 'TOPIK' : 'CEFR');
+      const framework = activeUploadLang === 'Japanese' ? 'JLPT' : (activeUploadLang === 'Korean' ? 'TOPIK' : 'CEFR');
 
       for (let i = 0; i < stagedFiles.length; i++) {
         const item = stagedFiles[i];
@@ -414,17 +426,31 @@ export default function KnowledgeVaultPage() {
           formData.append('title', item.title || item.name.replace(/\.[^/.]+$/, ''));
           formData.append('framework', framework);
           formData.append('masterIndex', uploadMasterIndex);
-          formData.append('language', uploadLang);
-          formData.append('languageId', uploadLang);
-          formData.append('languageName', uploadLang);
+          formData.append('language', activeUploadLang);
+          formData.append('languageId', activeUploadLang);
+          formData.append('languageName', activeUploadLang);
           if (uploadLevel && uploadLevel !== 'AUTO_DETECT') {
             formData.append('cefrLevel', uploadLevel);
           }
 
-          const resp = await fetchBackendWithFallback('/api/resources/vault/upload', {
-            method: 'POST',
-            body: formData,
-          });
+          let resp: Response;
+          try {
+            resp = await fetch('/api/resources/vault/upload', {
+              method: 'POST',
+              body: formData,
+            });
+            if (!resp.ok && resp.status !== 409) {
+              resp = await fetchBackendWithFallback('/api/resources/vault/upload', {
+                method: 'POST',
+                body: formData,
+              });
+            }
+          } catch (_) {
+            resp = await fetchBackendWithFallback('/api/resources/vault/upload', {
+              method: 'POST',
+              body: formData,
+            });
+          }
 
           const data = await resp.json().catch(() => ({}));
           if ((resp.ok || resp.status === 409 || data.isDuplicate || data.error === 'DUPLICATE_RESOURCE') && (data.success || data.id || data.data || data.existingResourceId)) {
@@ -550,7 +576,7 @@ export default function KnowledgeVaultPage() {
       setBatchSummary(null);
       let successCount = 0;
       let failCount = 0;
-      const framework = uploadLang === 'Japanese' ? 'JLPT' : (uploadLang === 'Korean' ? 'TOPIK' : 'CEFR');
+      const framework = activeUploadLang === 'Japanese' ? 'JLPT' : (activeUploadLang === 'Korean' ? 'TOPIK' : 'CEFR');
 
       for (let i = 0; i < stagedLinks.length; i++) {
         const item = stagedLinks[i];
@@ -1235,21 +1261,16 @@ export default function KnowledgeVaultPage() {
                   )}
                 </label>
                 <select
-                  value={uploadLang}
+                  value={uploadLang || 'English'}
                   onChange={(e) => setUploadLang(e.target.value)}
-                  className={`w-full px-3.5 py-2.5 rounded-xl border text-xs font-bold focus:outline-none transition-all cursor-pointer ${
-                    !uploadLang
-                      ? 'bg-amber-50/70 border-amber-300 text-amber-900 focus:border-amber-500 ring-2 ring-amber-200/50'
-                      : 'bg-slate-50 border-slate-200 text-slate-800 focus:border-blue-500'
-                  }`}
+                  className="w-full px-3.5 py-2.5 rounded-xl border text-xs font-bold focus:outline-none transition-all cursor-pointer bg-slate-50 border-slate-200 text-slate-800 focus:border-blue-500 shadow-2xs"
                 >
-                  <option value="" disabled>-- Select Language (Required) --</option>
+                  <option value="English">English (International)</option>
                   <option value="German">German (Deutsch)</option>
                   <option value="French">French (Français)</option>
                   <option value="Spanish">Spanish (Español)</option>
                   <option value="Japanese">Japanese (日本語)</option>
                   <option value="Korean">Korean (한국어)</option>
-                  <option value="English">English (International)</option>
                   <option value="General">Other / General Multilingual</option>
                 </select>
                 <p className="text-[10px] text-slate-400 font-medium">Primary target language for curriculum planning.</p>
@@ -1447,8 +1468,9 @@ export default function KnowledgeVaultPage() {
                     multiple
                     accept=".pdf,.docx,.doc,.pptx,.ppt,.txt,.md,.mp3,.mp4,.wav,.png,.jpg,.jpeg"
                     onChange={(e) => {
-                      if (e.target.files) {
+                      if (e.target.files && e.target.files.length > 0) {
                         handleAddFilesToQueue(e.target.files);
+                        e.target.value = '';
                       }
                     }}
                     className="hidden"
@@ -1768,9 +1790,10 @@ export default function KnowledgeVaultPage() {
           <button
             type="button"
             onClick={handleBatchSubmit}
-            disabled={isBatchProcessing || !uploadLang || (uploadMode === 'FILE' ? stagedFiles.length === 0 : stagedLinks.length === 0)}
-            className={`w-full py-4 rounded-2xl font-bold text-sm shadow-md transition-all flex items-center justify-center gap-2 ${
-              isBatchProcessing || !uploadLang || (uploadMode === 'FILE' ? stagedFiles.length === 0 : stagedLinks.length === 0)
+            onTouchStart={() => {}}
+            disabled={isBatchProcessing || (uploadMode === 'FILE' ? stagedFiles.length === 0 : stagedLinks.length === 0)}
+            className={`w-full py-4 rounded-2xl font-bold text-sm shadow-md transition-all flex items-center justify-center gap-2 select-none active:scale-[0.99] ${
+              isBatchProcessing || (uploadMode === 'FILE' ? stagedFiles.length === 0 : stagedLinks.length === 0)
                 ? 'bg-slate-200 text-slate-400 cursor-not-allowed'
                 : 'bg-[#0B2447] hover:bg-black text-white cursor-pointer'
             }`}
@@ -1780,8 +1803,6 @@ export default function KnowledgeVaultPage() {
                 <RotateCw className="w-4 h-4 animate-spin" />
                 <span>Processing Bulk Upload & AI Auto-Indexing...</span>
               </>
-            ) : !uploadLang ? (
-              <span>Please Select Language in Step 1 Above</span>
             ) : (
               <>
                 <Sparkles className="w-4 h-4 text-amber-400" />
